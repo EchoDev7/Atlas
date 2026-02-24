@@ -1,1 +1,88 @@
-&lt;!-- Atlas — Dashboard page (Phase 0: skeleton only) --&gt;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atlas VPN Panel - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen" x-data="dashboardApp()" x-init="init()">
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center">
+                        <div class="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-500 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                            </svg>
+                        </div>
+                        <span class="ml-3 text-xl font-bold text-gray-800">Atlas VPN Panel</span>
+                    </div>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-gray-700 mr-4" x-text="'Welcome, ' + username"></span>
+                    <button @click="logout" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition duration-200">
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div class="px-4 py-6 sm:px-0">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h1 class="text-2xl font-bold text-gray-800 mb-4">Dashboard</h1>
+                <p class="text-gray-600">Welcome to Atlas VPN Panel. Phase 1 authentication is working!</p>
+                <div class="mt-4 p-4 bg-blue-50 rounded-lg">
+                    <p class="text-sm text-blue-800">
+                        <strong>Phase 1 Status:</strong> Authentication system is operational. 
+                        OpenVPN management features will be added next.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function dashboardApp() {
+            return {
+                username: '',
+
+                async init() {
+                    const token = localStorage.getItem('access_token');
+                    if (!token) {
+                        window.location.href = '/templates/login.html';
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/auth/me', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Authentication failed');
+                        }
+
+                        const data = await response.json();
+                        this.username = data.username;
+                    } catch (err) {
+                        localStorage.removeItem('access_token');
+                        window.location.href = '/templates/login.html';
+                    }
+                },
+
+                logout() {
+                    localStorage.removeItem('access_token');
+                    window.location.href = '/templates/login.html';
+                }
+            }
+        }
+    </script>
+</body>
+</html>
