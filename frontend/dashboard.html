@@ -6,24 +6,138 @@
     <title>Atlas VPN Panel - Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'cloud': {
+                            50: '#fdfcfb',
+                            100: '#faf9f7',
+                            200: '#f5f3ef',
+                            300: '#f0ede7',
+                            400: '#ebe7df',
+                            500: '#e6e1d7',
+                            600: '#d4cfc5',
+                            700: '#c2bdb3',
+                            800: '#b0aba1',
+                            900: '#9e998f',
+                        },
+                        'sage': {
+                            50: '#f6f7f6',
+                            100: '#e3e8e3',
+                            200: '#c7d1c7',
+                            300: '#a8b9a8',
+                            400: '#8ba18b',
+                            500: '#6d896d',
+                            600: '#5a7159',
+                            700: '#475947',
+                            800: '#364136',
+                            900: '#252925',
+                        },
+                        'sky': {
+                            50: '#f4f8fb',
+                            100: '#e3eef6',
+                            200: '#c7ddec',
+                            300: '#abcce3',
+                            400: '#8fbbd9',
+                            500: '#73aad0',
+                            600: '#5a8fb8',
+                            700: '#47749a',
+                            800: '#36597c',
+                            900: '#253e5e',
+                        },
+                        'honey': {
+                            50: '#fdfaf4',
+                            100: '#f9f0e3',
+                            200: '#f3e1c7',
+                            300: '#ecd2ab',
+                            400: '#e6c38f',
+                            500: '#dfb473',
+                            600: '#d6a04f',
+                            700: '#b88638',
+                            800: '#8a6529',
+                            900: '#5c431b',
+                        },
+                        'terracotta': {
+                            50: '#fdf6f4',
+                            100: '#f9e8e3',
+                            200: '#f3d1c7',
+                            300: '#ecb9ab',
+                            400: '#e6a28f',
+                            500: '#df8a73',
+                            600: '#d6724f',
+                            700: '#b85a38',
+                            800: '#8a4329',
+                            900: '#5c2d1b',
+                        },
+                    },
+                    boxShadow: {
+                        'soft': '0 2px 8px -1px rgba(0, 0, 0, 0.04), 0 4px 16px -2px rgba(0, 0, 0, 0.06)',
+                        'soft-lg': '0 4px 16px -2px rgba(0, 0, 0, 0.06), 0 8px 32px -4px rgba(0, 0, 0, 0.08)',
+                        'soft-xl': '0 8px 32px -4px rgba(0, 0, 0, 0.08), 0 16px 64px -8px rgba(0, 0, 0, 0.10)',
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-bottom: 1px solid rgba(109, 137, 109, 0.1);
+        }
+        
+        .btn-logout {
+            background: rgba(223, 138, 115, 0.1);
+            color: #8a4329;
+            border: 1.5px solid rgba(223, 138, 115, 0.2);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .btn-logout:hover {
+            background: rgba(223, 138, 115, 0.15);
+            border-color: rgba(223, 138, 115, 0.3);
+            transform: translateY(-1px);
+        }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen" x-data="dashboardApp()" x-init="init()">
-    <nav class="bg-white shadow-lg">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0 flex items-center">
-                        <div class="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-500 rounded-lg flex items-center justify-center">
-                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                            </svg>
-                        </div>
-                        <span class="ml-3 text-xl font-bold text-gray-800">Atlas VPN Panel</span>
+<body class="bg-cloud-100 min-h-screen antialiased" x-data="dashboardApp()" x-init="init()">
+    <nav class="glass-nav sticky top-0 z-50 shadow-soft">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 bg-gradient-to-br from-sage-400 to-sage-600 rounded-xl flex items-center justify-center shadow-soft">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/>
+                        </svg>
                     </div>
+                    <span class="text-xl font-bold text-sage-900 tracking-tight">Atlas</span>
                 </div>
-                <div class="flex items-center">
-                    <span class="text-gray-700 mr-4" x-text="'Welcome, ' + username"></span>
-                    <button @click="logout" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition duration-200">
+                <div class="flex items-center space-x-4">
+                    <div class="text-right">
+                        <p class="text-xs text-sage-500 font-medium">Welcome back</p>
+                        <p class="text-sm font-semibold text-sage-800" x-text="username"></p>
+                    </div>
+                    <button @click="logout" class="btn-logout px-4 py-2 rounded-lg font-medium text-sm">
                         Logout
                     </button>
                 </div>
@@ -31,16 +145,90 @@
         </div>
     </nav>
 
-    <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div class="px-4 py-6 sm:px-0">
-            <div class="bg-white rounded-lg shadow p-6">
-                <h1 class="text-2xl font-bold text-gray-800 mb-4">Dashboard</h1>
-                <p class="text-gray-600">Welcome to Atlas VPN Panel. Phase 1 authentication is working!</p>
-                <div class="mt-4 p-4 bg-blue-50 rounded-lg">
-                    <p class="text-sm text-blue-800">
-                        <strong>Phase 1 Status:</strong> Authentication system is operational. 
-                        OpenVPN management features will be added next.
+    <div class="max-w-7xl mx-auto py-8 px-6 lg:px-8">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-sage-900 mb-2">Dashboard</h1>
+            <p class="text-sage-600 font-medium">Overview of your VPN infrastructure</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="glass-card rounded-2xl p-6 shadow-soft-lg">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="w-12 h-12 bg-sage-100 rounded-xl flex items-center justify-center">
+                        <svg class="w-6 h-6 text-sage-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                        </svg>
+                    </div>
+                    <span class="text-xs font-semibold text-sage-500 uppercase tracking-wide">Active Users</span>
+                </div>
+                <p class="text-3xl font-bold text-sage-900">0</p>
+                <p class="text-sm text-sage-600 mt-1">No connections yet</p>
+            </div>
+
+            <div class="glass-card rounded-2xl p-6 shadow-soft-lg">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="w-12 h-12 bg-sky-100 rounded-xl flex items-center justify-center">
+                        <svg class="w-6 h-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                    </div>
+                    <span class="text-xs font-semibold text-sky-500 uppercase tracking-wide">Server Status</span>
+                </div>
+                <p class="text-3xl font-bold text-sage-900">Ready</p>
+                <p class="text-sm text-sage-600 mt-1">System operational</p>
+            </div>
+
+            <div class="glass-card rounded-2xl p-6 shadow-soft-lg">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="w-12 h-12 bg-honey-100 rounded-xl flex items-center justify-center">
+                        <svg class="w-6 h-6 text-honey-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                    </div>
+                    <span class="text-xs font-semibold text-honey-500 uppercase tracking-wide">VPN Protocols</span>
+                </div>
+                <p class="text-3xl font-bold text-sage-900">0</p>
+                <p class="text-sm text-sage-600 mt-1">Awaiting configuration</p>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-8 shadow-soft-lg">
+            <div class="flex items-start space-x-4">
+                <div class="w-12 h-12 bg-gradient-to-br from-sky-400 to-sky-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-soft">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div class="flex-1">
+                    <h2 class="text-xl font-bold text-sage-900 mb-2">Phase 1: Authentication Complete</h2>
+                    <p class="text-sage-700 mb-4 leading-relaxed">
+                        The authentication system is now operational. You can securely log in and manage your VPN infrastructure.
                     </p>
+                    <div class="bg-sage-50/50 rounded-xl p-4 border border-sage-100">
+                        <p class="text-sm text-sage-800 font-medium mb-2">
+                            <strong>Next Steps:</strong>
+                        </p>
+                        <ul class="text-sm text-sage-700 space-y-1.5 ml-4">
+                            <li class="flex items-start">
+                                <svg class="w-4 h-4 text-sage-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                </svg>
+                                OpenVPN management (PKI, client creation, service control)
+                            </li>
+                            <li class="flex items-start">
+                                <svg class="w-4 h-4 text-sage-400 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd"/>
+                                </svg>
+                                WireGuard integration (peer management, QR codes)
+                            </li>
+                            <li class="flex items-start">
+                                <svg class="w-4 h-4 text-sage-400 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd"/>
+                                </svg>
+                                Sing-box support (multi-protocol inbounds)
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
