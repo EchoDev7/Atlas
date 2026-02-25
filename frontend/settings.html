@@ -159,13 +159,13 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>Public IPv4 Address</span>
-                                    <span class="relative" @mouseenter="showTooltip('public_ipv4_address')" @mouseleave="hideTooltip('public_ipv4_address')">
-                                        <button type="button" @click.stop="toggleTooltip('public_ipv4_address')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'public_ipv4_address'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The public IP clients will connect to. Usually auto-detected, but editable if behind a NAT.</div>
+                                    <span>Server Address (IP or Domain)</span>
+                                    <span class="relative" @mouseenter="showTooltip('server_address')" @mouseleave="hideTooltip('server_address')">
+                                        <button type="button" @click.stop="toggleTooltip('server_address')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'server_address'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The IP or Domain name that clients will use to connect. Using a Domain is highly recommended for anti-censorship.</div>
                                     </span>
                                 </span>
-                                <input type="text" x-model="generalForm.public_ipv4_address" placeholder="203.0.113.10" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <input type="text" x-model="generalForm.server_address" placeholder="vpn.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
@@ -674,82 +674,34 @@
                         <label class="block">
                             <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Obfuscation Mode</span>
                             <select x-model="form.obfuscation_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                <option value="standard">Standard (Direct Connection)</option>
-                                <option value="native_stealth">Native Stealth (HTTP Proxy + TCP 443)</option>
-                                <option value="tls_tunnel">TLS Tunnel (Stunnel)</option>
-                                <option value="websocket_cdn">WebSocket + CDN (WSTunnel/Nginx)</option>
+                                <option value="standard">Standard</option>
+                                <option value="stealth">Stealth</option>
+                                <option value="http_proxy_basic">HTTP Proxy Basic</option>
+                                <option value="http_proxy_advanced">HTTP Proxy Advanced</option>
+                                <option value="socks5_proxy_injection">SOCKS5 Proxy Injection</option>
                             </select>
                         </label>
 
-                        <div x-show="form.obfuscation_mode === 'native_stealth'" class="space-y-4">
-                            <p class="text-xs font-medium" :class="darkMode ? 'text-amber-300' : 'text-amber-700'">This mode forcefully sets OpenVPN Protocol to TCP and Port to 443.</p>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <label class="block">
-                                    <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                        <span>Local Proxy Port</span>
-                                        <span class="relative" @mouseenter="showTooltip('proxy_port')" @mouseleave="hideTooltip('proxy_port')">
-                                            <button type="button" @click.stop="toggleTooltip('proxy_port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                            <div x-cloak x-show="openTooltip === 'proxy_port'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The port where the local HTTP proxy listens.</div>
-                                        </span>
-                                    </span>
-                                    <input type="number" min="1" max="65535" x-model.number="form.proxy_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                </label>
-                                <label class="block">
-                                    <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                        <span>Spoofed Host Header</span>
-                                        <span class="relative" @mouseenter="showTooltip('spoofed_host')" @mouseleave="hideTooltip('spoofed_host')">
-                                            <button type="button" @click.stop="toggleTooltip('spoofed_host')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                            <div x-cloak x-show="openTooltip === 'spoofed_host'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">SNI Spoofing: Fools the firewall into thinking you are browsing this site.</div>
-                                        </span>
-                                    </span>
-                                    <input type="text" x-model="form.spoofed_host" placeholder="speedtest.net" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                </label>
-                            </div>
-                        </div>
-
-                        <div x-show="form.obfuscation_mode === 'tls_tunnel'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>Stunnel Port</span>
-                                    <span class="relative" @mouseenter="showTooltip('stunnel_port')" @mouseleave="hideTooltip('stunnel_port')">
-                                        <button type="button" @click.stop="toggleTooltip('stunnel_port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'stunnel_port'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The port Stunnel will listen on.</div>
-                                    </span>
-                                </span>
-                                <input type="number" min="1" max="65535" x-model.number="form.stunnel_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block" x-show="form.obfuscation_mode === 'http_proxy_basic' || form.obfuscation_mode === 'http_proxy_advanced'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Proxy Server</span>
+                                <input type="text" x-model="form.proxy_server" :placeholder="generalForm.server_address || 'vpn.example.com'" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>SNI Domain</span>
-                                    <span class="relative" @mouseenter="showTooltip('sni_domain')" @mouseleave="hideTooltip('sni_domain')">
-                                        <button type="button" @click.stop="toggleTooltip('sni_domain')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'sni_domain'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The domain to fake the TLS handshake.</div>
-                                    </span>
-                                </span>
-                                <input type="text" x-model="form.sni_domain" placeholder="assets.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            <label class="block" x-show="form.obfuscation_mode === 'http_proxy_basic' || form.obfuscation_mode === 'http_proxy_advanced'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Proxy Port</span>
+                                <input type="number" min="1" max="65535" x-model.number="form.proxy_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
-                        </div>
-
-                        <div x-show="form.obfuscation_mode === 'websocket_cdn'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <label class="block md:col-span-2">
-                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>CDN Domain</span>
-                                    <span class="relative" @mouseenter="showTooltip('cdn_domain')" @mouseleave="hideTooltip('cdn_domain')">
-                                        <button type="button" @click.stop="toggleTooltip('cdn_domain')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'cdn_domain'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Your Cloudflare/CDN routed domain.</div>
-                                    </span>
-                                </span>
-                                <input type="text" x-model="form.cdn_domain" placeholder="https://www.google.com/search?q=vpn.mydomain.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            <label class="block" x-show="form.obfuscation_mode === 'stealth' || form.obfuscation_mode === 'http_proxy_advanced'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Spoofed Host</span>
+                                <input type="text" x-model="form.spoofed_host" placeholder="speedtest.net" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
-                            <label class="block md:col-span-2">
-                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>WebSocket Path</span>
-                                    <span class="relative" @mouseenter="showTooltip('ws_path')" @mouseleave="hideTooltip('ws_path')">
-                                        <button type="button" @click.stop="toggleTooltip('ws_path')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'ws_path'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The hidden URL path for the WebSocket.</div>
-                                    </span>
-                                </span>
-                                <input type="text" x-model="form.ws_path" placeholder="/vpn-ws" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            <label class="block" x-show="form.obfuscation_mode === 'socks5_proxy_injection'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SOCKS Server</span>
+                                <input type="text" x-model="form.socks_server" :placeholder="generalForm.server_address || '127.0.0.1'" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block" x-show="form.obfuscation_mode === 'socks5_proxy_injection'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SOCKS Port</span>
+                                <input type="number" min="1" max="65535" x-model.number="form.socks_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
                         </div>
                     </div>
@@ -907,14 +859,20 @@
                     custom_directives: '',
                     advanced_client_push: '',
                     obfuscation_mode: 'standard',
+                    proxy_server: '',
+                    proxy_address: '',
                     proxy_port: 8080,
                     spoofed_host: '',
+                    socks_server: '',
+                    socks_port: null,
                     stunnel_port: 443,
                     sni_domain: '',
                     cdn_domain: '',
-                    ws_path: '/vpn-ws',
+                    ws_path: '/stream',
+                    ws_port: 8080,
                 },
                 generalForm: {
+                    server_address: '',
                     public_ipv4_address: '',
                     public_ipv6_address: '',
                     global_ipv6_support: true,
@@ -989,9 +947,38 @@
                     });
 
                     this.$watch('form.obfuscation_mode', (mode) => {
-                        if (mode === 'native_stealth') {
+                        if (mode !== 'standard') {
                             this.form.protocol = 'tcp';
                             this.form.port = 443;
+                        }
+                        if ((mode === 'http_proxy_basic' || mode === 'http_proxy_advanced') && !(this.form.proxy_server || '').trim()) {
+                            this.form.proxy_server = (this.generalForm.server_address || '').trim();
+                        }
+                        if (mode !== 'socks5_proxy_injection') {
+                            this.form.socks_server = '';
+                            this.form.socks_port = null;
+                        }
+                        if (mode !== 'stealth' && mode !== 'http_proxy_advanced') {
+                            this.form.spoofed_host = '';
+                        }
+                        if (mode !== 'http_proxy_basic' && mode !== 'http_proxy_advanced') {
+                            this.form.proxy_server = '';
+                            this.form.proxy_port = 8080;
+                        }
+                        if (mode === 'standard') {
+                            this.form.proxy_address = '';
+                        } else {
+                            this.form.proxy_address = this.form.proxy_server || '';
+                        }
+                    });
+
+                    this.$watch('form.proxy_server', (proxyServer) => {
+                        this.form.proxy_address = (proxyServer || '').trim();
+                    });
+
+                    this.$watch('generalForm.server_address', (serverAddress) => {
+                        if ((this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced') && !(this.form.proxy_server || '').trim()) {
+                            this.form.proxy_server = (serverAddress || '').trim();
                         }
                     });
 
@@ -1040,6 +1027,7 @@
                         this.generalForm = {
                             ...this.generalForm,
                             ...generalData,
+                            server_address: generalData.server_address || generalData.public_ipv4_address || '',
                             public_ipv4_address: generalData.public_ipv4_address || '',
                             public_ipv6_address: generalData.public_ipv6_address || '',
                             admin_allowed_ips: generalData.admin_allowed_ips || '0.0.0.0/0',
@@ -1074,17 +1062,26 @@
                             custom_directives: data.custom_directives || '',
                             advanced_client_push: data.advanced_client_push || '',
                             obfuscation_mode: data.obfuscation_mode || 'standard',
+                            proxy_server: data.proxy_server || data.proxy_address || '',
+                            proxy_address: data.proxy_address || '',
                             proxy_port: Number(data.proxy_port) || 8080,
                             spoofed_host: data.spoofed_host || '',
+                            socks_server: data.socks_server || '',
+                            socks_port: Number.isInteger(data.socks_port) ? data.socks_port : null,
                             stunnel_port: Number(data.stunnel_port) || 443,
                             sni_domain: data.sni_domain || '',
                             cdn_domain: data.cdn_domain || '',
-                            ws_path: data.ws_path || '/vpn-ws',
+                            ws_path: data.ws_path || '/stream',
+                            ws_port: Number(data.ws_port) || 8080,
                         };
-                        if (this.form.obfuscation_mode === 'native_stealth') {
+                        if (this.form.obfuscation_mode !== 'standard') {
                             this.form.protocol = 'tcp';
                             this.form.port = 443;
+                            if ((this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced') && !(this.form.proxy_server || '').trim()) {
+                                this.form.proxy_server = (this.generalForm.server_address || '').trim();
+                            }
                         }
+                        this.form.proxy_address = this.form.proxy_server || '';
                         if (!this.generalForm.global_ipv6_support) {
                             this.form.ipv6_network = '';
                             this.form.ipv6_prefix = null;
@@ -1140,15 +1137,26 @@
                             custom_directives: (this.form.custom_directives || '').trim(),
                             advanced_client_push: (this.form.advanced_client_push || '').trim() || null,
                             obfuscation_mode: this.form.obfuscation_mode,
+                            proxy_server: this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced'
+                                ? ((this.form.proxy_server || '').trim() || (this.generalForm.server_address || '').trim() || null)
+                                : null,
+                            proxy_address: this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced'
+                                ? ((this.form.proxy_server || '').trim() || (this.generalForm.server_address || '').trim() || null)
+                                : null,
                             proxy_port: Number(this.form.proxy_port),
-                            spoofed_host: this.form.obfuscation_mode === 'native_stealth' ? ((this.form.spoofed_host || '').trim() || null) : null,
+                            spoofed_host: this.form.obfuscation_mode === 'stealth' || this.form.obfuscation_mode === 'http_proxy_advanced'
+                                ? ((this.form.spoofed_host || 'speedtest.net').trim() || 'speedtest.net')
+                                : null,
+                            socks_server: this.form.obfuscation_mode === 'socks5_proxy_injection' ? ((this.form.socks_server || '').trim() || null) : null,
+                            socks_port: this.form.obfuscation_mode === 'socks5_proxy_injection' ? Number(this.form.socks_port) : null,
                             stunnel_port: Number(this.form.stunnel_port),
-                            sni_domain: this.form.obfuscation_mode === 'tls_tunnel' ? ((this.form.sni_domain || '').trim() || null) : null,
-                            cdn_domain: this.form.obfuscation_mode === 'websocket_cdn' ? ((this.form.cdn_domain || '').trim() || null) : null,
-                            ws_path: (this.form.ws_path || '').trim() || '/vpn-ws',
+                            sni_domain: null,
+                            cdn_domain: null,
+                            ws_path: (this.form.ws_path || '').trim() || '/stream',
+                            ws_port: Number(this.form.ws_port),
                         };
 
-                        if (payload.obfuscation_mode === 'native_stealth') {
+                        if (payload.obfuscation_mode !== 'standard') {
                             payload.protocol = 'tcp';
                             payload.port = 443;
                         }
@@ -1188,18 +1196,24 @@
                             custom_directives: updated.custom_directives || '',
                             advanced_client_push: updated.advanced_client_push || '',
                             obfuscation_mode: updated.obfuscation_mode || 'standard',
+                            proxy_server: updated.proxy_server || updated.proxy_address || '',
+                            proxy_address: updated.proxy_address || '',
                             proxy_port: Number(updated.proxy_port) || 8080,
                             spoofed_host: updated.spoofed_host || '',
+                            socks_server: updated.socks_server || '',
+                            socks_port: Number.isInteger(updated.socks_port) ? updated.socks_port : null,
                             stunnel_port: Number(updated.stunnel_port) || 443,
                             sni_domain: updated.sni_domain || '',
                             cdn_domain: updated.cdn_domain || '',
-                            ws_path: updated.ws_path || '/vpn-ws',
+                            ws_path: updated.ws_path || '/stream',
+                            ws_port: Number(updated.ws_port) || 8080,
                         };
 
-                        if (this.form.obfuscation_mode === 'native_stealth') {
+                        if (this.form.obfuscation_mode !== 'standard') {
                             this.form.protocol = 'tcp';
                             this.form.port = 443;
                         }
+                        this.form.proxy_address = this.form.proxy_server || '';
 
                         this.showToast('Settings applied successfully', 'success');
                     } catch (error) {
@@ -1295,6 +1309,7 @@
                     try {
                         const token = localStorage.getItem('access_token');
                         const payload = {
+                            server_address: (this.generalForm.server_address || '').trim() || null,
                             public_ipv4_address: (this.generalForm.public_ipv4_address || '').trim() || null,
                             public_ipv6_address: (this.generalForm.public_ipv6_address || '').trim() || null,
                             global_ipv6_support: !!this.generalForm.global_ipv6_support,
@@ -1342,6 +1357,7 @@
                         this.generalForm = {
                             ...this.generalForm,
                             ...updated,
+                            server_address: updated.server_address || '',
                             public_ipv4_address: updated.public_ipv4_address || '',
                             public_ipv6_address: updated.public_ipv6_address || '',
                             admin_allowed_ips: updated.admin_allowed_ips || '0.0.0.0/0',

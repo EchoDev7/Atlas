@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from backend.core.obfuscation_manager import ObfuscationManager
 from backend.core.openvpn import OpenVPNManager
 from backend.database import get_db
 from backend.dependencies import get_current_user
@@ -18,6 +19,7 @@ from backend.schemas.openvpn_settings import OpenVPNSettingsResponse, OpenVPNSet
 
 router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_manager = OpenVPNManager()
+obfuscation_manager = ObfuscationManager()
 
 
 def _get_or_create_openvpn_settings(db: Session) -> OpenVPNSettings:
@@ -89,12 +91,17 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
         custom_directives=settings.custom_directives,
         advanced_client_push=settings.advanced_client_push,
         obfuscation_mode=settings.obfuscation_mode,
+        proxy_server=settings.proxy_server,
+        proxy_address=settings.proxy_address,
         proxy_port=settings.proxy_port,
         spoofed_host=settings.spoofed_host,
+        socks_server=settings.socks_server,
+        socks_port=settings.socks_port,
         stunnel_port=settings.stunnel_port,
         sni_domain=settings.sni_domain,
         cdn_domain=settings.cdn_domain,
         ws_path=settings.ws_path,
+        ws_port=settings.ws_port,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
@@ -103,6 +110,7 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
 def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
     return GeneralSettingsResponse(
         id=settings.id,
+        server_address=settings.server_address,
         public_ipv4_address=settings.public_ipv4_address,
         public_ipv6_address=settings.public_ipv6_address,
         global_ipv6_support=settings.global_ipv6_support,
@@ -156,6 +164,7 @@ def update_general_settings(
         )
 
     settings.public_ipv4_address = payload.public_ipv4_address
+    settings.server_address = payload.server_address
     settings.public_ipv6_address = payload.public_ipv6_address
     settings.global_ipv6_support = payload.global_ipv6_support
     settings.wan_interface = payload.wan_interface
@@ -277,6 +286,8 @@ def update_openvpn_settings(
 
     previous_port = settings.port
     previous_protocol = settings.protocol
+    previous_obfuscation_mode = settings.obfuscation_mode
+    previous_proxy_port = settings.proxy_port
 
     settings.port = payload.port
     settings.protocol = payload.protocol
@@ -323,13 +334,30 @@ def update_openvpn_settings(
     settings.custom_directives = payload.custom_directives.strip() if payload.custom_directives else None
     settings.advanced_client_push = payload.advanced_client_push.strip() if payload.advanced_client_push else None
     settings.obfuscation_mode = payload.obfuscation_mode
+    settings.proxy_server = payload.proxy_server
+    settings.proxy_address = payload.proxy_address
     settings.proxy_port = payload.proxy_port
     settings.spoofed_host = payload.spoofed_host
+    settings.socks_server = payload.socks_server
+    settings.socks_port = payload.socks_port
     settings.stunnel_port = payload.stunnel_port
     settings.sni_domain = payload.sni_domain
     settings.cdn_domain = payload.cdn_domain
     settings.ws_path = payload.ws_path
+    settings.ws_port = payload.ws_port
     settings.updated_at = datetime.utcnow()
+
+    automation_result = obfuscation_manager.apply_mode_automation(
+        previous_mode=previous_obfuscation_mode,
+        previous_proxy_port=previous_proxy_port,
+        settings=settings,
+    )
+    if not automation_result.get("success"):
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=automation_result.get("message", "Failed to apply obfuscation OS automation"),
+        )
 
     firewall_result = openvpn_manager.sync_firewall_for_transport_change(
         old_port=previous_port,
@@ -385,12 +413,17 @@ def update_openvpn_settings(
             "custom_directives": settings.custom_directives,
             "advanced_client_push": settings.advanced_client_push,
             "obfuscation_mode": settings.obfuscation_mode,
+            "proxy_server": settings.proxy_server,
+            "proxy_address": settings.proxy_address,
             "proxy_port": settings.proxy_port,
             "spoofed_host": settings.spoofed_host,
+            "socks_server": settings.socks_server,
+            "socks_port": settings.socks_port,
             "stunnel_port": settings.stunnel_port,
             "sni_domain": settings.sni_domain,
             "cdn_domain": settings.cdn_domain,
             "ws_path": settings.ws_path,
+            "ws_port": settings.ws_port,
         }
     )
 
@@ -398,6 +431,13 @@ def update_openvpn_settings(
         raise HTTPException(
             status_code=500,
             detail=generation_result.get("message", "Failed to generate server configuration"),
+        )
+
+    service_restart_result = openvpn_manager.control_service("restart")
+    if not service_restart_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=service_restart_result.get("message", "Failed to restart OpenVPN service"),
         )
 
     return _to_response(settings)

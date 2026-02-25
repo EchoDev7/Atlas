@@ -8,6 +8,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 _ALLOWED_PROTOCOLS = {"udp", "tcp", "udp6", "tcp6"}
 _ALLOWED_DATA_CIPHERS = {"AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"}
 _ALLOWED_TLS_MODES = {"tls-crypt", "tls-auth", "none"}
+_OBFUSCATION_MODE_ALIASES = {
+    "native_stealth": "stealth",
+    "tls_tunnel": "standard",
+    "websocket_cdn": "standard",
+}
 
 
 class OpenVPNSettingsBase(BaseModel):
@@ -49,13 +54,24 @@ class OpenVPNSettingsBase(BaseModel):
 
     custom_directives: Optional[str] = None
     advanced_client_push: Optional[str] = None
-    obfuscation_mode: Literal["standard", "native_stealth", "tls_tunnel", "websocket_cdn"] = Field("standard")
+    obfuscation_mode: Literal["standard", "stealth", "http_proxy_basic", "http_proxy_advanced", "socks5_proxy_injection"] = Field("standard")
+    proxy_server: Optional[str] = Field(default=None, max_length=255)
+    proxy_address: Optional[str] = Field(default=None, max_length=255)
     proxy_port: int = Field(8080, ge=1, le=65535)
-    spoofed_host: Optional[str] = Field(default=None, max_length=255)
+    spoofed_host: Optional[str] = Field(default="speedtest.net", max_length=255)
+    socks_server: Optional[str] = Field(default=None, max_length=255)
+    socks_port: Optional[int] = Field(default=None, ge=1, le=65535)
     stunnel_port: int = Field(443, ge=1, le=65535)
     sni_domain: Optional[str] = Field(default=None, max_length=255)
     cdn_domain: Optional[str] = Field(default=None, max_length=255)
-    ws_path: str = Field("/vpn-ws", min_length=1, max_length=255)
+    ws_path: str = Field("/stream", min_length=1, max_length=255)
+    ws_port: int = Field(8080, ge=1, le=65535)
+
+    @field_validator("obfuscation_mode", mode="before")
+    @classmethod
+    def normalize_obfuscation_mode(cls, value: str) -> str:
+        normalized = str(value or "standard").strip().lower()
+        return _OBFUSCATION_MODE_ALIASES.get(normalized, normalized)
 
     @field_validator("protocol")
     @classmethod
@@ -170,7 +186,7 @@ class OpenVPNSettingsBase(BaseModel):
             raise ValueError("DNS value cannot be empty")
         return normalized
 
-    @field_validator("spoofed_host", "sni_domain", "cdn_domain", "push_custom_routes", "custom_directives", "advanced_client_push")
+    @field_validator("proxy_server", "proxy_address", "spoofed_host", "socks_server", "sni_domain", "cdn_domain", "push_custom_routes", "custom_directives", "advanced_client_push")
     @classmethod
     def normalize_optional_text(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
@@ -190,14 +206,25 @@ class OpenVPNSettingsBase(BaseModel):
 
     @model_validator(mode="after")
     def validate_obfuscation_fields(self):
-        if self.obfuscation_mode != "native_stealth":
+        if self.obfuscation_mode not in {"stealth", "http_proxy_advanced"}:
             self.spoofed_host = None
 
-        if self.obfuscation_mode != "tls_tunnel":
-            self.sni_domain = None
+        if self.obfuscation_mode not in {"http_proxy_basic", "http_proxy_advanced"}:
+            self.proxy_server = None
 
-        if self.obfuscation_mode != "websocket_cdn":
-            self.cdn_domain = None
+        if self.obfuscation_mode != "socks5_proxy_injection":
+            self.socks_server = None
+            self.socks_port = None
+
+        if self.obfuscation_mode not in {"http_proxy_basic", "http_proxy_advanced"}:
+            self.proxy_port = 8080
+
+        self.proxy_address = self.proxy_server
+        self.stunnel_port = 443
+        self.sni_domain = None
+        self.cdn_domain = None
+        self.ws_path = self.ws_path or "/stream"
+        self.ws_port = self.ws_port or 8080
 
         return self
 

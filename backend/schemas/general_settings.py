@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class GeneralSettingsBase(BaseModel):
+    server_address: Optional[str] = Field(default=None, max_length=255)
     public_ipv4_address: Optional[str] = Field(default=None, max_length=64)
     public_ipv6_address: Optional[str] = Field(default=None, max_length=64)
     global_ipv6_support: bool = Field(True)
@@ -63,7 +64,7 @@ class GeneralSettingsBase(BaseModel):
             raise ValueError("Value cannot be empty")
         return normalized
 
-    @field_validator("panel_domain", "subscription_domain", "custom_ssl_certificate", "custom_ssl_private_key", "letsencrypt_email")
+    @field_validator("server_address", "panel_domain", "subscription_domain", "custom_ssl_certificate", "custom_ssl_private_key", "letsencrypt_email")
     @classmethod
     def normalize_optional_text(cls, value: Optional[str]) -> Optional[str]:
         if value is None:

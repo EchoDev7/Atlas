@@ -11,6 +11,7 @@ class GeneralSettings(Base):
     __tablename__ = "general_settings"
 
     id = Column(Integer, primary_key=True, index=True)
+    server_address = Column(String(255), nullable=True)
     public_ipv4_address = Column(String(64), nullable=True)
     public_ipv6_address = Column(String(64), nullable=True)
     global_ipv6_support = Column(Boolean, nullable=False, default=True)
