@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" x-data="themeManager()" x-init="initTheme()" :class="{ 'dark': darkMode }">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,88 +10,22 @@
     
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
-                    colors: {
-                        'cloud': {
-                            50: '#fdfcfb',
-                            100: '#faf9f7',
-                            200: '#f5f3ef',
-                            300: '#f0ede7',
-                            400: '#ebe7df',
-                            500: '#e6e1d7',
-                            600: '#d4cfc5',
-                            700: '#c2bdb3',
-                            800: '#b0aba1',
-                            900: '#9e998f',
-                        },
-                        'sage': {
-                            50: '#f6f7f6',
-                            100: '#e3e8e3',
-                            200: '#c7d1c7',
-                            300: '#a8b9a8',
-                            400: '#8ba18b',
-                            500: '#6d896d',
-                            600: '#5a7159',
-                            700: '#475947',
-                            800: '#364136',
-                            900: '#252925',
-                        },
-                        'terracotta': {
-                            50: '#fdf6f4',
-                            100: '#f9e8e3',
-                            200: '#f3d1c7',
-                            300: '#ecb9ab',
-                            400: '#e6a28f',
-                            500: '#df8a73',
-                            600: '#d6724f',
-                            700: '#b85a38',
-                            800: '#8a4329',
-                            900: '#5c2d1b',
-                        },
-                        'sky': {
-                            50: '#f4f8fb',
-                            100: '#e3eef6',
-                            200: '#c7ddec',
-                            300: '#abcce3',
-                            400: '#8fbbd9',
-                            500: '#73aad0',
-                            600: '#5a8fb8',
-                            700: '#47749a',
-                            800: '#36597c',
-                            900: '#253e5e',
-                        },
-                        'honey': {
-                            50: '#fdfaf4',
-                            100: '#f9f0e3',
-                            200: '#f3e1c7',
-                            300: '#ecd2ab',
-                            400: '#e6c38f',
-                            500: '#dfb473',
-                            600: '#d6a04f',
-                            700: '#b88638',
-                            800: '#8a6529',
-                            900: '#5c431b',
-                        },
-                    },
                     fontFamily: {
                         'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
                     },
                     boxShadow: {
-                        'soft': '0 2px 8px -1px rgba(0, 0, 0, 0.04), 0 4px 16px -2px rgba(0, 0, 0, 0.06)',
-                        'soft-lg': '0 4px 16px -2px rgba(0, 0, 0, 0.06), 0 8px 32px -4px rgba(0, 0, 0, 0.08)',
-                        'soft-xl': '0 8px 32px -4px rgba(0, 0, 0, 0.08), 0 16px 64px -8px rgba(0, 0, 0, 0.10)',
-                        'inner-soft': 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.04)',
-                        'glow-sage': '0 0 20px rgba(109, 137, 109, 0.15), 0 0 40px rgba(109, 137, 109, 0.08)',
-                        'glow-sky': '0 0 20px rgba(115, 170, 208, 0.15), 0 0 40px rgba(115, 170, 208, 0.08)',
-                    },
-                    backdropBlur: {
-                        'xs': '2px',
+                        'glow-indigo': '0 0 20px rgba(99, 102, 241, 0.5), 0 0 40px rgba(99, 102, 241, 0.3)',
+                        'glow-cyan': '0 0 20px rgba(34, 211, 238, 0.5), 0 0 40px rgba(34, 211, 238, 0.3)',
+                        'glow-purple': '0 0 20px rgba(168, 85, 247, 0.5), 0 0 40px rgba(168, 85, 247, 0.3)',
                     },
                     animation: {
                         'fade-in': 'fadeIn 0.5s ease-out',
                         'slide-up': 'slideUp 0.4s ease-out',
                         'scale-in': 'scaleIn 0.3s ease-out',
+                        'pulse-glow': 'pulseGlow 2s ease-in-out infinite',
                     },
                     keyframes: {
                         fadeIn: {
@@ -106,6 +40,10 @@
                             '0%': { transform: 'scale(0.95)', opacity: '0' },
                             '100%': { transform: 'scale(1)', opacity: '1' },
                         },
+                        pulseGlow: {
+                            '0%, 100%': { opacity: '1' },
+                            '50%': { opacity: '0.7' },
+                        },
                     },
                 }
             }
@@ -114,77 +52,113 @@
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     
     <style>
         * {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
         }
         
-        .glass-card {
-            background: rgba(255, 255, 255, 0.7);
+        .glass-light {
+            background: rgba(255, 255, 255, 0.9);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.5);
         }
         
-        .glass-card-strong {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border: 1px solid rgba(255, 255, 255, 0.4);
+        .glass-dark {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        .input-glass {
-            background: rgba(255, 255, 255, 0.6);
+        .input-light {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1.5px solid rgba(99, 102, 241, 0.2);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .input-light:focus {
+            background: rgba(255, 255, 255, 1);
+            border-color: rgba(99, 102, 241, 0.5);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1), 0 4px 16px -2px rgba(0, 0, 0, 0.1);
+            outline: none;
+        }
+        
+        .input-dark {
+            background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
-            border: 1.5px solid rgba(109, 137, 109, 0.15);
+            border: 1.5px solid rgba(34, 211, 238, 0.2);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
-        .input-glass:focus {
-            background: rgba(255, 255, 255, 0.8);
-            border-color: rgba(109, 137, 109, 0.4);
-            box-shadow: 0 0 0 3px rgba(109, 137, 109, 0.08), 0 4px 16px -2px rgba(0, 0, 0, 0.06);
+        .input-dark:focus {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(34, 211, 238, 0.5);
+            box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1), 0 0 20px rgba(34, 211, 238, 0.2);
+            outline: none;
         }
         
-        .btn-primary {
-            background: linear-gradient(135deg, #6d896d 0%, #5a7159 100%);
+        .btn-primary-light {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
-        .btn-primary:hover:not(:disabled) {
-            background: linear-gradient(135deg, #5a7159 0%, #475947 100%);
-            transform: translateY(-1px);
-            box-shadow: 0 8px 24px -4px rgba(109, 137, 109, 0.3);
+        .btn-primary-light:hover:not(:disabled) {
+            background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px -5px rgba(99, 102, 241, 0.4);
         }
         
-        .btn-primary:active:not(:disabled) {
-            transform: translateY(0);
-        }
-        
-        .btn-secondary {
-            background: rgba(115, 170, 208, 0.1);
-            color: #36597c;
-            border: 1.5px solid rgba(115, 170, 208, 0.2);
+        .btn-primary-dark {
+            background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
-        .btn-secondary:hover:not(:disabled) {
-            background: rgba(115, 170, 208, 0.15);
-            border-color: rgba(115, 170, 208, 0.3);
-            transform: translateY(-1px);
+        .btn-primary-dark:hover:not(:disabled) {
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(34, 211, 238, 0.5), 0 10px 30px -5px rgba(34, 211, 238, 0.3);
         }
         
         .smooth-transition {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
+        
+        .theme-transition {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+        }
     </style>
+    
+    <script>
+        function themeManager() {
+            return {
+                darkMode: false,
+                
+                initTheme() {
+                    const savedTheme = localStorage.getItem('atlas-theme');
+                    if (savedTheme === 'dark') {
+                        this.darkMode = true;
+                    } else if (savedTheme === 'light') {
+                        this.darkMode = false;
+                    } else {
+                        this.darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    }
+                },
+                
+                toggleTheme() {
+                    this.darkMode = !this.darkMode;
+                    localStorage.setItem('atlas-theme', this.darkMode ? 'dark' : 'light');
+                }
+            }
+        }
+    </script>
     
     {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-cloud-100 min-h-screen antialiased">
+<body class="min-h-screen antialiased theme-transition bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
     {% block body %}{% endblock %}
     
     {% block extra_scripts %}{% endblock %}
