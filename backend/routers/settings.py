@@ -88,6 +88,13 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
         verbosity=settings.verbosity,
         custom_directives=settings.custom_directives,
         advanced_client_push=settings.advanced_client_push,
+        obfuscation_mode=settings.obfuscation_mode,
+        proxy_port=settings.proxy_port,
+        spoofed_host=settings.spoofed_host,
+        stunnel_port=settings.stunnel_port,
+        sni_domain=settings.sni_domain,
+        cdn_domain=settings.cdn_domain,
+        ws_path=settings.ws_path,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
@@ -315,6 +322,13 @@ def update_openvpn_settings(
 
     settings.custom_directives = payload.custom_directives.strip() if payload.custom_directives else None
     settings.advanced_client_push = payload.advanced_client_push.strip() if payload.advanced_client_push else None
+    settings.obfuscation_mode = payload.obfuscation_mode
+    settings.proxy_port = payload.proxy_port
+    settings.spoofed_host = payload.spoofed_host
+    settings.stunnel_port = payload.stunnel_port
+    settings.sni_domain = payload.sni_domain
+    settings.cdn_domain = payload.cdn_domain
+    settings.ws_path = payload.ws_path
     settings.updated_at = datetime.utcnow()
 
     firewall_result = openvpn_manager.sync_firewall_for_transport_change(
@@ -370,6 +384,13 @@ def update_openvpn_settings(
             "verbosity": settings.verbosity,
             "custom_directives": settings.custom_directives,
             "advanced_client_push": settings.advanced_client_push,
+            "obfuscation_mode": settings.obfuscation_mode,
+            "proxy_port": settings.proxy_port,
+            "spoofed_host": settings.spoofed_host,
+            "stunnel_port": settings.stunnel_port,
+            "sni_domain": settings.sni_domain,
+            "cdn_domain": settings.cdn_domain,
+            "ws_path": settings.ws_path,
         }
     )
 

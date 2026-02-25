@@ -712,6 +712,18 @@ class OpenVPNManager:
         try:
             resolved_port, resolved_protocol = self._resolve_client_transport_settings(server_port, protocol)
             resolved_server_address = self._resolve_client_remote_address(server_address, resolved_protocol)
+            obfuscation_settings = self._resolve_client_obfuscation_settings()
+
+            (
+                client_protocol,
+                client_remote_line,
+                obfuscation_directives,
+            ) = self._build_client_transport_directives(
+                server_address=resolved_server_address,
+                default_port=resolved_port,
+                default_protocol=resolved_protocol,
+                obfuscation_settings=obfuscation_settings,
+            )
 
             if not self.is_production:
                 # Mock certificate content for development
@@ -735,6 +747,7 @@ class OpenVPNManager:
             
             os_type = (os_type or "default").lower()
             os_directives = self._get_os_specific_directives(os_type)
+            obfuscation_block = "\n".join(obfuscation_directives).strip()
 
             # Generate .ovpn configuration
             config = f"""# Atlas VPN - OpenVPN Client Configuration
@@ -743,8 +756,8 @@ class OpenVPNManager:
 
 client
 dev tun
-proto {resolved_protocol}
-remote {resolved_server_address} {resolved_port}
+proto {client_protocol}
+{client_remote_line}
 resolv-retry infinite
 nobind
 persist-key
@@ -754,6 +767,8 @@ cipher AES-256-GCM
 auth SHA256
 key-direction 1
 verb 3
+
+{obfuscation_block}
 
 {os_directives}
 
@@ -778,6 +793,62 @@ verb 3
         except Exception as e:
             logger.error(f"Config generation failed: {e}")
             return None
+
+    @staticmethod
+    def _extract_remote_hostname(value: str) -> str:
+        candidate = (value or "").strip()
+        if not candidate:
+            return ""
+
+        parsed = urlparse(candidate if "://" in candidate else f"//{candidate}")
+        hostname = (parsed.hostname or "").strip()
+        if hostname:
+            return hostname
+
+        return candidate.split("/")[0].split(":")[0].strip()
+
+    def _build_client_transport_directives(
+        self,
+        server_address: str,
+        default_port: int,
+        default_protocol: str,
+        obfuscation_settings: Dict[str, any],
+    ) -> Tuple[str, str, List[str]]:
+        mode = str(obfuscation_settings.get("obfuscation_mode", "standard") or "standard").strip().lower()
+
+        proxy_port = int(obfuscation_settings.get("proxy_port") or 8080)
+        spoofed_host = (obfuscation_settings.get("spoofed_host") or "").strip()
+        stunnel_port = int(obfuscation_settings.get("stunnel_port") or 443)
+        sni_domain = (obfuscation_settings.get("sni_domain") or "").strip()
+        ws_path = (obfuscation_settings.get("ws_path") or "/vpn-ws").strip() or "/vpn-ws"
+        cdn_raw = (obfuscation_settings.get("cdn_domain") or "").strip()
+        cdn_host = self._extract_remote_hostname(cdn_raw)
+
+        if mode == "native_stealth":
+            directives = [
+                f"http-proxy {server_address} {proxy_port}",
+                "http-proxy-retry",
+            ]
+            if spoofed_host:
+                directives.append(f"http-proxy-option CUSTOM-HEADER Host {spoofed_host}")
+            return "tcp", f"remote {server_address} 443", directives
+
+        if mode == "tls_tunnel":
+            directives = [
+                "# TLS tunnel mode: run local Stunnel client before connecting.",
+            ]
+            if sni_domain:
+                directives.append(f"# TLS SNI domain hint: {sni_domain}")
+            return "tcp", f"remote 127.0.0.1 {stunnel_port}", directives
+
+        if mode == "websocket_cdn":
+            remote_target = cdn_host or server_address
+            directives = [
+                f"# WebSocket path hint: {ws_path}",
+            ]
+            return "tcp", f"remote {remote_target} 443", directives
+
+        return default_protocol, f"remote {server_address} {default_port}", []
 
     def _resolve_client_transport_settings(
         self,
@@ -806,6 +877,39 @@ verb 3
         resolved_port = int(server_port if server_port is not None else 1194)
         resolved_protocol = str(protocol or "udp").strip().lower()
         return resolved_port, resolved_protocol
+
+    def _resolve_client_obfuscation_settings(self) -> Dict[str, any]:
+        try:
+            from backend.database import SessionLocal
+            from backend.models.openvpn_settings import OpenVPNSettings
+
+            db = SessionLocal()
+            try:
+                settings = db.query(OpenVPNSettings).order_by(OpenVPNSettings.id.asc()).first()
+                if settings:
+                    return {
+                        "obfuscation_mode": settings.obfuscation_mode,
+                        "proxy_port": settings.proxy_port,
+                        "spoofed_host": settings.spoofed_host,
+                        "stunnel_port": settings.stunnel_port,
+                        "sni_domain": settings.sni_domain,
+                        "cdn_domain": settings.cdn_domain,
+                        "ws_path": settings.ws_path,
+                    }
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.warning(f"Falling back to default obfuscation settings: {exc}")
+
+        return {
+            "obfuscation_mode": "standard",
+            "proxy_port": 8080,
+            "spoofed_host": None,
+            "stunnel_port": 443,
+            "sni_domain": None,
+            "cdn_domain": None,
+            "ws_path": "/vpn-ws",
+        }
 
     def _resolve_client_remote_address(
         self,

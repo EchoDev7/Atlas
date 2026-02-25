@@ -1,6 +1,6 @@
 from datetime import datetime
 import ipaddress
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -49,6 +49,13 @@ class OpenVPNSettingsBase(BaseModel):
 
     custom_directives: Optional[str] = None
     advanced_client_push: Optional[str] = None
+    obfuscation_mode: Literal["standard", "native_stealth", "tls_tunnel", "websocket_cdn"] = Field("standard")
+    proxy_port: int = Field(8080, ge=1, le=65535)
+    spoofed_host: Optional[str] = Field(default=None, max_length=255)
+    stunnel_port: int = Field(443, ge=1, le=65535)
+    sni_domain: Optional[str] = Field(default=None, max_length=255)
+    cdn_domain: Optional[str] = Field(default=None, max_length=255)
+    ws_path: str = Field("/vpn-ws", min_length=1, max_length=255)
 
     @field_validator("protocol")
     @classmethod
@@ -163,13 +170,36 @@ class OpenVPNSettingsBase(BaseModel):
             raise ValueError("DNS value cannot be empty")
         return normalized
 
-    @field_validator("push_custom_routes", "custom_directives", "advanced_client_push")
+    @field_validator("spoofed_host", "sni_domain", "cdn_domain", "push_custom_routes", "custom_directives", "advanced_client_push")
     @classmethod
     def normalize_optional_text(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("ws_path")
+    @classmethod
+    def normalize_ws_path(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("WebSocket path cannot be empty")
+        if not normalized.startswith("/"):
+            normalized = f"/{normalized}"
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_obfuscation_fields(self):
+        if self.obfuscation_mode != "native_stealth":
+            self.spoofed_host = None
+
+        if self.obfuscation_mode != "tls_tunnel":
+            self.sni_domain = None
+
+        if self.obfuscation_mode != "websocket_cdn":
+            self.cdn_domain = None
+
+        return self
 
 
 class OpenVPNSettingsUpdate(OpenVPNSettingsBase):

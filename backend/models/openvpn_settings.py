@@ -52,5 +52,13 @@ class OpenVPNSettings(Base):
     custom_directives = Column(Text, nullable=True)
     advanced_client_push = Column(Text, nullable=True)
 
+    obfuscation_mode = Column(String(32), nullable=False, default="standard")
+    proxy_port = Column(Integer, nullable=False, default=8080)
+    spoofed_host = Column(String(255), nullable=True)
+    stunnel_port = Column(Integer, nullable=False, default=443)
+    sni_domain = Column(String(255), nullable=True)
+    cdn_domain = Column(String(255), nullable=True)
+    ws_path = Column(String(255), nullable=False, default="/vpn-ws")
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -72,6 +72,13 @@ def init_db():
                 "management_port": "ALTER TABLE openvpn_settings ADD COLUMN management_port INTEGER NOT NULL DEFAULT 5555",
                 "verbosity": "ALTER TABLE openvpn_settings ADD COLUMN verbosity INTEGER NOT NULL DEFAULT 3",
                 "advanced_client_push": "ALTER TABLE openvpn_settings ADD COLUMN advanced_client_push TEXT",
+                "obfuscation_mode": "ALTER TABLE openvpn_settings ADD COLUMN obfuscation_mode VARCHAR(32) NOT NULL DEFAULT 'standard'",
+                "proxy_port": "ALTER TABLE openvpn_settings ADD COLUMN proxy_port INTEGER NOT NULL DEFAULT 8080",
+                "spoofed_host": "ALTER TABLE openvpn_settings ADD COLUMN spoofed_host VARCHAR(255)",
+                "stunnel_port": "ALTER TABLE openvpn_settings ADD COLUMN stunnel_port INTEGER NOT NULL DEFAULT 443",
+                "sni_domain": "ALTER TABLE openvpn_settings ADD COLUMN sni_domain VARCHAR(255)",
+                "cdn_domain": "ALTER TABLE openvpn_settings ADD COLUMN cdn_domain VARCHAR(255)",
+                "ws_path": "ALTER TABLE openvpn_settings ADD COLUMN ws_path VARCHAR(255) NOT NULL DEFAULT '/vpn-ws'",
             }
 
             for column_name, migration_sql in openvpn_column_migrations.items():
@@ -138,6 +145,7 @@ def init_db():
                             tun_mtu, mssfix, sndbuf, rcvbuf, fast_io, explicit_exit_notify,
                             keepalive_ping, keepalive_timeout, inactive_timeout, management_port, verbosity,
                             custom_directives, advanced_client_push,
+                            obfuscation_mode, proxy_port, spoofed_host, stunnel_port, sni_domain, cdn_domain, ws_path,
                             created_at, updated_at
                         ) VALUES (
                             1, 1194, 'udp', 'tun', 'subnet',
@@ -148,6 +156,7 @@ def init_db():
                             1500, 1450, 393216, 393216, 0, 1,
                             10, 120, 300, 5555, 3,
                             NULL, NULL,
+                            'standard', 8080, NULL, 443, NULL, NULL, '/vpn-ws',
                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         )
                         """

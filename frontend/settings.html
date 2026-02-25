@@ -669,6 +669,91 @@
                         </div>
                     </div>
 
+                    <div x-show="activeSection === 'obfuscation'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Anti-DPI &amp; Obfuscation</h2>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Obfuscation Mode</span>
+                            <select x-model="form.obfuscation_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="standard">Standard (Direct Connection)</option>
+                                <option value="native_stealth">Native Stealth (HTTP Proxy + TCP 443)</option>
+                                <option value="tls_tunnel">TLS Tunnel (Stunnel)</option>
+                                <option value="websocket_cdn">WebSocket + CDN (WSTunnel/Nginx)</option>
+                            </select>
+                        </label>
+
+                        <div x-show="form.obfuscation_mode === 'native_stealth'" class="space-y-4">
+                            <p class="text-xs font-medium" :class="darkMode ? 'text-amber-300' : 'text-amber-700'">This mode forcefully sets OpenVPN Protocol to TCP and Port to 443.</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                        <span>Local Proxy Port</span>
+                                        <span class="relative" @mouseenter="showTooltip('proxy_port')" @mouseleave="hideTooltip('proxy_port')">
+                                            <button type="button" @click.stop="toggleTooltip('proxy_port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                            <div x-cloak x-show="openTooltip === 'proxy_port'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The port where the local HTTP proxy listens.</div>
+                                        </span>
+                                    </span>
+                                    <input type="number" min="1" max="65535" x-model.number="form.proxy_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                        <span>Spoofed Host Header</span>
+                                        <span class="relative" @mouseenter="showTooltip('spoofed_host')" @mouseleave="hideTooltip('spoofed_host')">
+                                            <button type="button" @click.stop="toggleTooltip('spoofed_host')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                            <div x-cloak x-show="openTooltip === 'spoofed_host'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">SNI Spoofing: Fools the firewall into thinking you are browsing this site.</div>
+                                        </span>
+                                    </span>
+                                    <input type="text" x-model="form.spoofed_host" placeholder="speedtest.net" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                            </div>
+                        </div>
+
+                        <div x-show="form.obfuscation_mode === 'tls_tunnel'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Stunnel Port</span>
+                                    <span class="relative" @mouseenter="showTooltip('stunnel_port')" @mouseleave="hideTooltip('stunnel_port')">
+                                        <button type="button" @click.stop="toggleTooltip('stunnel_port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'stunnel_port'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The port Stunnel will listen on.</div>
+                                    </span>
+                                </span>
+                                <input type="number" min="1" max="65535" x-model.number="form.stunnel_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>SNI Domain</span>
+                                    <span class="relative" @mouseenter="showTooltip('sni_domain')" @mouseleave="hideTooltip('sni_domain')">
+                                        <button type="button" @click.stop="toggleTooltip('sni_domain')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'sni_domain'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The domain to fake the TLS handshake.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="form.sni_domain" placeholder="assets.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+
+                        <div x-show="form.obfuscation_mode === 'websocket_cdn'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block md:col-span-2">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>CDN Domain</span>
+                                    <span class="relative" @mouseenter="showTooltip('cdn_domain')" @mouseleave="hideTooltip('cdn_domain')">
+                                        <button type="button" @click.stop="toggleTooltip('cdn_domain')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'cdn_domain'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Your Cloudflare/CDN routed domain.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="form.cdn_domain" placeholder="https://www.google.com/search?q=vpn.mydomain.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block md:col-span-2">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>WebSocket Path</span>
+                                    <span class="relative" @mouseenter="showTooltip('ws_path')" @mouseleave="hideTooltip('ws_path')">
+                                        <button type="button" @click.stop="toggleTooltip('ws_path')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'ws_path'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The hidden URL path for the WebSocket.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="form.ws_path" placeholder="/vpn-ws" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+                    </div>
+
                     <div x-show="activeSection === 'performance'" class="space-y-4">
                         <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Performance &amp; Tuning</h2>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -782,6 +867,7 @@
                     { key: 'network', label: 'Network & Core' },
                     { key: 'routing', label: 'Routing & DNS' },
                     { key: 'security', label: 'Security & Crypto' },
+                    { key: 'obfuscation', label: 'Anti-DPI & Obfuscation' },
                     { key: 'performance', label: 'Performance' },
                     { key: 'session', label: 'Session & Management' },
                     { key: 'custom', label: 'Custom' },
@@ -820,6 +906,13 @@
                     verbosity: 3,
                     custom_directives: '',
                     advanced_client_push: '',
+                    obfuscation_mode: 'standard',
+                    proxy_port: 8080,
+                    spoofed_host: '',
+                    stunnel_port: 443,
+                    sni_domain: '',
+                    cdn_domain: '',
+                    ws_path: '/vpn-ws',
                 },
                 generalForm: {
                     public_ipv4_address: '',
@@ -892,6 +985,13 @@
                         if (Number(this.generalForm.subscription_https_port) === Number(panelPort)) {
                             const fallbackPort = [2053, 2083, 2087, 2096, 8443].find(port => port !== Number(panelPort));
                             this.generalForm.subscription_https_port = fallbackPort || 2083;
+                        }
+                    });
+
+                    this.$watch('form.obfuscation_mode', (mode) => {
+                        if (mode === 'native_stealth') {
+                            this.form.protocol = 'tcp';
+                            this.form.port = 443;
                         }
                     });
 
@@ -973,7 +1073,18 @@
                             push_custom_routes: data.push_custom_routes || '',
                             custom_directives: data.custom_directives || '',
                             advanced_client_push: data.advanced_client_push || '',
+                            obfuscation_mode: data.obfuscation_mode || 'standard',
+                            proxy_port: Number(data.proxy_port) || 8080,
+                            spoofed_host: data.spoofed_host || '',
+                            stunnel_port: Number(data.stunnel_port) || 443,
+                            sni_domain: data.sni_domain || '',
+                            cdn_domain: data.cdn_domain || '',
+                            ws_path: data.ws_path || '/vpn-ws',
                         };
+                        if (this.form.obfuscation_mode === 'native_stealth') {
+                            this.form.protocol = 'tcp';
+                            this.form.port = 443;
+                        }
                         if (!this.generalForm.global_ipv6_support) {
                             this.form.ipv6_network = '';
                             this.form.ipv6_prefix = null;
@@ -1028,7 +1139,19 @@
                             push_custom_routes: (this.form.push_custom_routes || '').trim() || null,
                             custom_directives: (this.form.custom_directives || '').trim(),
                             advanced_client_push: (this.form.advanced_client_push || '').trim() || null,
+                            obfuscation_mode: this.form.obfuscation_mode,
+                            proxy_port: Number(this.form.proxy_port),
+                            spoofed_host: this.form.obfuscation_mode === 'native_stealth' ? ((this.form.spoofed_host || '').trim() || null) : null,
+                            stunnel_port: Number(this.form.stunnel_port),
+                            sni_domain: this.form.obfuscation_mode === 'tls_tunnel' ? ((this.form.sni_domain || '').trim() || null) : null,
+                            cdn_domain: this.form.obfuscation_mode === 'websocket_cdn' ? ((this.form.cdn_domain || '').trim() || null) : null,
+                            ws_path: (this.form.ws_path || '').trim() || '/vpn-ws',
                         };
+
+                        if (payload.obfuscation_mode === 'native_stealth') {
+                            payload.protocol = 'tcp';
+                            payload.port = 443;
+                        }
 
                         const response = await fetch('/api/settings/openvpn', {
                             method: 'PATCH',
@@ -1064,7 +1187,19 @@
                             push_custom_routes: updated.push_custom_routes || '',
                             custom_directives: updated.custom_directives || '',
                             advanced_client_push: updated.advanced_client_push || '',
+                            obfuscation_mode: updated.obfuscation_mode || 'standard',
+                            proxy_port: Number(updated.proxy_port) || 8080,
+                            spoofed_host: updated.spoofed_host || '',
+                            stunnel_port: Number(updated.stunnel_port) || 443,
+                            sni_domain: updated.sni_domain || '',
+                            cdn_domain: updated.cdn_domain || '',
+                            ws_path: updated.ws_path || '/vpn-ws',
                         };
+
+                        if (this.form.obfuscation_mode === 'native_stealth') {
+                            this.form.protocol = 'tcp';
+                            this.form.port = 443;
+                        }
 
                         this.showToast('Settings applied successfully', 'success');
                     } catch (error) {
