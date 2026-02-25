@@ -1,1 +1,1275 @@
-&lt;!-- Atlas — Settings page (Phase 0: skeleton only) --&gt;
+<!DOCTYPE html>
+<html lang="en" x-data="settingsApp()" :class="{ 'dark': darkMode }">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Settings - Atlas</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Poppins', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+        [x-cloak] {
+            display: none !important;
+        }
+
+        .theme-transition {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+        }
+
+        .glass-effect {
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+        }
+
+        .tooltip-glass {
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            width: min(20rem, calc(100vw - 2rem));
+            position: absolute;
+            z-index: 50 !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen theme-transition font-sans"
+      :class="darkMode ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-slate-50 via-white to-slate-100'"
+      x-init="initTheme(); init()">
+
+    <nav class="sticky top-0 z-40 glass-effect theme-transition border-b"
+         :class="darkMode ? 'bg-slate-900/80 border-slate-700/50' : 'bg-white/80 border-slate-200/50'">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-3 sm:space-x-4">
+                    <img src="/assets/images/atlas-logo.png" alt="Atlas Logo" class="w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 drop-shadow-lg">
+                    <span class="text-xl sm:text-2xl font-display font-bold theme-transition"
+                          :class="darkMode ? 'text-cyan-400' : 'text-cyan-600'">
+                        Atlas
+                    </span>
+                </div>
+
+                <div class="flex items-center space-x-2 sm:space-x-4">
+                    <a href="/dashboard.html" class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
+                       :class="darkMode ? 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50' : 'text-slate-600 hover:text-cyan-600 hover:bg-slate-100'">
+                        Dashboard
+                    </a>
+                    <a href="/templates/clients.html" class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
+                       :class="darkMode ? 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50' : 'text-slate-600 hover:text-cyan-600 hover:bg-slate-100'">
+                        Clients
+                    </a>
+                    <a href="/settings.html" class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
+                       :class="darkMode ? 'text-cyan-400 bg-slate-800/50' : 'text-cyan-600 bg-cyan-50'">
+                        <span class="inline-flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0a1 1 0 00.95.69h.969c.969 0 1.371 1.24.588 1.81l-.784.57a1 1 0 00-.364 1.118l.3.921c.3.921-.755 1.688-1.54 1.118l-.784-.57a1 1 0 00-1.176 0l-.784.57c-.784.57-1.838-.197-1.539-1.118l.3-.921a1 1 0 00-.364-1.118l-.784-.57c-.783-.57-.38-1.81.588-1.81h.969a1 1 0 00.95-.69z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h.01a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h.01a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v.01a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+                            </svg>
+                            Settings
+                        </span>
+                    </a>
+
+                    <button @click="toggleTheme()"
+                            class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl theme-transition flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-transform duration-200"
+                            :class="darkMode ? 'bg-slate-800 text-cyan-400' : 'bg-white text-cyan-600 shadow-md'">
+                        <svg x-show="!darkMode" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                        </svg>
+                        <svg x-show="darkMode" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                        </svg>
+                    </button>
+
+                    <button @click="logout()"
+                            class="px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold theme-transition hover:scale-105 active:scale-95 transition-transform duration-200"
+                            :class="darkMode ? 'bg-red-900/50 text-red-300 hover:bg-red-900/70' : 'bg-red-50 text-red-600 hover:bg-red-100'">
+                        LOGOUT
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div class="mb-6">
+            <h1 class="text-3xl sm:text-4xl font-bold theme-transition mb-1" :class="darkMode ? 'text-white' : 'text-slate-900'">Server Settings</h1>
+            <p class="text-sm sm:text-base theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Enterprise-grade OpenVPN 2.6 configuration panel</p>
+        </div>
+
+        <div class="glass-effect rounded-2xl border p-3 sm:p-4 mb-6" :class="darkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200/60'">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                <button class="w-full px-4 py-3 rounded-xl text-sm font-semibold"
+                        :class="activeProtocolTab === 'general' ? (darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-cyan-50 text-cyan-700 border border-cyan-200') : (darkMode ? 'text-slate-400 border border-slate-700/60' : 'text-slate-600 border border-slate-200')"
+                        @click="activeProtocolTab = 'general'">
+                    General
+                </button>
+                <button class="w-full px-4 py-3 rounded-xl text-sm font-semibold"
+                        :class="activeProtocolTab === 'openvpn' ? (darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-cyan-50 text-cyan-700 border border-cyan-200') : (darkMode ? 'text-slate-400 border border-slate-700/60' : 'text-slate-600 border border-slate-200')"
+                        @click="activeProtocolTab = 'openvpn'">
+                    OpenVPN
+                </button>
+                <button class="w-full px-4 py-3 rounded-xl text-sm font-semibold cursor-not-allowed"
+                        :class="darkMode ? 'text-slate-500 border border-slate-700/60' : 'text-slate-500 border border-slate-200'">
+                    WireGuard (Coming Soon)
+                </button>
+                <button class="w-full px-4 py-3 rounded-xl text-sm font-semibold cursor-not-allowed"
+                        :class="darkMode ? 'text-slate-500 border border-slate-700/60' : 'text-slate-500 border border-slate-200'">
+                    Sing-box (Coming Soon)
+                </button>
+            </div>
+        </div>
+
+        <div x-show="activeProtocolTab === 'general'" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <aside class="lg:col-span-3 glass-effect rounded-2xl border p-3"
+                   :class="darkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200/60'">
+                <template x-for="section in generalSectionTabs" :key="section.key">
+                    <button @click="activeGeneralSection = section.key"
+                            class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold mb-2 transition"
+                            :class="activeGeneralSection === section.key ? (darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-cyan-50 text-cyan-700 border border-cyan-200') : (darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100')"
+                            x-text="section.label">
+                    </button>
+                </template>
+            </aside>
+
+            <section class="lg:col-span-9 glass-effect rounded-2xl border p-5 sm:p-6"
+                     :class="darkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200/60'">
+                <div x-show="loading" class="py-12 flex justify-center">
+                    <div class="animate-spin rounded-full h-10 w-10 border-b-2" :class="darkMode ? 'border-cyan-400' : 'border-cyan-600'"></div>
+                </div>
+
+                <div x-show="!loading" class="space-y-6">
+                    <div x-show="activeGeneralSection === 'network'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Network</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Public IPv4 Address</span>
+                                    <span class="relative" @mouseenter="showTooltip('public_ipv4_address')" @mouseleave="hideTooltip('public_ipv4_address')">
+                                        <button type="button" @click.stop="toggleTooltip('public_ipv4_address')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'public_ipv4_address'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The public IP clients will connect to. Usually auto-detected, but editable if behind a NAT.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="generalForm.public_ipv4_address" placeholder="203.0.113.10" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Public IPv6 Address</span>
+                                    <span class="relative" @mouseenter="showTooltip('public_ipv6_address')" @mouseleave="hideTooltip('public_ipv6_address')">
+                                        <button type="button" @click.stop="toggleTooltip('public_ipv6_address')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'public_ipv6_address'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The public IPv6 address. Leave blank if not used.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="generalForm.public_ipv6_address" placeholder="2001:db8::10" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>WAN Interface</span>
+                                    <span class="relative" @mouseenter="showTooltip('wan_interface')" @mouseleave="hideTooltip('wan_interface')">
+                                        <button type="button" @click.stop="toggleTooltip('wan_interface')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'wan_interface'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The main network interface providing internet access. Crucial for NAT/Routing.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="generalForm.wan_interface" placeholder="eth0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+                        <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                            <div>
+                                <p class="text-sm font-semibold theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
+                                    <span>Global IPv6 Support</span>
+                                    <span class="relative" @mouseenter="showTooltip('global_ipv6_support')" @mouseleave="hideTooltip('global_ipv6_support')">
+                                        <button type="button" @click.stop="toggleTooltip('global_ipv6_support')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'global_ipv6_support'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">If disabled, completely disables IPv6 routing on the server to prevent IP leaks.</div>
+                                    </span>
+                                </p>
+                                <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Controls IPv6 usage across all protocols</p>
+                            </div>
+                            <button type="button" @click="generalForm.global_ipv6_support = !generalForm.global_ipv6_support" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="generalForm.global_ipv6_support ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="generalForm.global_ipv6_support ? 'ON' : 'OFF'"></button>
+                        </div>
+                    </div>
+
+                    <div x-show="activeGeneralSection === 'security'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Security</h2>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                <span>Admin Allowed IPs</span>
+                                <span class="relative" @mouseenter="showTooltip('admin_allowed_ips')" @mouseleave="hideTooltip('admin_allowed_ips')">
+                                    <button type="button" @click.stop="toggleTooltip('admin_allowed_ips')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                    <div x-cloak x-show="openTooltip === 'admin_allowed_ips'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Comma-separated IPs allowed to access this web panel. Use 0.0.0.0/0 for anywhere.</div>
+                                </span>
+                            </span>
+                            <textarea x-model="generalForm.admin_allowed_ips" rows="4" placeholder="0.0.0.0/0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                        </label>
+                    </div>
+
+                    <div x-show="activeGeneralSection === 'domain_ssl'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Domain &amp; SSL</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block md:col-span-2">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Panel Domain</span>
+                                    <span class="relative" @mouseenter="showTooltip('panel_domain')" @mouseleave="hideTooltip('panel_domain')">
+                                        <button type="button" @click.stop="toggleTooltip('panel_domain')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'panel_domain'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The main domain used to access this admin dashboard.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="generalForm.panel_domain" placeholder="https://www.google.com/search?q=panel.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Panel HTTPS Port</span>
+                                    <span class="relative" @mouseenter="showTooltip('panel_https_port')" @mouseleave="hideTooltip('panel_https_port')">
+                                        <button type="button" @click.stop="toggleTooltip('panel_https_port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'panel_https_port'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The port for the admin panel. Must be supported by CDNs like Cloudflare.</div>
+                                    </span>
+                                </span>
+                                <select x-model.number="generalForm.panel_https_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option :value="2053">2053</option>
+                                    <option :value="2083">2083</option>
+                                    <option :value="2087">2087</option>
+                                    <option :value="2096">2096</option>
+                                    <option :value="8443">8443</option>
+                                </select>
+                            </label>
+
+                            <label class="block md:col-span-2">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Subscription Domain</span>
+                                    <span class="relative" @mouseenter="showTooltip('subscription_domain')" @mouseleave="hideTooltip('subscription_domain')">
+                                        <button type="button" @click.stop="toggleTooltip('subscription_domain')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'subscription_domain'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">A separate domain used ONLY for client subscription links, hiding the admin panel from scanners.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="generalForm.subscription_domain" placeholder="sub.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Subscription HTTPS Port</span>
+                                    <span class="relative" @mouseenter="showTooltip('subscription_https_port')" @mouseleave="hideTooltip('subscription_https_port')">
+                                        <button type="button" @click.stop="toggleTooltip('subscription_https_port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'subscription_https_port'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Port for subscription links.</div>
+                                    </span>
+                                </span>
+                                <select x-model.number="generalForm.subscription_https_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option :value="2053" :disabled="Number(generalForm.panel_https_port) === 2053">2053</option>
+                                    <option :value="2083" :disabled="Number(generalForm.panel_https_port) === 2083">2083</option>
+                                    <option :value="2087" :disabled="Number(generalForm.panel_https_port) === 2087">2087</option>
+                                    <option :value="2096" :disabled="Number(generalForm.panel_https_port) === 2096">2096</option>
+                                    <option :value="8443" :disabled="Number(generalForm.panel_https_port) === 8443">8443</option>
+                                </select>
+                            </label>
+
+                            <label class="block md:col-span-2">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>SSL Mode</span>
+                                    <span class="relative" @mouseenter="showTooltip('ssl_mode')" @mouseleave="hideTooltip('ssl_mode')">
+                                        <button type="button" @click.stop="toggleTooltip('ssl_mode')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'ssl_mode'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Choose how SSL certificates are managed.</div>
+                                    </span>
+                                </span>
+                                <select x-model="generalForm.ssl_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="none">None (HTTP)</option>
+                                    <option value="auto">Auto (Let's Encrypt)</option>
+                                    <option value="custom">Custom (Cloudflare/Manual)</option>
+                                </select>
+                            </label>
+
+                            <label class="block md:col-span-2" x-show="generalForm.ssl_mode === 'auto'">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Let's Encrypt Email</span>
+                                    <span class="relative" @mouseenter="showTooltip('letsencrypt_email')" @mouseleave="hideTooltip('letsencrypt_email')">
+                                        <button type="button" @click.stop="toggleTooltip('letsencrypt_email')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'letsencrypt_email'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Required by Let's Encrypt for expiry notices and terms of service.</div>
+                                    </span>
+                                </span>
+                                <input type="email" x-model="generalForm.letsencrypt_email" :required="generalForm.ssl_mode === 'auto'" placeholder="admin@domain.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+
+                        <button x-show="generalForm.ssl_mode === 'auto'"
+                                @click="issueSslNow()"
+                                :disabled="sslIssuing || saving || loading"
+                                class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                :class="darkMode ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'">
+                            <svg x-show="sslIssuing" class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"></circle>
+                                <path class="opacity-75" stroke-width="4" stroke-linecap="round" d="M4 12a8 8 0 018-8"></path>
+                            </svg>
+                            <span x-text="sslIssuing ? 'Issuing SSL...' : 'Issue / Renew SSL Now'"></span>
+                        </button>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                                <div>
+                                    <p class="text-sm font-semibold theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
+                                        <span>Force HTTPS</span>
+                                        <span class="relative" @mouseenter="showTooltip('force_https')" @mouseleave="hideTooltip('force_https')">
+                                            <button type="button" @click.stop="toggleTooltip('force_https')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                            <div x-cloak x-show="openTooltip === 'force_https'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Automatically redirect all HTTP traffic to HTTPS.</div>
+                                        </span>
+                                    </p>
+                                </div>
+                                <button type="button" @click="generalForm.force_https = !generalForm.force_https" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="generalForm.force_https ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="generalForm.force_https ? 'ON' : 'OFF'"></button>
+                            </div>
+
+                            <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                                <div>
+                                    <p class="text-sm font-semibold theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
+                                        <span>Auto-Renew SSL</span>
+                                        <span class="relative" @mouseenter="showTooltip('auto_renew_ssl')" @mouseleave="hideTooltip('auto_renew_ssl')">
+                                            <button type="button" @click.stop="toggleTooltip('auto_renew_ssl')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                            <div x-cloak x-show="openTooltip === 'auto_renew_ssl'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Automatically renew Let's Encrypt certificates before they expire (every 60 days).</div>
+                                        </span>
+                                    </p>
+                                </div>
+                                <button type="button" @click="generalForm.auto_renew_ssl = !generalForm.auto_renew_ssl" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="generalForm.auto_renew_ssl ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="generalForm.auto_renew_ssl ? 'ON' : 'OFF'"></button>
+                            </div>
+                        </div>
+
+                        <div x-show="generalForm.ssl_mode === 'custom'" class="grid grid-cols-1 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Custom Certificate (CRT)</span>
+                                <textarea x-model="generalForm.custom_ssl_certificate" rows="6" placeholder="-----BEGIN CERTIFICATE-----" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Custom Private Key (KEY)</span>
+                                <textarea x-model="generalForm.custom_ssl_private_key" rows="6" placeholder="-----BEGIN PRIVATE KEY-----" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div x-show="activeGeneralSection === 'system'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">System</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>System Timezone</span>
+                                    <span class="relative" @mouseenter="showTooltip('system_timezone')" @mouseleave="hideTooltip('system_timezone')">
+                                        <button type="button" @click.stop="toggleTooltip('system_timezone')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'system_timezone'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Accurate time is critical for VPN cryptography.</div>
+                                    </span>
+                                </span>
+                                <select x-model="generalForm.system_timezone" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="UTC">UTC</option>
+                                    <option value="Europe/Berlin">Europe/Berlin</option>
+                                    <option value="Asia/Tehran">Asia/Tehran</option>
+                                </select>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>NTP Server</span>
+                                    <span class="relative" @mouseenter="showTooltip('ntp_server')" @mouseleave="hideTooltip('ntp_server')">
+                                        <button type="button" @click.stop="toggleTooltip('ntp_server')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'ntp_server'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Time synchronization server.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="generalForm.ntp_server" placeholder="pool.ntp.org" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 sticky bottom-0 pt-4 flex justify-end border-t backdrop-blur-sm"
+                     :class="darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white/80'">
+                    <button @click="saveChanges()" :disabled="saving || loading"
+                            class="px-6 py-3 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'">
+                        <span x-text="saving ? 'Saving...' : 'Save Settings'"></span>
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <div x-show="activeProtocolTab === 'openvpn'" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <aside class="lg:col-span-3 glass-effect rounded-2xl border p-3"
+                   :class="darkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200/60'">
+                <template x-for="section in sectionTabs" :key="section.key">
+                    <button @click="activeSection = section.key"
+                            class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold mb-2 transition"
+                            :class="activeSection === section.key ? (darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-cyan-50 text-cyan-700 border border-cyan-200') : (darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100')"
+                            x-text="section.label">
+                    </button>
+                </template>
+            </aside>
+
+            <section class="lg:col-span-9 glass-effect rounded-2xl border p-5 sm:p-6"
+                     :class="darkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200/60'">
+                <div x-show="loading" class="py-12 flex justify-center">
+                    <div class="animate-spin rounded-full h-10 w-10 border-b-2" :class="darkMode ? 'border-cyan-400' : 'border-cyan-600'"></div>
+                </div>
+
+                <div x-show="!loading" class="space-y-6">
+                    <div x-show="activeSection === 'network'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Network &amp; Core</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Protocol</span>
+                                    <span class="relative" @mouseenter="showTooltip('protocol')" @mouseleave="hideTooltip('protocol')">
+                                        <button type="button" @click.stop="toggleTooltip('protocol')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'protocol'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">UDP is faster for streaming/gaming. TCP is slower but bypasses strict firewalls better. Recommended: UDP.</div>
+                                    </span>
+                                </span>
+                                <select x-model="form.protocol" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="udp">udp</option>
+                                    <option value="tcp">tcp</option>
+                                    <option value="udp6">udp6</option>
+                                    <option value="tcp6">tcp6</option>
+                                </select>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Port</span>
+                                    <span class="relative" @mouseenter="showTooltip('port')" @mouseleave="hideTooltip('port')">
+                                        <button type="button" @click.stop="toggleTooltip('port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'port'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The port number your server listens on. Recommended: 1194 or 443.</div>
+                                    </span>
+                                </span>
+                                <input type="number" min="1" max="65535" x-model.number="form.port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Device Type</span>
+                                    <span class="relative" @mouseenter="showTooltip('device_type')" @mouseleave="hideTooltip('device_type')">
+                                        <button type="button" @click.stop="toggleTooltip('device_type')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'device_type'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">TUN is for routing (standard VPN). TAP is for bridging. Recommended: TUN.</div>
+                                    </span>
+                                </span>
+                                <select x-model="form.device_type" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="tun">tun</option>
+                                    <option value="tap">tap</option>
+                                </select>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Topology (enforced)</span>
+                                    <span class="relative" @mouseenter="showTooltip('topology')" @mouseleave="hideTooltip('topology')">
+                                        <button type="button" @click.stop="toggleTooltip('topology')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'topology'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Defines how IP addresses are assigned. Recommended: subnet.</div>
+                                    </span>
+                                </span>
+                                <input type="text" value="subnet" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition cursor-not-allowed" :class="darkMode ? 'bg-slate-900/30 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-500'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>IPv4 Network</span>
+                                    <span class="relative" @mouseenter="showTooltip('ipv4_network')" @mouseleave="hideTooltip('ipv4_network')">
+                                        <button type="button" @click.stop="toggleTooltip('ipv4_network')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'ipv4_network'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The private network assigned to connected users. Recommended: 10.8.0.0.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="form.ipv4_network" placeholder="10.8.0.0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>IPv4 Netmask</span>
+                                    <span class="relative" @mouseenter="showTooltip('ipv4_netmask')" @mouseleave="hideTooltip('ipv4_netmask')">
+                                        <button type="button" @click.stop="toggleTooltip('ipv4_netmask')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'ipv4_netmask'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The netmask used with the IPv4 network. Recommended: 255.255.255.0.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="form.ipv4_netmask" placeholder="255.255.255.0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block" x-show="generalForm.global_ipv6_support">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>IPv6 Network (optional)</span>
+                                    <span class="relative" @mouseenter="showTooltip('ipv6_network')" @mouseleave="hideTooltip('ipv6_network')">
+                                        <button type="button" @click.stop="toggleTooltip('ipv6_network')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'ipv6_network'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Optional IPv6 network for connected users. Recommended: Leave blank unless IPv6 is required.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="form.ipv6_network" :disabled="!generalForm.global_ipv6_support" placeholder="fd00:abcd::" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block" x-show="generalForm.global_ipv6_support">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>IPv6 Prefix (optional)</span>
+                                    <span class="relative" @mouseenter="showTooltip('ipv6_prefix')" @mouseleave="hideTooltip('ipv6_prefix')">
+                                        <button type="button" @click.stop="toggleTooltip('ipv6_prefix')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'ipv6_prefix'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Prefix length for the IPv6 network. Recommended: 64.</div>
+                                    </span>
+                                </span>
+                                <input type="number" min="1" max="128" x-model.number="form.ipv6_prefix" :disabled="!generalForm.global_ipv6_support" placeholder="64" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Max Clients</span>
+                                    <span class="relative" @mouseenter="showTooltip('max_clients')" @mouseleave="hideTooltip('max_clients')">
+                                        <button type="button" @click.stop="toggleTooltip('max_clients')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'max_clients'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Maximum number of concurrent users allowed on the entire server. Recommended: Depends on your RAM (e.g., 100).</div>
+                                    </span>
+                                </span>
+                                <input type="number" min="1" x-model.number="form.max_clients" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+                        <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                            <div>
+                                <p class="text-sm font-semibold theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
+                                    <span>Client-to-Client</span>
+                                    <span class="relative" @mouseenter="showTooltip('client_to_client')" @mouseleave="hideTooltip('client_to_client')">
+                                        <button type="button" @click.stop="toggleTooltip('client_to_client')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'client_to_client'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Allows connected users to see each other's devices. Recommended: Disabled (for better security).</div>
+                                    </span>
+                                </p>
+                                <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Allow direct traffic between VPN clients</p>
+                            </div>
+                            <button type="button" @click="form.client_to_client = !form.client_to_client" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.client_to_client ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.client_to_client ? 'ON' : 'OFF'"></button>
+                        </div>
+                    </div>
+
+                    <div x-show="activeSection === 'routing'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Routing &amp; DNS</h2>
+                        <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                            <div>
+                                <p class="text-sm font-semibold theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
+                                    <span>Redirect Gateway</span>
+                                    <span class="relative" @mouseenter="showTooltip('redirect_gateway')" @mouseleave="hideTooltip('redirect_gateway')">
+                                        <button type="button" @click.stop="toggleTooltip('redirect_gateway')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'redirect_gateway'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Forces all internet traffic of the user to go through the VPN. Recommended: Enabled.</div>
+                                    </span>
+                                </p>
+                                <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Route all client traffic through VPN</p>
+                            </div>
+                            <button type="button" @click="form.redirect_gateway = !form.redirect_gateway" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.redirect_gateway ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.redirect_gateway ? 'ON' : 'OFF'"></button>
+                        </div>
+                        <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                            <div>
+                                <p class="text-sm font-semibold theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
+                                    <span>Block Outside DNS</span>
+                                    <span class="relative" @mouseenter="showTooltip('block_outside_dns')" @mouseleave="hideTooltip('block_outside_dns')">
+                                        <button type="button" @click.stop="toggleTooltip('block_outside_dns')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'block_outside_dns'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Prevents DNS leaks on Windows devices. Recommended: Enabled.</div>
+                                    </span>
+                                </p>
+                                <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Windows DNS leak protection directive</p>
+                            </div>
+                            <button type="button" @click="form.block_outside_dns = !form.block_outside_dns" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.block_outside_dns ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.block_outside_dns ? 'ON' : 'OFF'"></button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Primary DNS</span>
+                                    <span class="relative" @mouseenter="showTooltip('primary_dns')" @mouseleave="hideTooltip('primary_dns')">
+                                        <button type="button" @click.stop="toggleTooltip('primary_dns')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'primary_dns'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The DNS server used to resolve websites. Recommended: 8.8.8.8 or 1.1.1.1.</div>
+                                    </span>
+                                </span>
+                                <input type="text" x-model="form.primary_dns" placeholder="8.8.8.8" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Secondary DNS</span>
+                                <input type="text" x-model="form.secondary_dns" placeholder="1.1.1.1" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                <span>Push Custom Routes</span>
+                                <span class="relative" @mouseenter="showTooltip('push_custom_routes')" @mouseleave="hideTooltip('push_custom_routes')">
+                                    <button type="button" @click.stop="toggleTooltip('push_custom_routes')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                    <div x-cloak x-show="openTooltip === 'push_custom_routes'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Pushes specific network routes to the client. Recommended: Leave blank unless needed.</div>
+                                </span>
+                            </span>
+                            <textarea x-model="form.push_custom_routes" rows="5" placeholder="route 192.168.1.0 255.255.255.0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                        </label>
+                    </div>
+
+                    <div x-show="activeSection === 'security'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Security &amp; Crypto</h2>
+                        <div>
+                            <p class="text-sm font-medium mb-2 theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                <span>Data Ciphers</span>
+                                <span class="relative" @mouseenter="showTooltip('data_ciphers')" @mouseleave="hideTooltip('data_ciphers')">
+                                    <button type="button" @click.stop="toggleTooltip('data_ciphers')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                    <div x-cloak x-show="openTooltip === 'data_ciphers'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The algorithm used to encrypt user data. Recommended: AES-256-GCM and CHACHA20-POLY1305 (very fast on mobile).</div>
+                                </span>
+                            </p>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <label class="flex items-center gap-2 rounded-xl border px-3 py-2" :class="darkMode ? 'border-slate-700 text-slate-200' : 'border-slate-300 text-slate-800'">
+                                    <input type="checkbox" value="AES-256-GCM" :checked="form.data_ciphers.includes('AES-256-GCM')" @change="toggleCipher('AES-256-GCM')" class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                                    <span>AES-256-GCM</span>
+                                </label>
+                                <label class="flex items-center gap-2 rounded-xl border px-3 py-2" :class="darkMode ? 'border-slate-700 text-slate-200' : 'border-slate-300 text-slate-800'">
+                                    <input type="checkbox" value="AES-128-GCM" :checked="form.data_ciphers.includes('AES-128-GCM')" @change="toggleCipher('AES-128-GCM')" class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                                    <span>AES-128-GCM</span>
+                                </label>
+                                <label class="flex items-center gap-2 rounded-xl border px-3 py-2" :class="darkMode ? 'border-slate-700 text-slate-200' : 'border-slate-300 text-slate-800'">
+                                    <input type="checkbox" value="CHACHA20-POLY1305" :checked="form.data_ciphers.includes('CHACHA20-POLY1305')" @change="toggleCipher('CHACHA20-POLY1305')" class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                                    <span>CHACHA20-POLY1305</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>TLS Version Min</span>
+                                    <span class="relative" @mouseenter="showTooltip('tls_version_min')" @mouseleave="hideTooltip('tls_version_min')">
+                                        <button type="button" @click.stop="toggleTooltip('tls_version_min')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'tls_version_min'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The minimum security standard for connections. Recommended: 1.2 or 1.3.</div>
+                                    </span>
+                                </span>
+                                <select x-model="form.tls_version_min" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="1.2">1.2</option>
+                                    <option value="1.3">1.3</option>
+                                </select>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>TLS Mode</span>
+                                    <span class="relative" @mouseenter="showTooltip('tls_mode')" @mouseleave="hideTooltip('tls_mode')">
+                                        <button type="button" @click.stop="toggleTooltip('tls_mode')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'tls_mode'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Hides VPN traffic signatures from deep packet inspection (firewalls). Recommended: tls-crypt.</div>
+                                    </span>
+                                </span>
+                                <select x-model="form.tls_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="tls-crypt">tls-crypt</option>
+                                    <option value="tls-auth">tls-auth</option>
+                                    <option value="none">none</option>
+                                </select>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Auth Digest</span>
+                                    <span class="relative" @mouseenter="showTooltip('auth_digest')" @mouseleave="hideTooltip('auth_digest')">
+                                        <button type="button" @click.stop="toggleTooltip('auth_digest')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'auth_digest'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Algorithm used to verify message integrity. Recommended: SHA256.</div>
+                                    </span>
+                                </span>
+                                <select x-model="form.auth_digest" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="SHA256">SHA256</option>
+                                    <option value="SHA384">SHA384</option>
+                                    <option value="SHA512">SHA512</option>
+                                </select>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Renegotiation Time (reneg-sec)</span>
+                                    <span class="relative" @mouseenter="showTooltip('reneg_sec')" @mouseleave="hideTooltip('reneg_sec')">
+                                        <button type="button" @click.stop="toggleTooltip('reneg_sec')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'reneg_sec'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">How often the security keys change. Set to 0 to prevent random disconnects in restricted networks. Recommended: 0.</div>
+                                    </span>
+                                </span>
+                                <input type="number" min="0" max="86400" x-model.number="form.reneg_sec" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+                    </div>
+
+                    <div x-show="activeSection === 'performance'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Performance &amp; Tuning</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>TUN MTU</span><span class="relative" @mouseenter="showTooltip('tun_mtu')" @mouseleave="hideTooltip('tun_mtu')"><button type="button" @click.stop="toggleTooltip('tun_mtu')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'tun_mtu'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Maximum packet size. Recommended: 1500.</div></span></span><input type="number" min="1200" max="9000" x-model.number="form.tun_mtu" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>MSSFix</span><span class="relative" @mouseenter="showTooltip('mssfix')" @mouseleave="hideTooltip('mssfix')"><button type="button" @click.stop="toggleTooltip('mssfix')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'mssfix'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Prevents packet fragmentation on bad networks. Recommended: 1450.</div></span></span><input type="number" min="0" max="9000" x-model.number="form.mssfix" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Send Buffer (sndbuf)</span><span class="relative" @mouseenter="showTooltip('sndbuf')" @mouseleave="hideTooltip('sndbuf')"><button type="button" @click.stop="toggleTooltip('sndbuf')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'sndbuf'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Increases network speed on fast servers. Recommended: 393216.</div></span></span><input type="number" min="0" x-model.number="form.sndbuf" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Receive Buffer (rcvbuf)</span><span class="relative" @mouseenter="showTooltip('rcvbuf')" @mouseleave="hideTooltip('rcvbuf')"><button type="button" @click.stop="toggleTooltip('rcvbuf')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'rcvbuf'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Increases network speed on fast servers. Recommended: 393216.</div></span></span><input type="number" min="0" x-model.number="form.rcvbuf" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Explicit Exit Notify</span><span class="relative" @mouseenter="showTooltip('explicit_exit_notify')" @mouseleave="hideTooltip('explicit_exit_notify')"><button type="button" @click.stop="toggleTooltip('explicit_exit_notify')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'explicit_exit_notify'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Tells the server/client to gracefully close the connection. Recommended: 1 (for UDP).</div></span></span><input type="number" min="0" max="10" x-model.number="form.explicit_exit_notify" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                        </div>
+                        <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                            <div>
+                                <p class="text-sm font-semibold theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
+                                    <span>Fast I/O</span>
+                                    <span class="relative" @mouseenter="showTooltip('fast_io')" @mouseleave="hideTooltip('fast_io')">
+                                        <button type="button" @click.stop="toggleTooltip('fast_io')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'fast_io'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Optimizes packet processing for UDP. Recommended: Enabled.</div>
+                                    </span>
+                                </p>
+                                <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Enable fast-io when supported by transport</p>
+                            </div>
+                            <button type="button" @click="form.fast_io = !form.fast_io" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.fast_io ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.fast_io ? 'ON' : 'OFF'"></button>
+                        </div>
+                    </div>
+
+                    <div x-show="activeSection === 'session'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Session &amp; Management</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Keepalive Ping</span><span class="relative" @mouseenter="showTooltip('keepalive_ping')" @mouseleave="hideTooltip('keepalive_ping')"><button type="button" @click.stop="toggleTooltip('keepalive_ping')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'keepalive_ping'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Ping interval in seconds to check connection health. Recommended: 10.</div></span></span><input type="number" min="1" x-model.number="form.keepalive_ping" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Keepalive Timeout</span><span class="relative" @mouseenter="showTooltip('keepalive_timeout')" @mouseleave="hideTooltip('keepalive_timeout')"><button type="button" @click.stop="toggleTooltip('keepalive_timeout')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'keepalive_timeout'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Time in seconds before a silent connection is considered dead. Recommended: 120.</div></span></span><input type="number" min="1" x-model.number="form.keepalive_timeout" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Inactive Timeout</span><span class="relative" @mouseenter="showTooltip('inactive_timeout')" @mouseleave="hideTooltip('inactive_timeout')"><button type="button" @click.stop="toggleTooltip('inactive_timeout')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'inactive_timeout'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Disconnects users who have no activity. Set to 0 to disable. Recommended: 0 or 300.</div></span></span><input type="number" min="0" x-model.number="form.inactive_timeout" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Management Interface Port</span><span class="relative" @mouseenter="showTooltip('management_port')" @mouseleave="hideTooltip('management_port')"><button type="button" @click.stop="toggleTooltip('management_port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'management_port'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Internal port used by the dashboard to read live server stats. Recommended: 5555.</div></span></span><input type="number" min="1" max="65535" x-model.number="form.management_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Verbosity</span><span class="relative" @mouseenter="showTooltip('verbosity')" @mouseleave="hideTooltip('verbosity')"><button type="button" @click.stop="toggleTooltip('verbosity')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'verbosity'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The level of detail in the server log file. 0 is silent, 4 is debug. Recommended: 3.</div></span></span><select x-model.number="form.verbosity" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label>
+                        </div>
+                    </div>
+
+                    <div x-show="activeSection === 'custom'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Custom Directives</h2>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                <span>Advanced Server Configs</span>
+                                <span class="relative" @mouseenter="showTooltip('custom_directives')" @mouseleave="hideTooltip('custom_directives')">
+                                    <button type="button" @click.stop="toggleTooltip('custom_directives')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                    <div x-cloak x-show="openTooltip === 'custom_directives'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Custom directives appended directly to the server.conf file.</div>
+                                </span>
+                            </span>
+                            <textarea x-model="form.custom_directives" rows="7" placeholder="Enter one OpenVPN server directive per line..." class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                        </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                <span>Advanced Client Push</span>
+                                <span class="relative" @mouseenter="showTooltip('advanced_client_push')" @mouseleave="hideTooltip('advanced_client_push')">
+                                    <button type="button" @click.stop="toggleTooltip('advanced_client_push')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                    <div x-cloak x-show="openTooltip === 'advanced_client_push'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Custom directives pushed directly to the client configuration.</div>
+                                </span>
+                            </span>
+                            <textarea x-model="form.advanced_client_push" rows="6" placeholder="dhcp-option DOMAIN corp.local" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mt-8 sticky bottom-0 pt-4 flex justify-end border-t backdrop-blur-sm"
+                     :class="darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white/80'">
+                    <button @click="saveChanges()" :disabled="saving || loading"
+                            class="px-6 py-3 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'">
+                        <span x-text="saving ? 'Saving...' : 'Save Settings'"></span>
+                    </button>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div x-show="toast.visible"
+         x-transition
+         class="fixed bottom-4 right-4 z-50 rounded-xl px-4 py-3 text-sm font-semibold shadow-xl"
+         :class="toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'"
+         x-text="toast.message">
+    </div>
+
+    <div x-cloak x-show="terminalModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div class="w-full max-w-4xl rounded-2xl border border-slate-700 bg-gray-900 shadow-2xl">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-slate-700">
+                <h3 class="text-sm font-semibold text-slate-100">Live Terminal</h3>
+                <button type="button" @click="closeTerminalModal()" class="text-xs px-3 py-1.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-800" :disabled="sslIssuing">Close</button>
+            </div>
+            <div x-ref="terminalOutput" class="h-80 overflow-y-auto px-5 py-4 text-green-400 font-mono text-xs whitespace-pre-wrap leading-relaxed">
+                <template x-for="(line, index) in terminalLogs" :key="`terminal-line-${index}`">
+                    <div x-text="line"></div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function settingsApp() {
+            return {
+                darkMode: false,
+                loading: false,
+                saving: false,
+                openTooltip: null,
+                activeProtocolTab: 'general',
+                activeGeneralSection: 'network',
+                activeSection: 'network',
+                generalSectionTabs: [
+                    { key: 'network', label: 'Network' },
+                    { key: 'security', label: 'Security' },
+                    { key: 'domain_ssl', label: 'Domain & SSL' },
+                    { key: 'system', label: 'System' },
+                ],
+                sectionTabs: [
+                    { key: 'network', label: 'Network & Core' },
+                    { key: 'routing', label: 'Routing & DNS' },
+                    { key: 'security', label: 'Security & Crypto' },
+                    { key: 'performance', label: 'Performance' },
+                    { key: 'session', label: 'Session & Management' },
+                    { key: 'custom', label: 'Custom' },
+                ],
+                form: {
+                    port: 1194,
+                    protocol: 'udp',
+                    device_type: 'tun',
+                    topology: 'subnet',
+                    ipv4_network: '10.8.0.0',
+                    ipv4_netmask: '255.255.255.0',
+                    ipv6_network: '',
+                    ipv6_prefix: null,
+                    max_clients: 100,
+                    client_to_client: false,
+                    redirect_gateway: true,
+                    primary_dns: '8.8.8.8',
+                    secondary_dns: '1.1.1.1',
+                    block_outside_dns: false,
+                    push_custom_routes: '',
+                    data_ciphers: ['AES-256-GCM', 'AES-128-GCM', 'CHACHA20-POLY1305'],
+                    tls_version_min: '1.2',
+                    tls_mode: 'tls-crypt',
+                    auth_digest: 'SHA256',
+                    reneg_sec: 3600,
+                    tun_mtu: 1500,
+                    mssfix: 1450,
+                    sndbuf: 393216,
+                    rcvbuf: 393216,
+                    fast_io: false,
+                    explicit_exit_notify: 1,
+                    keepalive_ping: 10,
+                    keepalive_timeout: 120,
+                    inactive_timeout: 300,
+                    management_port: 5555,
+                    verbosity: 3,
+                    custom_directives: '',
+                    advanced_client_push: '',
+                },
+                generalForm: {
+                    public_ipv4_address: '',
+                    public_ipv6_address: '',
+                    global_ipv6_support: true,
+                    wan_interface: 'eth0',
+                    admin_allowed_ips: '0.0.0.0/0',
+                    panel_domain: '',
+                    panel_https_port: 2053,
+                    subscription_domain: '',
+                    subscription_https_port: 2083,
+                    ssl_mode: 'none',
+                    letsencrypt_email: '',
+                    force_https: false,
+                    auto_renew_ssl: true,
+                    custom_ssl_certificate: '',
+                    custom_ssl_private_key: '',
+                    system_timezone: 'UTC',
+                    ntp_server: 'pool.ntp.org',
+                },
+                sslIssuing: false,
+                terminalModalOpen: false,
+                terminalLogs: [],
+                toast: {
+                    visible: false,
+                    message: '',
+                    type: 'success',
+                },
+
+                initTheme() {
+                    const savedTheme = localStorage.getItem('atlas-theme');
+                    if (savedTheme === 'dark') {
+                        this.darkMode = true;
+                    } else if (savedTheme === 'light') {
+                        this.darkMode = false;
+                    } else {
+                        this.darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    }
+                    document.documentElement.classList.toggle('dark', this.darkMode);
+                },
+
+                toggleTheme() {
+                    this.darkMode = !this.darkMode;
+                    localStorage.setItem('atlas-theme', this.darkMode ? 'dark' : 'light');
+                    document.documentElement.classList.toggle('dark', this.darkMode);
+                },
+
+                showTooltip(key) {
+                    this.openTooltip = key;
+                },
+
+                hideTooltip(key) {
+                    if (this.openTooltip === key) {
+                        this.openTooltip = null;
+                    }
+                },
+
+                toggleTooltip(key) {
+                    this.openTooltip = this.openTooltip === key ? null : key;
+                },
+
+                async init() {
+                    const token = localStorage.getItem('access_token');
+                    if (!token) {
+                        window.location.href = '/templates/login.html';
+                        return;
+                    }
+
+                    this.$watch('generalForm.panel_https_port', (panelPort) => {
+                        if (Number(this.generalForm.subscription_https_port) === Number(panelPort)) {
+                            const fallbackPort = [2053, 2083, 2087, 2096, 8443].find(port => port !== Number(panelPort));
+                            this.generalForm.subscription_https_port = fallbackPort || 2083;
+                        }
+                    });
+
+                    await this.loadSettings();
+                },
+
+                toggleCipher(cipher) {
+                    if (this.form.data_ciphers.includes(cipher)) {
+                        if (this.form.data_ciphers.length === 1) {
+                            this.showToast('At least one data cipher is required', 'error');
+                            return;
+                        }
+                        this.form.data_ciphers = this.form.data_ciphers.filter(item => item !== cipher);
+                    } else {
+                        this.form.data_ciphers = [...this.form.data_ciphers, cipher];
+                    }
+                },
+
+                async loadSettings() {
+                    this.loading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const [generalResponse, openvpnResponse] = await Promise.all([
+                            fetch('/api/settings/general', {
+                                headers: { Authorization: `Bearer ${token}` }
+                            }),
+                            fetch('/api/settings/openvpn', {
+                                headers: { Authorization: `Bearer ${token}` }
+                            }),
+                        ]);
+
+                        if (generalResponse.status === 401 || openvpnResponse.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        if (!generalResponse.ok || !openvpnResponse.ok) {
+                            throw new Error('Failed to load settings');
+                        }
+
+                        const generalData = await generalResponse.json();
+                        const data = await openvpnResponse.json();
+                        const legacyIPv4Parts = (data.ipv4_pool || '').trim().split(/\s+/);
+                        const legacyIPv6Parts = (data.ipv6_pool || '').trim().split('/');
+                        this.generalForm = {
+                            ...this.generalForm,
+                            ...generalData,
+                            public_ipv4_address: generalData.public_ipv4_address || '',
+                            public_ipv6_address: generalData.public_ipv6_address || '',
+                            admin_allowed_ips: generalData.admin_allowed_ips || '0.0.0.0/0',
+                            wan_interface: generalData.wan_interface || 'eth0',
+                            panel_domain: generalData.panel_domain || '',
+                            panel_https_port: Number(generalData.panel_https_port) || 2053,
+                            subscription_domain: generalData.subscription_domain || '',
+                            subscription_https_port: Number(generalData.subscription_https_port) || 2083,
+                            ssl_mode: generalData.ssl_mode || 'none',
+                            letsencrypt_email: generalData.letsencrypt_email || '',
+                            force_https: !!generalData.force_https,
+                            auto_renew_ssl: generalData.auto_renew_ssl !== false,
+                            custom_ssl_certificate: generalData.custom_ssl_certificate || '',
+                            custom_ssl_private_key: generalData.custom_ssl_private_key || '',
+                            system_timezone: generalData.system_timezone || 'UTC',
+                            ntp_server: generalData.ntp_server || 'pool.ntp.org',
+                        };
+
+                        if (Number(this.generalForm.panel_https_port) === Number(this.generalForm.subscription_https_port)) {
+                            const fallbackPort = [2053, 2083, 2087, 2096, 8443].find(port => port !== Number(this.generalForm.panel_https_port));
+                            this.generalForm.subscription_https_port = fallbackPort || 2083;
+                        }
+                        this.form = {
+                            ...this.form,
+                            ...data,
+                            data_ciphers: Array.isArray(data.data_ciphers) && data.data_ciphers.length ? data.data_ciphers : ['AES-256-GCM', 'AES-128-GCM', 'CHACHA20-POLY1305'],
+                            ipv4_network: data.ipv4_network || legacyIPv4Parts[0] || '10.8.0.0',
+                            ipv4_netmask: data.ipv4_netmask || legacyIPv4Parts[1] || '255.255.255.0',
+                            ipv6_network: data.ipv6_network || legacyIPv6Parts[0] || '',
+                            ipv6_prefix: Number.isInteger(data.ipv6_prefix) ? data.ipv6_prefix : (legacyIPv6Parts.length > 1 ? Number(legacyIPv6Parts[1]) || null : null),
+                            push_custom_routes: data.push_custom_routes || '',
+                            custom_directives: data.custom_directives || '',
+                            advanced_client_push: data.advanced_client_push || '',
+                        };
+                        if (!this.generalForm.global_ipv6_support) {
+                            this.form.ipv6_network = '';
+                            this.form.ipv6_prefix = null;
+                        }
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to load settings', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async saveChanges() {
+                    if (this.activeProtocolTab === 'general') {
+                        await this.saveGeneralSettings();
+                        return;
+                    }
+                    if (this.activeProtocolTab !== 'openvpn') {
+                        return;
+                    }
+
+                    this.saving = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const payload = {
+                            ...this.form,
+                            port: Number(this.form.port),
+                            max_clients: Number(this.form.max_clients),
+                            reneg_sec: Number(this.form.reneg_sec),
+                            tun_mtu: Number(this.form.tun_mtu),
+                            mssfix: Number(this.form.mssfix),
+                            sndbuf: Number(this.form.sndbuf),
+                            rcvbuf: Number(this.form.rcvbuf),
+                            explicit_exit_notify: Number(this.form.explicit_exit_notify),
+                            keepalive_ping: Number(this.form.keepalive_ping),
+                            keepalive_timeout: Number(this.form.keepalive_timeout),
+                            inactive_timeout: Number(this.form.inactive_timeout),
+                            management_port: Number(this.form.management_port),
+                            verbosity: Number(this.form.verbosity),
+                            protocol: this.form.protocol,
+                            device_type: this.form.device_type,
+                            topology: 'subnet',
+                            auth_digest: this.form.auth_digest,
+                            tls_version_min: this.form.tls_version_min,
+                            tls_mode: this.form.tls_mode,
+                            data_ciphers: this.form.data_ciphers,
+                            ipv4_network: (this.form.ipv4_network || '').trim(),
+                            ipv4_netmask: (this.form.ipv4_netmask || '').trim(),
+                            ipv6_network: this.generalForm.global_ipv6_support ? ((this.form.ipv6_network || '').trim() || null) : null,
+                            ipv6_prefix: this.generalForm.global_ipv6_support && this.form.ipv6_network ? Number(this.form.ipv6_prefix) : null,
+                            primary_dns: (this.form.primary_dns || '').trim(),
+                            secondary_dns: (this.form.secondary_dns || '').trim(),
+                            push_custom_routes: (this.form.push_custom_routes || '').trim() || null,
+                            custom_directives: (this.form.custom_directives || '').trim(),
+                            advanced_client_push: (this.form.advanced_client_push || '').trim() || null,
+                        };
+
+                        const response = await fetch('/api/settings/openvpn', {
+                            method: 'PATCH',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(payload),
+                        });
+
+                        if (!response.ok) {
+                            let message = 'Failed to save settings';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                } else if (Array.isArray(error.detail) && error.detail.length > 0) {
+                                    message = error.detail.map(item => `${item.loc.join('.')}: ${item.msg}`).join(', ');
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const updated = await response.json();
+                        this.form = {
+                            ...this.form,
+                            ...updated,
+                            data_ciphers: Array.isArray(updated.data_ciphers) && updated.data_ciphers.length ? updated.data_ciphers : this.form.data_ciphers,
+                            ipv6_network: updated.ipv6_network || '',
+                            ipv6_prefix: Number.isInteger(updated.ipv6_prefix) ? updated.ipv6_prefix : null,
+                            push_custom_routes: updated.push_custom_routes || '',
+                            custom_directives: updated.custom_directives || '',
+                            advanced_client_push: updated.advanced_client_push || '',
+                        };
+
+                        this.showToast('Settings applied successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to save settings', 'error');
+                    } finally {
+                        this.saving = false;
+                    }
+                },
+
+                async issueSslNow() {
+                    if (this.generalForm.ssl_mode === 'auto' && !(this.generalForm.letsencrypt_email || '').trim()) {
+                        this.showToast("Let's Encrypt email is required when SSL mode is Auto (Let's Encrypt)", 'error');
+                        return;
+                    }
+
+                    this.sslIssuing = true;
+                    this.terminalModalOpen = true;
+                    this.terminalLogs = [];
+                    this.appendTerminalLine('>>> Preparing SSL issuance request...');
+                    this.showToast("Requesting SSL from Let's Encrypt... This may take a minute.", 'success');
+
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/settings/ssl/issue', {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                        });
+
+                        if (!response.ok) {
+                            let message = 'Failed to issue SSL certificate';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                } else if (Array.isArray(error.detail) && error.detail.length > 0) {
+                                    message = error.detail.map(item => `${item.loc.join('.')}: ${item.msg}`).join(', ');
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        if (!response.body) {
+                            throw new Error('Streaming response is not available');
+                        }
+
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder('utf-8');
+                        let buffer = '';
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) {
+                                break;
+                            }
+
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop() || '';
+
+                            for (const rawLine of lines) {
+                                const line = rawLine.trim();
+                                if (!line || !line.startsWith('data:')) {
+                                    continue;
+                                }
+
+                                const message = line.slice(5).trim();
+                                if (message) {
+                                    this.appendTerminalLine(message);
+                                }
+                            }
+                        }
+
+                        if (buffer.trim().startsWith('data:')) {
+                            this.appendTerminalLine(buffer.trim().slice(5).trim());
+                        }
+
+                        this.showToast('SSL request completed successfully', 'success');
+                    } catch (error) {
+                        this.appendTerminalLine(`>>> Error: ${error.message || 'SSL issuance failed.'}`);
+                        this.showToast(error.message || 'Failed to issue SSL certificate', 'error');
+                    } finally {
+                        this.sslIssuing = false;
+                    }
+                },
+
+                async saveGeneralSettings() {
+                    this.saving = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const payload = {
+                            public_ipv4_address: (this.generalForm.public_ipv4_address || '').trim() || null,
+                            public_ipv6_address: (this.generalForm.public_ipv6_address || '').trim() || null,
+                            global_ipv6_support: !!this.generalForm.global_ipv6_support,
+                            wan_interface: (this.generalForm.wan_interface || '').trim(),
+                            admin_allowed_ips: (this.generalForm.admin_allowed_ips || '').trim(),
+                            panel_domain: (this.generalForm.panel_domain || '').trim(),
+                            panel_https_port: Number(this.generalForm.panel_https_port),
+                            subscription_domain: (this.generalForm.subscription_domain || '').trim(),
+                            subscription_https_port: Number(this.generalForm.subscription_https_port),
+                            ssl_mode: this.generalForm.ssl_mode,
+                            letsencrypt_email: this.generalForm.ssl_mode === 'auto' ? ((this.generalForm.letsencrypt_email || '').trim() || null) : null,
+                            force_https: !!this.generalForm.force_https,
+                            auto_renew_ssl: !!this.generalForm.auto_renew_ssl,
+                            custom_ssl_certificate: this.generalForm.ssl_mode === 'custom' ? ((this.generalForm.custom_ssl_certificate || '').trim() || null) : null,
+                            custom_ssl_private_key: this.generalForm.ssl_mode === 'custom' ? ((this.generalForm.custom_ssl_private_key || '').trim() || null) : null,
+                            system_timezone: (this.generalForm.system_timezone || '').trim(),
+                            ntp_server: (this.generalForm.ntp_server || '').trim(),
+                        };
+
+                        const response = await fetch('/api/settings/general', {
+                            method: 'PATCH',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(payload),
+                        });
+
+                        if (!response.ok) {
+                            let message = 'Failed to save settings';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                } else if (Array.isArray(error.detail) && error.detail.length > 0) {
+                                    message = error.detail.map(item => `${item.loc.join('.')}: ${item.msg}`).join(', ');
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const updated = await response.json();
+                        this.generalForm = {
+                            ...this.generalForm,
+                            ...updated,
+                            public_ipv4_address: updated.public_ipv4_address || '',
+                            public_ipv6_address: updated.public_ipv6_address || '',
+                            admin_allowed_ips: updated.admin_allowed_ips || '0.0.0.0/0',
+                            wan_interface: updated.wan_interface || 'eth0',
+                            panel_domain: updated.panel_domain || '',
+                            panel_https_port: Number(updated.panel_https_port) || 2053,
+                            subscription_domain: updated.subscription_domain || '',
+                            subscription_https_port: Number(updated.subscription_https_port) || 2083,
+                            ssl_mode: updated.ssl_mode || 'none',
+                            letsencrypt_email: updated.letsencrypt_email || '',
+                            force_https: !!updated.force_https,
+                            auto_renew_ssl: updated.auto_renew_ssl !== false,
+                            custom_ssl_certificate: updated.custom_ssl_certificate || '',
+                            custom_ssl_private_key: updated.custom_ssl_private_key || '',
+                            system_timezone: updated.system_timezone || 'UTC',
+                            ntp_server: updated.ntp_server || 'pool.ntp.org',
+                        };
+
+                        if (!this.generalForm.global_ipv6_support) {
+                            this.form.ipv6_network = '';
+                            this.form.ipv6_prefix = null;
+                        }
+
+                        this.showToast('Settings applied successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to save settings', 'error');
+                    } finally {
+                        this.saving = false;
+                    }
+                },
+
+                showToast(message, type = 'success') {
+                    this.toast.message = message;
+                    this.toast.type = type;
+                    this.toast.visible = true;
+                    setTimeout(() => {
+                        this.toast.visible = false;
+                    }, 2800);
+                },
+
+                appendTerminalLine(line) {
+                    this.terminalLogs = [...this.terminalLogs, String(line)];
+                    this.$nextTick(() => {
+                        const node = this.$refs.terminalOutput;
+                        if (node) {
+                            node.scrollTop = node.scrollHeight;
+                        }
+                    });
+                },
+
+                closeTerminalModal() {
+                    if (this.sslIssuing) {
+                        return;
+                    }
+                    this.terminalModalOpen = false;
+                },
+
+                logout() {
+                    localStorage.removeItem('access_token');
+                    window.location.href = '/templates/login.html';
+                },
+            };
+        }
+    </script>
+</body>
+</html>

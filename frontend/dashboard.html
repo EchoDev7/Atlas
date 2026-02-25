@@ -104,6 +104,19 @@
                        :class="darkMode ? 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50' : 'text-slate-600 hover:text-cyan-600 hover:bg-slate-100'">
                         Clients
                     </a>
+
+                    <!-- Settings Link -->
+                    <a href="/settings.html"
+                       class="px-3 py-2 rounded-lg text-sm font-medium theme-transition hover:scale-105 active:scale-95 transition-transform"
+                       :class="darkMode ? 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50' : 'text-slate-600 hover:text-cyan-600 hover:bg-slate-100'">
+                        <span class="flex items-center space-x-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0a1 1 0 00.95.69h.969c.969 0 1.371 1.24.588 1.81l-.784.57a1 1 0 00-.364 1.118l.3.921c.3.921-.755 1.688-1.54 1.118l-.784-.57a1 1 0 00-1.176 0l-.784.57c-.784.57-1.838-.197-1.539-1.118l.3-.921a1 1 0 00-.364-1.118l-.784-.57c-.783-.57-.38-1.81.588-1.81h.969a1 1 0 00.95-.69z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+                            </svg>
+                            <span>Settings</span>
+                        </span>
+                    </a>
                     
                     <div class="text-right hidden sm:block">
                         <p class="text-xs font-bold tracking-wide theme-transition"

@@ -3,13 +3,14 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime
 import logging
 
 from backend.database import get_db
 from backend.dependencies import get_current_user
 from backend.models.user import Admin
+from backend.models.openvpn_settings import OpenVPNSettings
 from backend.models.vpn_client import VPNClient, VPNClientStatus
 from backend.schemas.vpn_client import (
     VPNClientCreate,
@@ -30,6 +31,13 @@ router = APIRouter(prefix="/openvpn", tags=["OpenVPN Management"])
 
 # Initialize OpenVPN manager
 openvpn_manager = OpenVPNManager()
+
+
+def _get_transport_settings(db: Session) -> Tuple[int, str]:
+    settings = db.query(OpenVPNSettings).order_by(OpenVPNSettings.id.asc()).first()
+    if not settings:
+        return 1194, "udp"
+    return settings.port, settings.protocol
 
 
 @router.get("/clients", response_model=VPNClientListResponse)
@@ -328,16 +336,14 @@ def get_client_config(
         )
     
     try:
-        # Use provided server address or default
-        if not server_address:
-            server_address = "YOUR_SERVER_IP"  # TODO: Get from config
-        
+        server_port, protocol = _get_transport_settings(db)
+
         # Generate .ovpn configuration
         config_content = openvpn_manager.generate_client_config(
             client_name=client.name,
             server_address=server_address,
-            server_port=1194,
-            protocol="udp"
+            server_port=server_port,
+            protocol=protocol,
         )
         
         if not config_content:
@@ -387,13 +393,13 @@ def download_client_config(
         )
     
     try:
-        # Use provided server address or default
-        if not server_address:
-            server_address = "YOUR_SERVER_IP"
-        
+        server_port, protocol = _get_transport_settings(db)
+
         config_content = openvpn_manager.generate_client_config(
             client_name=client.name,
-            server_address=server_address
+            server_address=server_address,
+            server_port=server_port,
+            protocol=protocol,
         )
         
         if not config_content:

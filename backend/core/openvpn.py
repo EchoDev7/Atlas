@@ -5,12 +5,14 @@ import subprocess
 import os
 import platform
 import logging
+import time
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple
+from typing import Iterator, Optional, Dict, List, Tuple
 from datetime import datetime
 import qrcode
 import io
 import base64
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +189,347 @@ class OpenVPNManager:
             if check:
                 raise
             return False, "", str(e)
+
+    @staticmethod
+    def _normalize_transport_protocol(protocol: str) -> str:
+        normalized = (protocol or "udp").lower().strip()
+        if normalized.startswith("tcp"):
+            return "tcp"
+        return "udp"
+
+    def sync_firewall_for_transport_change(
+        self,
+        old_port: int,
+        old_protocol: str,
+        new_port: int,
+        new_protocol: str,
+    ) -> Dict[str, any]:
+        """Apply UFW rule updates when OpenVPN transport changes."""
+        old_proto = self._normalize_transport_protocol(old_protocol)
+        new_proto = self._normalize_transport_protocol(new_protocol)
+
+        if old_port == new_port and old_proto == new_proto:
+            return {
+                "success": True,
+                "message": "Firewall rules unchanged",
+                "is_mock": not self.is_production,
+                "commands": [],
+            }
+
+        commands: List[List[str]] = []
+        allow_rule = ["ufw", "allow", f"{new_port}/{new_proto}"]
+        commands.append(allow_rule)
+
+        if old_port != new_port or old_proto != new_proto:
+            commands.append(["ufw", "delete", "allow", f"{old_port}/{old_proto}"])
+
+        if not self.is_production:
+            for cmd in commands:
+                logger.info(f"[MOCK] Would execute firewall command: {' '.join(cmd)}")
+            return {
+                "success": True,
+                "message": "Firewall rules updated (mock)",
+                "is_mock": True,
+                "commands": [" ".join(cmd) for cmd in commands],
+            }
+
+        allow_success, _, allow_error = self._run_command(allow_rule, check=False)
+        if not allow_success:
+            return {
+                "success": False,
+                "message": f"Failed to allow new firewall rule: {allow_error}",
+                "is_mock": False,
+                "commands": [" ".join(allow_rule)],
+            }
+
+        old_rule_results: List[str] = []
+        if len(commands) > 1:
+            delete_cmd = commands[1]
+            delete_success, _, delete_error = self._run_command(delete_cmd, check=False)
+            if not delete_success:
+                deny_cmd = ["ufw", "deny", f"{old_port}/{old_proto}"]
+                deny_success, _, deny_error = self._run_command(deny_cmd, check=False)
+                old_rule_results.append(" ".join(delete_cmd))
+                old_rule_results.append(" ".join(deny_cmd))
+                if not deny_success:
+                    return {
+                        "success": False,
+                        "message": f"Failed to remove old firewall rule: {delete_error or deny_error}",
+                        "is_mock": False,
+                        "commands": [" ".join(allow_rule), *old_rule_results],
+                    }
+            else:
+                old_rule_results.append(" ".join(delete_cmd))
+
+        return {
+            "success": True,
+            "message": "Firewall rules updated",
+            "is_mock": False,
+            "commands": [" ".join(allow_rule), *old_rule_results],
+        }
+
+    def sync_system_general_settings(
+        self,
+        old_global_ipv6_support: bool,
+        new_global_ipv6_support: bool,
+        old_timezone: str,
+        new_timezone: str,
+        old_panel_https_port: Optional[int] = None,
+        new_panel_https_port: Optional[int] = None,
+        old_subscription_https_port: Optional[int] = None,
+        new_subscription_https_port: Optional[int] = None,
+    ) -> Dict[str, any]:
+        """Apply OS-level sync for General settings changes."""
+        commands: List[List[str]] = []
+
+        if old_global_ipv6_support != new_global_ipv6_support:
+            disable_value = "0" if new_global_ipv6_support else "1"
+            commands.extend(
+                [
+                    ["sysctl", "-w", f"net.ipv6.conf.all.disable_ipv6={disable_value}"],
+                    ["sysctl", "-w", f"net.ipv6.conf.default.disable_ipv6={disable_value}"],
+                ]
+            )
+
+        normalized_old_timezone = (old_timezone or "").strip()
+        normalized_new_timezone = (new_timezone or "").strip()
+        if normalized_new_timezone and normalized_new_timezone != normalized_old_timezone:
+            commands.append(["timedatectl", "set-timezone", normalized_new_timezone])
+
+        port_sync_result = self.sync_https_firewall_ports(
+            old_panel_port=old_panel_https_port,
+            new_panel_port=new_panel_https_port,
+            old_subscription_port=old_subscription_https_port,
+            new_subscription_port=new_subscription_https_port,
+        )
+        if not port_sync_result.get("success"):
+            return port_sync_result
+
+        if not commands:
+            return {
+                "success": True,
+                "message": "General system settings unchanged",
+                "is_mock": not self.is_production,
+                "commands": port_sync_result.get("commands", []),
+            }
+
+        if not self.is_production:
+            for cmd in commands:
+                logger.info(f"[MOCK] Would execute general system command: {' '.join(cmd)}")
+            return {
+                "success": True,
+                "message": "General system settings updated (mock)",
+                "is_mock": True,
+                "commands": [*port_sync_result.get("commands", []), *[" ".join(cmd) for cmd in commands]],
+            }
+
+        executed_commands: List[str] = []
+        for cmd in commands:
+            success, _, stderr = self._run_command(cmd, check=False)
+            executed_commands.append(" ".join(cmd))
+            if not success:
+                return {
+                    "success": False,
+                    "message": f"Failed to apply general system command: {' '.join(cmd)}. {stderr}".strip(),
+                    "is_mock": False,
+                    "commands": executed_commands,
+                }
+
+        return {
+            "success": True,
+            "message": "General system settings updated",
+            "is_mock": False,
+            "commands": [*port_sync_result.get("commands", []), *executed_commands],
+        }
+
+    def sync_https_firewall_ports(
+        self,
+        old_panel_port: Optional[int],
+        new_panel_port: Optional[int],
+        old_subscription_port: Optional[int],
+        new_subscription_port: Optional[int],
+    ) -> Dict[str, any]:
+        """Sync UFW rules for panel/subscription HTTPS ports."""
+
+        old_ports = {int(port) for port in [old_panel_port, old_subscription_port] if port is not None}
+        new_ports = {int(port) for port in [new_panel_port, new_subscription_port] if port is not None}
+
+        allow_ports = sorted(new_ports - old_ports)
+        remove_ports = sorted(old_ports - new_ports)
+
+        if not allow_ports and not remove_ports:
+            return {
+                "success": True,
+                "message": "HTTPS firewall rules unchanged",
+                "is_mock": not self.is_production,
+                "commands": [],
+            }
+
+        commands: List[List[str]] = []
+        for port in allow_ports:
+            commands.append(["ufw", "allow", f"{port}/tcp"])
+
+        for port in remove_ports:
+            commands.append(["ufw", "delete", "allow", f"{port}/tcp"])
+
+        if not self.is_production:
+            for cmd in commands:
+                logger.info(f"[MOCK] Would execute HTTPS firewall command: {' '.join(cmd)}")
+            return {
+                "success": True,
+                "message": "HTTPS firewall rules updated (mock)",
+                "is_mock": True,
+                "commands": [" ".join(cmd) for cmd in commands],
+            }
+
+        executed_commands: List[str] = []
+        for cmd in commands:
+            success, _, stderr = self._run_command(cmd, check=False)
+            executed_commands.append(" ".join(cmd))
+            if not success:
+                if cmd[:3] == ["ufw", "delete", "allow"]:
+                    deny_cmd = ["ufw", "deny", cmd[-1]]
+                    deny_success, _, deny_error = self._run_command(deny_cmd, check=False)
+                    executed_commands.append(" ".join(deny_cmd))
+                    if deny_success:
+                        continue
+                    stderr = deny_error or stderr
+
+                return {
+                    "success": False,
+                    "message": f"Failed to update HTTPS firewall rules: {stderr}".strip(),
+                    "is_mock": False,
+                    "commands": executed_commands,
+                }
+
+        return {
+            "success": True,
+            "message": "HTTPS firewall rules updated",
+            "is_mock": False,
+            "commands": executed_commands,
+        }
+
+    @staticmethod
+    def _normalize_cert_domain(value: str) -> str:
+        candidate = (value or "").strip()
+        if not candidate:
+            raise ValueError("Domain is required")
+
+        parsed = urlparse(candidate if "://" in candidate else f"//{candidate}")
+        domain = (parsed.hostname or "").strip().lower()
+        if not domain:
+            domain = candidate.split("/")[0].split(":")[0].strip().lower()
+        if not domain:
+            raise ValueError("Domain is invalid")
+        return domain
+
+    def _build_ssl_targets(
+        self,
+        panel_domain: Optional[str],
+        subscription_domain: Optional[str],
+    ) -> List[Tuple[str, str]]:
+        targets: List[Tuple[str, str]] = []
+
+        panel_raw = (panel_domain or "").strip()
+        if panel_raw:
+            targets.append(("Panel Domain", self._normalize_cert_domain(panel_raw)))
+
+        subscription_raw = (subscription_domain or "").strip()
+        if subscription_raw:
+            targets.append(("Subscription Domain", self._normalize_cert_domain(subscription_raw)))
+
+        if not targets:
+            raise ValueError("At least one domain is required for SSL issuance")
+
+        return targets
+
+    @staticmethod
+    def _build_certbot_command(domain: str, email: str) -> List[str]:
+        return [
+            "certbot",
+            "certonly",
+            "--standalone",
+            "-d",
+            domain,
+            "--non-interactive",
+            "--agree-tos",
+            "-m",
+            email,
+        ]
+
+    def _stream_mock_ssl_issue_logs(self, targets: List[Tuple[str, str]], email: str) -> Iterator[str]:
+        for label, domain in targets:
+            command = self._build_certbot_command(domain, email)
+            yield f">>> Starting SSL issuance for {label}..."
+            time.sleep(0.25)
+            yield f"$ {' '.join(command)}"
+            time.sleep(0.25)
+            yield f"Saving debug log to /var/log/letsencrypt/letsencrypt-{domain}.log"
+            time.sleep(0.25)
+            yield f"Requesting a certificate for {domain}"
+            time.sleep(0.4)
+            yield "Successfully received certificate"
+            time.sleep(0.2)
+            yield f"Certificate is saved at: /etc/letsencrypt/live/{domain}/fullchain.pem"
+            time.sleep(0.2)
+            yield f"Key is saved at: /etc/letsencrypt/live/{domain}/privkey.pem"
+            time.sleep(0.2)
+            yield ">>> Success!"
+            time.sleep(0.2)
+
+        yield ">>> SSL issuance completed for all requested domains."
+
+    def _stream_production_ssl_issue_logs(self, targets: List[Tuple[str, str]], email: str) -> Iterator[str]:
+        for label, domain in targets:
+            command = self._build_certbot_command(domain, email)
+            yield f">>> Starting SSL issuance for {label}..."
+            yield f"$ {' '.join(command)}"
+
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+
+            try:
+                if process.stdout is not None:
+                    for line in process.stdout:
+                        rendered = line.rstrip("\n")
+                        if rendered:
+                            yield rendered
+            finally:
+                if process.stdout is not None:
+                    process.stdout.close()
+
+            return_code = process.wait()
+            if return_code != 0:
+                yield f">>> Error: SSL issuance failed for {label} with exit code {return_code}."
+                return
+
+            yield ">>> Success!"
+
+        yield ">>> SSL issuance completed for all requested domains."
+
+    def stream_ssl_issue_logs(
+        self,
+        panel_domain: Optional[str],
+        subscription_domain: Optional[str],
+        email: str,
+    ) -> Iterator[str]:
+        normalized_email = (email or "").strip()
+        if not normalized_email:
+            raise ValueError("Let's Encrypt email is required")
+
+        targets = self._build_ssl_targets(panel_domain, subscription_domain)
+
+        if not self.is_production:
+            yield ">>> Running in development mode with mock SSL logs."
+            yield from self._stream_mock_ssl_issue_logs(targets, normalized_email)
+            return
+
+        yield from self._stream_production_ssl_issue_logs(targets, normalized_email)
     
     def check_easyrsa_installed(self) -> bool:
         """Check if Easy-RSA is installed"""
@@ -349,9 +692,9 @@ class OpenVPNManager:
     def generate_client_config(
         self,
         client_name: str,
-        server_address: str,
-        server_port: int = 1194,
-        protocol: str = "udp",
+        server_address: Optional[str] = None,
+        server_port: Optional[int] = None,
+        protocol: Optional[str] = None,
         os_type: str = "default"
     ) -> Optional[str]:
         """
@@ -367,6 +710,9 @@ class OpenVPNManager:
             Complete .ovpn configuration as string
         """
         try:
+            resolved_port, resolved_protocol = self._resolve_client_transport_settings(server_port, protocol)
+            resolved_server_address = self._resolve_client_remote_address(server_address, resolved_protocol)
+
             if not self.is_production:
                 # Mock certificate content for development
                 ca_cert = "-----BEGIN CERTIFICATE-----\nMOCK CA CERTIFICATE\n-----END CERTIFICATE-----"
@@ -397,8 +743,8 @@ class OpenVPNManager:
 
 client
 dev tun
-proto {protocol}
-remote {server_address} {server_port}
+proto {resolved_protocol}
+remote {resolved_server_address} {resolved_port}
 resolv-retry infinite
 nobind
 persist-key
@@ -432,6 +778,265 @@ verb 3
         except Exception as e:
             logger.error(f"Config generation failed: {e}")
             return None
+
+    def _resolve_client_transport_settings(
+        self,
+        server_port: Optional[int],
+        protocol: Optional[str],
+    ) -> Tuple[int, str]:
+        if server_port is not None and protocol:
+            return int(server_port), str(protocol).strip().lower()
+
+        try:
+            from backend.database import SessionLocal
+            from backend.models.openvpn_settings import OpenVPNSettings
+
+            db = SessionLocal()
+            try:
+                settings = db.query(OpenVPNSettings).order_by(OpenVPNSettings.id.asc()).first()
+                if settings:
+                    resolved_port = int(server_port if server_port is not None else settings.port)
+                    resolved_protocol = str(protocol or settings.protocol).strip().lower()
+                    return resolved_port, resolved_protocol
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.warning(f"Falling back to default OpenVPN transport settings: {exc}")
+
+        resolved_port = int(server_port if server_port is not None else 1194)
+        resolved_protocol = str(protocol or "udp").strip().lower()
+        return resolved_port, resolved_protocol
+
+    def _resolve_client_remote_address(
+        self,
+        server_address: Optional[str],
+        protocol: str,
+    ) -> str:
+        explicit_address = (server_address or "").strip()
+        if explicit_address:
+            return explicit_address
+
+        try:
+            from backend.database import SessionLocal
+            from backend.models.general_settings import GeneralSettings
+
+            db = SessionLocal()
+            try:
+                settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+                if settings:
+                    wants_ipv6 = str(protocol or "").lower().endswith("6")
+                    if wants_ipv6:
+                        ipv6_address = (settings.public_ipv6_address or "").strip()
+                        if ipv6_address:
+                            return ipv6_address
+
+                    ipv4_address = (settings.public_ipv4_address or "").strip()
+                    if ipv4_address:
+                        return ipv4_address
+
+                    fallback_ipv6 = (settings.public_ipv6_address or "").strip()
+                    if fallback_ipv6:
+                        return fallback_ipv6
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.warning(f"Falling back to default client remote address: {exc}")
+
+        return "YOUR_SERVER_IP"
+
+    def generate_server_config(self, settings: Dict[str, any]) -> Dict[str, any]:
+        """Generate OpenVPN 2.6 server.conf content from persisted settings."""
+        try:
+            port = int(settings.get("port", 1194))
+            protocol = str(settings.get("protocol", "udp")).lower().strip()
+            device_type = str(settings.get("device_type", "tun")).lower().strip()
+            topology = str(settings.get("topology", "subnet")).lower().strip()
+            ipv4_network = str(settings.get("ipv4_network", "10.8.0.0")).strip()
+            ipv4_netmask = str(settings.get("ipv4_netmask", "255.255.255.0")).strip()
+            legacy_ipv4_pool = str(settings.get("ipv4_pool", "")).strip()
+            if legacy_ipv4_pool and not settings.get("ipv4_network"):
+                parts = [part for part in legacy_ipv4_pool.split() if part]
+                if len(parts) >= 2:
+                    ipv4_network, ipv4_netmask = parts[0], parts[1]
+
+            ipv6_network = (settings.get("ipv6_network") or "").strip()
+            ipv6_prefix = settings.get("ipv6_prefix")
+            legacy_ipv6_pool = (settings.get("ipv6_pool") or "").strip()
+            if legacy_ipv6_pool and not ipv6_network:
+                if "/" in legacy_ipv6_pool:
+                    pool_parts = legacy_ipv6_pool.split("/", 1)
+                    ipv6_network = pool_parts[0].strip()
+                    try:
+                        ipv6_prefix = int(pool_parts[1].strip())
+                    except ValueError:
+                        ipv6_prefix = None
+                else:
+                    ipv6_network = legacy_ipv6_pool
+
+            ipv4_pool = f"{ipv4_network} {ipv4_netmask}".strip()
+            max_clients = int(settings.get("max_clients", 100))
+            client_to_client = bool(settings.get("client_to_client", False))
+
+            redirect_gateway = bool(settings.get("redirect_gateway", True))
+            primary_dns = str(settings.get("primary_dns", "8.8.8.8")).strip()
+            secondary_dns = str(settings.get("secondary_dns", "1.1.1.1")).strip()
+            block_outside_dns = bool(settings.get("block_outside_dns", False))
+            push_custom_routes = (settings.get("push_custom_routes") or "").strip()
+
+            raw_data_ciphers = settings.get("data_ciphers", "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305")
+            if isinstance(raw_data_ciphers, list):
+                data_ciphers = ":".join([cipher.strip() for cipher in raw_data_ciphers if cipher and cipher.strip()])
+            else:
+                data_ciphers = str(raw_data_ciphers).strip() or "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
+
+            tls_version_min = str(settings.get("tls_version_min", "1.2")).strip()
+            tls_mode = str(settings.get("tls_mode", "tls-crypt")).lower().strip()
+            auth_digest = str(settings.get("auth_digest", "SHA256")).upper().strip()
+            reneg_sec = int(settings.get("reneg_sec", 3600))
+
+            tun_mtu = int(settings.get("tun_mtu", 1500))
+            mssfix = int(settings.get("mssfix", 1450))
+            sndbuf = int(settings.get("sndbuf", 393216))
+            rcvbuf = int(settings.get("rcvbuf", 393216))
+            fast_io = bool(settings.get("fast_io", False))
+            explicit_exit_notify = int(settings.get("explicit_exit_notify", 1))
+
+            keepalive_ping = int(settings.get("keepalive_ping", 10))
+            keepalive_timeout = int(settings.get("keepalive_timeout", 120))
+            inactive_timeout = int(settings.get("inactive_timeout", 300))
+            management_port = int(settings.get("management_port", 5555))
+            verbosity = int(settings.get("verbosity", 3))
+
+            custom_directives = (settings.get("custom_directives") or "").strip()
+            advanced_client_push = (settings.get("advanced_client_push") or "").strip()
+
+            if protocol not in {"udp", "tcp", "udp6", "tcp6"}:
+                raise ValueError("Protocol must be udp, tcp, udp6, or tcp6")
+            if device_type not in {"tun", "tap"}:
+                raise ValueError("Device type must be tun or tap")
+            if topology != "subnet":
+                raise ValueError("Topology must be subnet")
+            if tls_version_min not in {"1.2", "1.3"}:
+                raise ValueError("TLS minimum version must be 1.2 or 1.3")
+            if tls_mode not in {"tls-crypt", "tls-auth", "none"}:
+                raise ValueError("TLS mode must be tls-crypt, tls-auth, or none")
+            if auth_digest not in {"SHA256", "SHA384", "SHA512"}:
+                raise ValueError("Auth digest must be SHA256, SHA384, or SHA512")
+
+            push_lines = []
+            if redirect_gateway:
+                push_lines.append('push "redirect-gateway def1 bypass-dhcp"')
+            if primary_dns:
+                push_lines.append(f'push "dhcp-option DNS {primary_dns}"')
+            if secondary_dns:
+                push_lines.append(f'push "dhcp-option DNS {secondary_dns}"')
+            if block_outside_dns:
+                push_lines.append('push "block-outside-dns"')
+            if push_custom_routes:
+                for route in [line.strip() for line in push_custom_routes.splitlines() if line.strip()]:
+                    if route.startswith("push "):
+                        push_lines.append(route)
+                    else:
+                        push_lines.append(f'push "{route}"')
+            if advanced_client_push:
+                for directive in [line.strip() for line in advanced_client_push.splitlines() if line.strip()]:
+                    if directive.startswith("push "):
+                        push_lines.append(directive)
+                    else:
+                        push_lines.append(f'push "{directive}"')
+
+            if tls_mode == "tls-crypt":
+                tls_mode_line = f"tls-crypt {self.config.TA_KEY}"
+            elif tls_mode == "tls-auth":
+                tls_mode_line = f"tls-auth {self.config.TA_KEY} 0"
+            else:
+                tls_mode_line = "# tls mode disabled"
+
+            fast_io_line = "fast-io" if fast_io else "# fast-io disabled"
+            client_to_client_line = "client-to-client" if client_to_client else "# client-to-client disabled"
+            reneg_line = "reneg-sec 0" if reneg_sec == 0 else f"reneg-sec {reneg_sec}"
+            inactive_line = "inactive 0" if inactive_timeout == 0 else f"inactive {inactive_timeout}"
+            explicit_exit_line = (
+                f"explicit-exit-notify {explicit_exit_notify}"
+                if protocol in {"udp", "udp6"}
+                else "# explicit-exit-notify is UDP-only"
+            )
+            ipv6_line = (
+                f"server-ipv6 {ipv6_network}/{int(ipv6_prefix)}"
+                if ipv6_network and ipv6_prefix is not None
+                else "# ipv6 subnet disabled"
+            )
+
+            push_block = "\n".join(push_lines) if push_lines else "# no push directives configured"
+            custom_block = custom_directives if custom_directives else "# no custom directives"
+
+            server_conf = f"""# Atlas VPN - OpenVPN Server Configuration
+# Generated: {datetime.utcnow().isoformat()}
+
+port {port}
+proto {protocol}
+dev {device_type}
+topology {topology}
+server {ipv4_pool}
+{ipv6_line}
+max-clients {max_clients}
+{client_to_client_line}
+
+ca {self.config.CA_CERT}
+cert {self.config.SERVER_CERT}
+key {self.config.SERVER_KEY}
+dh {self.config.DH_PARAMS}
+
+data-ciphers {data_ciphers}
+data-ciphers-fallback AES-256-GCM
+auth {auth_digest}
+tls-version-min {tls_version_min}
+{tls_mode_line}
+{reneg_line}
+
+keepalive {keepalive_ping} {keepalive_timeout}
+{inactive_line}
+persist-key
+persist-tun
+sndbuf {sndbuf}
+rcvbuf {rcvbuf}
+{fast_io_line}
+tun-mtu {tun_mtu}
+mssfix {mssfix}
+{explicit_exit_line}
+management 127.0.0.1 {management_port}
+
+{push_block}
+
+user nobody
+group nogroup
+verb {verbosity}
+
+{custom_block}
+"""
+
+            if self.is_production:
+                self.config.SERVER_CONF.parent.mkdir(parents=True, exist_ok=True)
+                self.config.SERVER_CONF.write_text(server_conf)
+                logger.info(f"OpenVPN server configuration written to {self.config.SERVER_CONF}")
+            else:
+                logger.info("[MOCK] OpenVPN server configuration generated (not written in development mode)")
+
+            return {
+                "success": True,
+                "message": "OpenVPN server configuration generated successfully",
+                "config_path": str(self.config.SERVER_CONF),
+                "content": server_conf,
+                "is_mock": not self.is_production,
+            }
+
+        except Exception as e:
+            logger.error(f"OpenVPN server configuration generation failed: {e}")
+            return {
+                "success": False,
+                "message": f"Failed to generate OpenVPN server configuration: {str(e)}",
+                "error": str(e),
+            }
 
     def _get_os_specific_directives(self, os_type: str) -> str:
         """Return additional directives optimized for target client OS."""
