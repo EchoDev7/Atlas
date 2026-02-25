@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from backend.config import settings
 from backend.database import init_db
-from backend.routers import auth
+from backend.routers import auth, openvpn
 
 
 @asynccontextmanager
@@ -36,7 +36,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register routers
 app.include_router(auth.router, prefix=settings.API_PREFIX)
+app.include_router(openvpn.router, prefix=settings.API_PREFIX)
 
 frontend_path = Path(__file__).parent.parent / "frontend"
 app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
