@@ -69,6 +69,30 @@
                     </span>
                 </div>
                 <div class="flex items-center space-x-2 sm:space-x-3 lg:space-x-4">
+                    <!-- OpenVPN Status Badge -->
+                    <div class="glass-effect rounded-xl px-3 py-2 theme-transition hidden lg:flex items-center space-x-2"
+                         :class="darkMode ? 'bg-slate-800/50 border border-slate-700/50' : 'bg-white/80 border border-slate-200/50'">
+                        <div class="relative">
+                            <div class="w-2.5 h-2.5 rounded-full"
+                                 :class="serviceStatus.is_active ? 'bg-green-500' : 'bg-red-500'"
+                                 style="animation: pulse-subtle 2s ease-in-out infinite;"></div>
+                            <div class="absolute inset-0 w-2.5 h-2.5 rounded-full animate-ping"
+                                 :class="serviceStatus.is_active ? 'bg-green-400' : 'bg-red-400'"
+                                 style="animation-duration: 2s;"></div>
+                        </div>
+                        <span class="text-xs font-medium theme-transition"
+                              :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                            VPN: <span :class="serviceStatus.is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.is_active ? 'ON' : 'OFF'"></span>
+                        </span>
+                    </div>
+                    
+                    <!-- Clients Link -->
+                    <a href="/templates/clients.html" 
+                       class="px-3 py-2 rounded-lg text-sm font-medium theme-transition hover:scale-105 active:scale-95 transition-transform"
+                       :class="darkMode ? 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50' : 'text-slate-600 hover:text-cyan-600 hover:bg-slate-100'">
+                        Clients
+                    </a>
+                    
                     <div class="text-right hidden sm:block">
                         <p class="text-xs font-bold tracking-wide theme-transition"
                            :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
@@ -258,7 +282,13 @@
 
         function dashboardApp() {
             return {
+                ...themeManager(),
                 username: '',
+                serviceStatus: {
+                    is_active: false,
+                    is_enabled: false,
+                    is_mock: false
+                },
 
                 async init() {
                     const token = localStorage.getItem('access_token');
@@ -280,9 +310,29 @@
 
                         const data = await response.json();
                         this.username = data.username;
+                        
+                        // Load OpenVPN service status
+                        await this.loadServiceStatus();
                     } catch (err) {
                         localStorage.removeItem('access_token');
                         window.location.href = '/templates/login.html';
+                    }
+                },
+                
+                async loadServiceStatus() {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/openvpn/service/status', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            this.serviceStatus = await response.json();
+                        }
+                    } catch (err) {
+                        console.error('Failed to load service status:', err);
                     }
                 },
 
