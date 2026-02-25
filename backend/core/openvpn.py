@@ -351,7 +351,8 @@ class OpenVPNManager:
         client_name: str,
         server_address: str,
         server_port: int = 1194,
-        protocol: str = "udp"
+        protocol: str = "udp",
+        os_type: str = "default"
     ) -> Optional[str]:
         """
         Generate .ovpn configuration file for client.
@@ -386,6 +387,9 @@ class OpenVPNManager:
                 with open(self.config.TA_KEY, 'r') as f:
                     ta_key = f.read()
             
+            os_type = (os_type or "default").lower()
+            os_directives = self._get_os_specific_directives(os_type)
+
             # Generate .ovpn configuration
             config = f"""# Atlas VPN - OpenVPN Client Configuration
 # Client: {client_name}
@@ -404,6 +408,8 @@ cipher AES-256-GCM
 auth SHA256
 key-direction 1
 verb 3
+
+{os_directives}
 
 <ca>
 {ca_cert}
@@ -426,6 +432,19 @@ verb 3
         except Exception as e:
             logger.error(f"Config generation failed: {e}")
             return None
+
+    def _get_os_specific_directives(self, os_type: str) -> str:
+        """Return additional directives optimized for target client OS."""
+        directives_by_os = {
+            "windows": "setenv opt block-outside-dns\nregister-dns",
+            "mac": "resolv-retry 30\nroute-delay 2",
+            "macos": "resolv-retry 30\nroute-delay 2",
+            "ios": "resolv-retry 30\nexplicit-exit-notify",
+            "mac_ios": "resolv-retry 30\nexplicit-exit-notify",
+            "android": "explicit-exit-notify\nremote-cert-tls server",
+            "linux": "resolv-retry infinite\nscript-security 2"
+        }
+        return directives_by_os.get(os_type, "")
     
     def generate_qr_code(self, config_content: str) -> Optional[str]:
         """

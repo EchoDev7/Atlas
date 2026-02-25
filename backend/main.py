@@ -8,15 +8,23 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from backend.config import settings
 from backend.database import init_db
-from backend.routers import auth, openvpn
+from backend.routers import auth, openvpn, vpn_users
+from backend.services.scheduler_service import get_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     init_db()
+    
+    # Start background scheduler for limit enforcement
+    scheduler = get_scheduler()
+    scheduler.start()
+    
     yield
-    # Shutdown (if needed in future)
+    
+    # Shutdown
+    scheduler.stop()
 
 
 app = FastAPI(
@@ -39,6 +47,7 @@ app.add_middleware(
 # Register routers
 app.include_router(auth.router, prefix=settings.API_PREFIX)
 app.include_router(openvpn.router, prefix=settings.API_PREFIX)
+app.include_router(vpn_users.router, prefix=settings.API_PREFIX)
 
 frontend_path = Path(__file__).parent.parent / "frontend"
 app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")

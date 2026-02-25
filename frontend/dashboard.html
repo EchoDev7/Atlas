@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" x-data="themeManager()" x-init="initTheme()" :class="{ 'dark': darkMode }">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -85,6 +85,18 @@
                             VPN: <span :class="serviceStatus.is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.is_active ? 'ON' : 'OFF'"></span>
                         </span>
                     </div>
+                    
+                    <!-- Dashboard Link -->
+                    <a href="/dashboard.html" 
+                       class="px-3 py-2 rounded-lg text-sm font-medium theme-transition hover:scale-105 active:scale-95 transition-transform"
+                       :class="darkMode ? 'text-cyan-400 bg-slate-800/50' : 'text-cyan-600 bg-cyan-50'">
+                        <span class="flex items-center space-x-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                            </svg>
+                            <span>Dashboard</span>
+                        </span>
+                    </a>
                     
                     <!-- Clients Link -->
                     <a href="/templates/clients.html" 
@@ -271,11 +283,15 @@
                     } else {
                         this.darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
                     }
+
+                    // Keep Tailwind dark class in sync immediately
+                    document.documentElement.classList.toggle('dark', this.darkMode);
                 },
                 
                 toggleTheme() {
                     this.darkMode = !this.darkMode;
                     localStorage.setItem('atlas-theme', this.darkMode ? 'dark' : 'light');
+                    document.documentElement.classList.toggle('dark', this.darkMode);
                 }
             }
         }
@@ -291,6 +307,9 @@
                 },
 
                 async init() {
+                    // Initialize theme first
+                    this.initTheme();
+                    
                     const token = localStorage.getItem('access_token');
                     if (!token) {
                         window.location.href = '/templates/login.html';
