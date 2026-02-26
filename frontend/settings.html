@@ -159,13 +159,13 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>Public IPv4 Address</span>
-                                    <span class="relative" @mouseenter="showTooltip('public_ipv4_address')" @mouseleave="hideTooltip('public_ipv4_address')">
-                                        <button type="button" @click.stop="toggleTooltip('public_ipv4_address')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'public_ipv4_address'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The public IP clients will connect to. Usually auto-detected, but editable if behind a NAT.</div>
+                                    <span>Server Address (IP or Domain)</span>
+                                    <span class="relative" @mouseenter="showTooltip('server_address')" @mouseleave="hideTooltip('server_address')">
+                                        <button type="button" @click.stop="toggleTooltip('server_address')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'server_address'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The IP or Domain name that clients will use to connect. Using a Domain is highly recommended for anti-censorship.</div>
                                     </span>
                                 </span>
-                                <input type="text" x-model="generalForm.public_ipv4_address" placeholder="203.0.113.10" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <input type="text" x-model="generalForm.server_address" placeholder="vpn.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
@@ -427,12 +427,13 @@
                                         <div x-cloak x-show="openTooltip === 'protocol'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">UDP is faster for streaming/gaming. TCP is slower but bypasses strict firewalls better. Recommended: UDP.</div>
                                     </span>
                                 </span>
-                                <select x-model="form.protocol" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <select x-model="form.protocol" :disabled="isProtocolForcedByObfuscation()" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="isProtocolForcedByObfuscation() ? (darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-400 cursor-not-allowed' : 'bg-slate-100 border-slate-300 text-slate-500 cursor-not-allowed') : (darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900')">
                                     <option value="udp">udp</option>
                                     <option value="tcp">tcp</option>
                                     <option value="udp6">udp6</option>
                                     <option value="tcp6">tcp6</option>
                                 </select>
+                                <p x-show="isProtocolForcedByObfuscation()" class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-amber-300' : 'text-amber-700'">TCP (Forced by Obfuscation)</p>
                             </label>
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
@@ -669,6 +670,43 @@
                         </div>
                     </div>
 
+                    <div x-show="activeSection === 'obfuscation'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Anti-DPI &amp; Obfuscation</h2>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Obfuscation Mode</span>
+                            <select x-model="form.obfuscation_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="standard">Standard</option>
+                                <option value="stealth">Stealth</option>
+                                <option value="http_proxy_basic">HTTP Proxy Basic</option>
+                                <option value="http_proxy_advanced">HTTP Proxy Advanced</option>
+                                <option value="socks5_proxy_injection">SOCKS5 Proxy Injection</option>
+                            </select>
+                        </label>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block" x-show="form.obfuscation_mode === 'http_proxy_basic' || form.obfuscation_mode === 'http_proxy_advanced'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Proxy Server</span>
+                                <input type="text" x-model="form.proxy_server" :placeholder="generalForm.server_address || 'vpn.example.com'" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block" x-show="form.obfuscation_mode === 'http_proxy_basic' || form.obfuscation_mode === 'http_proxy_advanced'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Proxy Port</span>
+                                <input type="number" min="1" max="65535" x-model.number="form.proxy_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block" x-show="form.obfuscation_mode === 'stealth' || form.obfuscation_mode === 'http_proxy_advanced'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Spoofed Host</span>
+                                <input type="text" x-model="form.spoofed_host" placeholder="speedtest.net" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block" x-show="form.obfuscation_mode === 'socks5_proxy_injection'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SOCKS Server</span>
+                                <input type="text" x-model="form.socks_server" :placeholder="generalForm.server_address || '127.0.0.1'" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block" x-show="form.obfuscation_mode === 'socks5_proxy_injection'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SOCKS Port</span>
+                                <input type="number" min="1" max="65535" x-model.number="form.socks_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+                    </div>
+
                     <div x-show="activeSection === 'performance'" class="space-y-4">
                         <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Performance &amp; Tuning</h2>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -676,9 +714,10 @@
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>MSSFix</span><span class="relative" @mouseenter="showTooltip('mssfix')" @mouseleave="hideTooltip('mssfix')"><button type="button" @click.stop="toggleTooltip('mssfix')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'mssfix'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Prevents packet fragmentation on bad networks. Recommended: 1450.</div></span></span><input type="number" min="0" max="9000" x-model.number="form.mssfix" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Send Buffer (sndbuf)</span><span class="relative" @mouseenter="showTooltip('sndbuf')" @mouseleave="hideTooltip('sndbuf')"><button type="button" @click.stop="toggleTooltip('sndbuf')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'sndbuf'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Increases network speed on fast servers. Recommended: 393216.</div></span></span><input type="number" min="0" x-model.number="form.sndbuf" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Receive Buffer (rcvbuf)</span><span class="relative" @mouseenter="showTooltip('rcvbuf')" @mouseleave="hideTooltip('rcvbuf')"><button type="button" @click.stop="toggleTooltip('rcvbuf')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'rcvbuf'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Increases network speed on fast servers. Recommended: 393216.</div></span></span><input type="number" min="0" x-model.number="form.rcvbuf" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
-                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Explicit Exit Notify</span><span class="relative" @mouseenter="showTooltip('explicit_exit_notify')" @mouseleave="hideTooltip('explicit_exit_notify')"><button type="button" @click.stop="toggleTooltip('explicit_exit_notify')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'explicit_exit_notify'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Tells the server/client to gracefully close the connection. Recommended: 1 (for UDP).</div></span></span><input type="number" min="0" max="10" x-model.number="form.explicit_exit_notify" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block" x-show="effectiveProtocol === 'udp'"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Explicit Exit Notify</span><span class="relative" @mouseenter="showTooltip('explicit_exit_notify')" @mouseleave="hideTooltip('explicit_exit_notify')"><button type="button" @click.stop="toggleTooltip('explicit_exit_notify')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'explicit_exit_notify'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Tells the server/client to gracefully close the connection. Recommended: 1 (for UDP).</div></span></span><input type="number" min="0" max="10" x-model.number="form.explicit_exit_notify" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block" x-show="effectiveProtocol === 'tcp'"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>TCP No Delay</span><span class="relative" @mouseenter="showTooltip('tcp_nodelay')" @mouseleave="hideTooltip('tcp_nodelay')"><button type="button" @click.stop="toggleTooltip('tcp_nodelay')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'tcp_nodelay'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Disables Nagle's algorithm to reduce TCP latency.</div></span></span><button type="button" @click="form.tcp_nodelay = !form.tcp_nodelay" class="mt-1 px-3 py-2 rounded-lg text-xs font-semibold" :class="form.tcp_nodelay ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.tcp_nodelay ? 'ON' : 'OFF'"></button></label>
                         </div>
-                        <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                        <div class="rounded-xl border px-4 py-3 flex items-center justify-between" x-show="effectiveProtocol === 'udp'" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
                             <div>
                                 <p class="text-sm font-semibold theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
                                     <span>Fast I/O</span>
@@ -712,6 +751,7 @@
                             </div>
                             <button type="button" @click="form.enable_auth_nocache = !form.enable_auth_nocache" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.enable_auth_nocache ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.enable_auth_nocache ? 'ON' : 'OFF'"></button>
                         </div>
+<<<<<<< HEAD
                         
                         <h3 class="text-lg font-semibold mt-6 theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Client Behavior</h3>
                         <div class="grid grid-cols-1 gap-4">
@@ -752,6 +792,8 @@
                             </div>
                             <button type="button" @click="form.persist_tun = !form.persist_tun" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.persist_tun ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.persist_tun ? 'ON' : 'OFF'"></button>
                         </div>
+=======
+>>>>>>> feature-server-settings
                     </div>
 
                     <div x-show="activeSection === 'custom'" class="space-y-4">
@@ -776,6 +818,112 @@
                             </span>
                             <textarea x-model="form.advanced_client_push" rows="6" placeholder="dhcp-option DOMAIN corp.local" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
                         </label>
+
+                        <!-- OS-Specific Directives Section (Inside Custom Tab) -->
+                        <div class="rounded-2xl border p-6 theme-transition" :class="darkMode ? 'bg-slate-800/30 border-slate-700' : 'bg-white border-slate-200'">
+                            <h3 class="text-base font-semibold mb-4 theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                OS-Specific Directives
+                            </h3>
+                            <p class="text-xs mb-4 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                Inject custom OpenVPN directives per operating system. These will be appended to client configs based on the target OS.
+                            </p>
+                            
+                            <!-- OS Tabs -->
+                            <div x-data="{ activeOsTab: 'ios' }" class="space-y-4">
+                                <div class="flex gap-2 border-b" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                                    <button @click="activeOsTab = 'ios'" type="button" 
+                                            class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                            :class="activeOsTab === 'ios' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                        iOS
+                                    </button>
+                                    <button @click="activeOsTab = 'android'" type="button"
+                                            class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                            :class="activeOsTab === 'android' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                        Android
+                                    </button>
+                                    <button @click="activeOsTab = 'windows'" type="button"
+                                            class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                            :class="activeOsTab === 'windows' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                        Windows
+                                    </button>
+                                    <button @click="activeOsTab = 'mac'" type="button"
+                                            class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                            :class="activeOsTab === 'mac' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                        Mac
+                                    </button>
+                                </div>
+
+                                <!-- iOS Tab -->
+                                <div x-show="activeOsTab === 'ios'" x-transition>
+                                    <div class="space-y-4">
+                                        <div class="rounded-xl border p-4 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700' : 'bg-white border-slate-300'">
+                                            <h4 class="text-sm font-semibold mb-2 theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
+                                                📱 iOS/Mac Config Template
+                                            </h4>
+                                            <p class="text-xs mb-3 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                                This is the complete iOS/Mac OpenVPN configuration template. You can manually edit any directive below. Changes will be reflected in downloaded .ovpn files for iOS/Mac users.
+                                            </p>
+                                            <div class="flex items-center gap-2 mb-3">
+                                                <span class="text-xs font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                    ⚠️ Restrictions:
+                                                </span>
+                                                <span class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                                    sndbuf, rcvbuf, block-outside-dns, comp-lzo, compress, explicit-exit-notify (TCP) are automatically excluded
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <label class="block">
+                                            <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                <span>iOS/Mac Full Configuration</span>
+                                                <span class="text-xs px-2 py-0.5 rounded-full" :class="darkMode ? 'bg-cyan-500/20 text-cyan-400' : 'bg-cyan-100 text-cyan-700'">
+                                                    Editable
+                                                </span>
+                                            </span>
+                                            <textarea x-model="form.custom_ios" rows="20" placeholder="# Enter custom directives here&#10;# Example:&#10;# route 192.168.10.0 255.255.255.0&#10;# setenv opt block-outside-dns" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs leading-relaxed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                            <p class="mt-2 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
+                                                💡 Tip: The base iOS config (client, dev tun, proto, remote, certificates, etc.) is auto-generated. Use this field to add extra custom directives that will be injected into the iOS config.
+                                            </p>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Android Tab -->
+                                <div x-show="activeOsTab === 'android'" x-transition>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Android Custom Directives
+                                        </span>
+                                        <textarea x-model="form.custom_android" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                    </label>
+                                </div>
+
+                                <!-- Windows Tab -->
+                                <div x-show="activeOsTab === 'windows'" x-transition>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Windows Custom Directives
+                                        </span>
+                                        <textarea x-model="form.custom_windows" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                        <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
+                                            Note: block-outside-dns is automatically added for Windows clients.
+                                        </p>
+                                    </label>
+                                </div>
+
+                                <!-- Mac Tab -->
+                                <div x-show="activeOsTab === 'mac'" x-transition>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Mac Custom Directives
+                                        </span>
+                                        <textarea x-model="form.custom_mac" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                        <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
+                                            Note: Mac blocks sndbuf/rcvbuf modifications (automatically excluded).
+                                        </p>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -832,6 +980,7 @@
                     { key: 'network', label: 'Network & Core' },
                     { key: 'routing', label: 'Routing & DNS' },
                     { key: 'security', label: 'Security & Crypto' },
+                    { key: 'obfuscation', label: 'Anti-DPI & Obfuscation' },
                     { key: 'performance', label: 'Performance' },
                     { key: 'session', label: 'Session & Management' },
                     { key: 'custom', label: 'Custom' },
@@ -862,16 +1011,35 @@
                     sndbuf: 393216,
                     rcvbuf: 393216,
                     fast_io: false,
+                    tcp_nodelay: false,
                     explicit_exit_notify: 1,
                     keepalive_ping: 10,
                     keepalive_timeout: 120,
                     inactive_timeout: 300,
                     management_port: 5555,
                     verbosity: 3,
+                    enable_auth_nocache: true,
                     custom_directives: '',
                     advanced_client_push: '',
+                    custom_ios: '',
+                    custom_android: '',
+                    custom_windows: '',
+                    custom_mac: '',
+                    obfuscation_mode: 'standard',
+                    proxy_server: '',
+                    proxy_address: '',
+                    proxy_port: 8080,
+                    spoofed_host: '',
+                    socks_server: '',
+                    socks_port: null,
+                    stunnel_port: 443,
+                    sni_domain: '',
+                    cdn_domain: '',
+                    ws_path: '/stream',
+                    ws_port: 8080,
                 },
                 generalForm: {
+                    server_address: '',
                     public_ipv4_address: '',
                     public_ipv6_address: '',
                     global_ipv6_support: true,
@@ -897,6 +1065,27 @@
                     visible: false,
                     message: '',
                     type: 'success',
+                },
+
+                get effectiveProtocol() {
+                    if ((this.form.obfuscation_mode || '').toLowerCase() !== 'standard') {
+                        return 'tcp';
+                    }
+                    const selected = (this.form.protocol || 'udp').toLowerCase();
+                    return selected.includes('udp') ? 'udp' : 'tcp';
+                },
+
+                isProtocolForcedByObfuscation() {
+                    return (this.form.obfuscation_mode || '').toLowerCase() !== 'standard';
+                },
+
+                syncProtocolSpecificSettings() {
+                    if (this.effectiveProtocol === 'tcp') {
+                        this.form.fast_io = false;
+                        this.form.explicit_exit_notify = 0;
+                    } else {
+                        this.form.tcp_nodelay = false;
+                    }
                 },
 
                 initTheme() {
@@ -945,6 +1134,47 @@
                         }
                     });
 
+                    this.$watch('form.obfuscation_mode', (mode) => {
+                        if (mode !== 'standard') {
+                            this.form.protocol = 'tcp';
+                            this.form.port = 443;
+                        }
+                        if ((mode === 'http_proxy_basic' || mode === 'http_proxy_advanced') && !(this.form.proxy_server || '').trim()) {
+                            this.form.proxy_server = (this.generalForm.server_address || '').trim();
+                        }
+                        if (mode !== 'socks5_proxy_injection') {
+                            this.form.socks_server = '';
+                            this.form.socks_port = null;
+                        }
+                        if (mode !== 'stealth' && mode !== 'http_proxy_advanced') {
+                            this.form.spoofed_host = '';
+                        }
+                        if (mode !== 'http_proxy_basic' && mode !== 'http_proxy_advanced') {
+                            this.form.proxy_server = '';
+                            this.form.proxy_port = 8080;
+                        }
+                        if (mode === 'standard') {
+                            this.form.proxy_address = '';
+                        } else {
+                            this.form.proxy_address = this.form.proxy_server || '';
+                        }
+                        this.syncProtocolSpecificSettings();
+                    });
+
+                    this.$watch('form.protocol', () => {
+                        this.syncProtocolSpecificSettings();
+                    });
+
+                    this.$watch('form.proxy_server', (proxyServer) => {
+                        this.form.proxy_address = (proxyServer || '').trim();
+                    });
+
+                    this.$watch('generalForm.server_address', (serverAddress) => {
+                        if ((this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced') && !(this.form.proxy_server || '').trim()) {
+                            this.form.proxy_server = (serverAddress || '').trim();
+                        }
+                    });
+
                     await this.loadSettings();
                 },
 
@@ -990,6 +1220,7 @@
                         this.generalForm = {
                             ...this.generalForm,
                             ...generalData,
+                            server_address: generalData.server_address || generalData.public_ipv4_address || '',
                             public_ipv4_address: generalData.public_ipv4_address || '',
                             public_ipv6_address: generalData.public_ipv6_address || '',
                             admin_allowed_ips: generalData.admin_allowed_ips || '0.0.0.0/0',
@@ -1037,10 +1268,22 @@
                             ws_port: Number(data.ws_port) || 8080,
                             tcp_nodelay: !!data.tcp_nodelay,
                             enable_auth_nocache: data.enable_auth_nocache !== undefined ? !!data.enable_auth_nocache : true,
+<<<<<<< HEAD
                             resolv_retry_mode: data.resolv_retry_mode || 'infinite',
                             persist_key: data.persist_key !== undefined ? !!data.persist_key : true,
                             persist_tun: data.persist_tun !== undefined ? !!data.persist_tun : true,
+=======
+>>>>>>> feature-server-settings
                         };
+                        if (this.form.obfuscation_mode !== 'standard') {
+                            this.form.protocol = 'tcp';
+                            this.form.port = 443;
+                            if ((this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced') && !(this.form.proxy_server || '').trim()) {
+                                this.form.proxy_server = (this.generalForm.server_address || '').trim();
+                            }
+                        }
+                        this.form.proxy_address = this.form.proxy_server || '';
+                        this.syncProtocolSpecificSettings();
                         if (!this.generalForm.global_ipv6_support) {
                             this.form.ipv6_network = '';
                             this.form.ipv6_prefix = null;
@@ -1073,6 +1316,7 @@
                             mssfix: Number(this.form.mssfix),
                             sndbuf: Number(this.form.sndbuf),
                             rcvbuf: Number(this.form.rcvbuf),
+                            tcp_nodelay: !!this.form.tcp_nodelay,
                             explicit_exit_notify: Number(this.form.explicit_exit_notify),
                             keepalive_ping: Number(this.form.keepalive_ping),
                             keepalive_timeout: Number(this.form.keepalive_timeout),
@@ -1080,9 +1324,12 @@
                             management_port: Number(this.form.management_port),
                             verbosity: Number(this.form.verbosity),
                             enable_auth_nocache: Boolean(this.form.enable_auth_nocache),
+<<<<<<< HEAD
                             resolv_retry_mode: this.form.resolv_retry_mode || 'infinite',
                             persist_key: Boolean(this.form.persist_key),
                             persist_tun: Boolean(this.form.persist_tun),
+=======
+>>>>>>> feature-server-settings
                             protocol: this.form.protocol,
                             device_type: this.form.device_type,
                             topology: 'subnet',
@@ -1099,7 +1346,37 @@
                             push_custom_routes: (this.form.push_custom_routes || '').trim() || null,
                             custom_directives: (this.form.custom_directives || '').trim(),
                             advanced_client_push: (this.form.advanced_client_push || '').trim() || null,
+                            obfuscation_mode: this.form.obfuscation_mode,
+                            proxy_server: this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced'
+                                ? ((this.form.proxy_server || '').trim() || (this.generalForm.server_address || '').trim() || null)
+                                : null,
+                            proxy_address: this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced'
+                                ? ((this.form.proxy_server || '').trim() || (this.generalForm.server_address || '').trim() || null)
+                                : null,
+                            proxy_port: Number(this.form.proxy_port),
+                            spoofed_host: this.form.obfuscation_mode === 'stealth' || this.form.obfuscation_mode === 'http_proxy_advanced'
+                                ? ((this.form.spoofed_host || 'speedtest.net').trim() || 'speedtest.net')
+                                : null,
+                            socks_server: this.form.obfuscation_mode === 'socks5_proxy_injection' ? ((this.form.socks_server || '').trim() || null) : null,
+                            socks_port: this.form.obfuscation_mode === 'socks5_proxy_injection' ? Number(this.form.socks_port) : null,
+                            stunnel_port: Number(this.form.stunnel_port),
+                            sni_domain: null,
+                            cdn_domain: null,
+                            ws_path: (this.form.ws_path || '').trim() || '/stream',
+                            ws_port: Number(this.form.ws_port),
                         };
+
+                        if (payload.obfuscation_mode !== 'standard') {
+                            payload.protocol = 'tcp';
+                            payload.port = 443;
+                        }
+
+                        if ((payload.protocol || '').toLowerCase().includes('udp')) {
+                            payload.tcp_nodelay = false;
+                        } else {
+                            payload.fast_io = false;
+                            payload.explicit_exit_notify = 0;
+                        }
 
                         const response = await fetch('/api/settings/openvpn', {
                             method: 'PATCH',
@@ -1135,7 +1412,27 @@
                             push_custom_routes: updated.push_custom_routes || '',
                             custom_directives: updated.custom_directives || '',
                             advanced_client_push: updated.advanced_client_push || '',
+                            obfuscation_mode: updated.obfuscation_mode || 'standard',
+                            proxy_server: updated.proxy_server || updated.proxy_address || '',
+                            proxy_address: updated.proxy_address || '',
+                            proxy_port: Number(updated.proxy_port) || 8080,
+                            spoofed_host: updated.spoofed_host || '',
+                            socks_server: updated.socks_server || '',
+                            socks_port: Number.isInteger(updated.socks_port) ? updated.socks_port : null,
+                            stunnel_port: Number(updated.stunnel_port) || 443,
+                            sni_domain: updated.sni_domain || '',
+                            cdn_domain: updated.cdn_domain || '',
+                            ws_path: updated.ws_path || '/stream',
+                            ws_port: Number(updated.ws_port) || 8080,
+                            tcp_nodelay: !!updated.tcp_nodelay,
                         };
+
+                        if (this.form.obfuscation_mode !== 'standard') {
+                            this.form.protocol = 'tcp';
+                            this.form.port = 443;
+                        }
+                        this.form.proxy_address = this.form.proxy_server || '';
+                        this.syncProtocolSpecificSettings();
 
                         this.showToast('Settings applied successfully', 'success');
                     } catch (error) {
@@ -1231,6 +1528,7 @@
                     try {
                         const token = localStorage.getItem('access_token');
                         const payload = {
+                            server_address: (this.generalForm.server_address || '').trim() || null,
                             public_ipv4_address: (this.generalForm.public_ipv4_address || '').trim() || null,
                             public_ipv6_address: (this.generalForm.public_ipv6_address || '').trim() || null,
                             global_ipv6_support: !!this.generalForm.global_ipv6_support,
@@ -1278,6 +1576,7 @@
                         this.generalForm = {
                             ...this.generalForm,
                             ...updated,
+                            server_address: updated.server_address || '',
                             public_ipv4_address: updated.public_ipv4_address || '',
                             public_ipv6_address: updated.public_ipv6_address || '',
                             admin_allowed_ips: updated.admin_allowed_ips || '0.0.0.0/0',

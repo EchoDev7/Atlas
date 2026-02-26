@@ -26,8 +26,10 @@ from backend.schemas.vpn_user import (
     PasswordChangeRequest,
     PasswordResetResponse
 )
-from backend.core.openvpn import OpenVPNManager
+from backend.core.openvpn import OpenVPNManager, validate_openvpn_readiness
 from backend.services.scheduler_service import get_scheduler
+from backend.models.general_settings import GeneralSettings
+from backend.models.openvpn_settings import OpenVPNSettings
 
 logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -36,6 +38,42 @@ router = APIRouter(prefix="/users", tags=["VPN Users"])
 
 # Initialize OpenVPN manager
 openvpn_manager = OpenVPNManager()
+
+
+def _get_or_create_general_settings(db: Session) -> GeneralSettings:
+    settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+    if settings:
+        return settings
+    settings = GeneralSettings()
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return settings
+
+
+def _get_or_create_openvpn_settings(db: Session) -> OpenVPNSettings:
+    settings = db.query(OpenVPNSettings).order_by(OpenVPNSettings.id.asc()).first()
+    if settings:
+        return settings
+    settings = OpenVPNSettings()
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return settings
+
+
+def _validate_required_settings(db: Session) -> None:
+    """Stage 1: The Gatekeeper - Validate required settings before config generation."""
+    general = _get_or_create_general_settings(db)
+    openvpn = _get_or_create_openvpn_settings(db)
+    
+    missing = validate_openvpn_readiness(general, openvpn)
+    
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot generate config. Missing required fields: {', '.join(missing)}."
+        )
 
 
 @router.get("", response_model=VPNUserListResponse)
@@ -264,6 +302,9 @@ async def download_config(
     
     if protocol == "openvpn":
         try:
+            # Pre-flight validation of required settings
+            _validate_required_settings(db)
+            
             # Find existing active OpenVPN config; auto-provision if missing
             config = next((c for c in user.configs if c.protocol == "openvpn" and c.is_active), None)
             created_missing_config = False
@@ -298,9 +339,6 @@ async def download_config(
                 db.add(config)
                 db.commit()
                 db.refresh(user)
-            
-            # Add auth-user-pass directive
-            config_content += "\nauth-user-pass\n"
             
             return Response(
                 content=config_content,
@@ -339,6 +377,9 @@ async def get_config(
     
     if protocol == "openvpn":
         try:
+            # Pre-flight validation of required settings
+            _validate_required_settings(db)
+            
             config_content = openvpn_manager.generate_client_config(
                 user.username,
                 server_address or "vpn.example.com"

@@ -7,7 +7,8 @@ import platform
 import logging
 import time
 from pathlib import Path
-from typing import Iterator, Optional, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Iterator
+from fastapi import HTTPException
 from datetime import datetime
 import qrcode
 import io
@@ -115,6 +116,48 @@ Feb 25 14:00:00 atlas systemd[1]: Started OpenVPN service for server.
 """
 
 
+def validate_openvpn_readiness(general_settings, openvpn_settings) -> List[str]:
+    """
+    Stage 1: The Gatekeeper - Granular validation of required fields.
+    Returns list of human-readable missing field names.
+    """
+    missing = []
+    
+    # Absolute Requirements
+    if not general_settings.server_address or not general_settings.server_address.strip():
+        missing.append("Server IP/Domain")
+    if not openvpn_settings.port:
+        missing.append("Port")
+    if not openvpn_settings.protocol or not openvpn_settings.protocol.strip():
+        missing.append("Protocol")
+    
+    # Conditional Requirements
+    if openvpn_settings.obfuscation_mode and openvpn_settings.obfuscation_mode != "standard":
+        if not openvpn_settings.proxy_port:
+            missing.append("Proxy Port (Required for HTTP Proxy)")
+        if openvpn_settings.obfuscation_mode in ["http_proxy_basic", "http_proxy_advanced"] and (
+            not openvpn_settings.proxy_address or not openvpn_settings.proxy_address.strip()
+        ):
+            missing.append("Proxy Address (Required for HTTP Proxy)")
+    
+    if openvpn_settings.tls_mode and openvpn_settings.tls_mode != "none":
+        # TLS keys should exist - this is a logical check since actual file existence
+        # would be checked during config generation
+        pass
+    
+    return missing
+
+
+def _safe_int(value, default=None):
+    """Stage 2: The Safe Builder - Convert to int safely."""
+    try:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return default
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
 class OpenVPNManager:
     """
     Core OpenVPN management logic.
@@ -179,9 +222,12 @@ class OpenVPNManager:
             "management_port": 5555,
             "verbosity": 3,
             "enable_auth_nocache": True,
+<<<<<<< HEAD
             "resolv_retry_mode": "infinite",
             "persist_key": True,
             "persist_tun": True,
+=======
+>>>>>>> feature-server-settings
             "custom_directives": None,
             "advanced_client_push": None,
         }
@@ -796,6 +842,7 @@ class OpenVPNManager:
         lines: List[str] = []
         
         # MANDATORY FIXED CORE
+<<<<<<< HEAD
         device_type = str(openvpn_settings.get("device_type", "tun")).strip().lower()
         resolv_retry_mode = str(openvpn_settings.get("resolv_retry_mode", "infinite")).strip().lower()
         persist_key = bool(openvpn_settings.get("persist_key", True))
@@ -804,10 +851,15 @@ class OpenVPNManager:
         lines.extend([
             "# Atlas VPN - OpenVPN Client Configuration",
             "# OS: iOS/macOS",
+=======
+        lines.extend([
+            "# Atlas VPN - OpenVPN Client Configuration",
+>>>>>>> feature-server-settings
             f"# Client: {client_name}",
             f"# Generated: {datetime.utcnow().isoformat()}",
             "",
             "client",
+<<<<<<< HEAD
             f"dev {device_type}",
         ])
         
@@ -827,6 +879,13 @@ class OpenVPNManager:
             lines.append("persist-tun")
         
         lines.extend([
+=======
+            "dev tun",
+            "resolv-retry infinite",
+            "nobind",
+            "persist-key",
+            "persist-tun",
+>>>>>>> feature-server-settings
             "remote-cert-tls server",
             "verb 3",
         ])
@@ -1052,9 +1111,74 @@ class OpenVPNManager:
         Returns:
             Complete .ovpn configuration as string
         """
+        print(f"!!! DEBUG OS DETECTED: {os_type} !!!")
+        
+        # EARLY RETURN FOR APPLE DEVICES - Use standalone whitelist function
+        if os_type and os_type.lower() in ['ios', 'mac', 'macos']:
+            try:
+                openvpn_settings, general_settings = self._load_runtime_settings()
+                return self._generate_apple_config(
+                    client_name=client_name,
+                    openvpn_settings=openvpn_settings,
+                    general_settings=general_settings,
+                    server_address=server_address,
+                    server_port=server_port,
+                    protocol=protocol
+                )
+            except Exception as e:
+                logger.error(f"Apple config generation failed: {e}")
+                return None
+        
         try:
-            resolved_port, resolved_protocol = self._resolve_client_transport_settings(server_port, protocol)
-            resolved_server_address = self._resolve_client_remote_address(server_address, resolved_protocol)
+            openvpn_settings, general_settings = self._load_runtime_settings()
+
+            resolved_port = int(server_port if server_port is not None else openvpn_settings.get("port", 1194))
+            resolved_protocol = str(protocol or openvpn_settings.get("protocol", "udp")).strip().lower()
+            obfuscation_mode = str(openvpn_settings.get("obfuscation_mode") or "standard").strip().lower()
+            effective_protocol = "tcp" if obfuscation_mode != "standard" else resolved_protocol
+            resolved_server_address = (
+                (server_address or "").strip()
+                or (general_settings.get("server_address") or "").strip()
+                or "YOUR_SERVER_IP"
+            )
+
+            obfuscation_settings = {
+                "obfuscation_mode": openvpn_settings.get("obfuscation_mode"),
+                "proxy_server": openvpn_settings.get("proxy_server"),
+                "proxy_address": openvpn_settings.get("proxy_address"),
+                "proxy_port": openvpn_settings.get("proxy_port"),
+                "spoofed_host": openvpn_settings.get("spoofed_host"),
+                "socks_server": openvpn_settings.get("socks_server"),
+                "socks_port": openvpn_settings.get("socks_port"),
+                "stunnel_port": openvpn_settings.get("stunnel_port"),
+                "sni_domain": openvpn_settings.get("sni_domain"),
+                "cdn_domain": openvpn_settings.get("cdn_domain"),
+                "ws_path": openvpn_settings.get("ws_path"),
+                "ws_port": openvpn_settings.get("ws_port"),
+            }
+
+            raw_data_ciphers = openvpn_settings.get("data_ciphers") or "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
+            if isinstance(raw_data_ciphers, list):
+                client_data_ciphers = ":".join([cipher.strip() for cipher in raw_data_ciphers if cipher and cipher.strip()])
+            else:
+                client_data_ciphers = str(raw_data_ciphers).strip() or "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
+            data_cipher_fallback = client_data_ciphers.split(":")[0].strip() if ":" in client_data_ciphers else client_data_ciphers
+            auth_digest = str(openvpn_settings.get("auth_digest") or "SHA256").strip().upper()
+            tls_version_min = str(openvpn_settings.get("tls_version_min") or "1.2").strip()
+            tls_mode = str(openvpn_settings.get("tls_mode") or "tls-crypt").strip().lower()
+            tcp_nodelay = bool(openvpn_settings.get("tcp_nodelay", False))
+            explicit_exit_notify = openvpn_settings.get("explicit_exit_notify")
+
+            (
+                client_protocol,
+                client_remote_line,
+                obfuscation_directives,
+            ) = self._build_client_transport_directives(
+                server_address=resolved_server_address,
+                default_port=resolved_port,
+                default_protocol=effective_protocol,
+                obfuscation_settings=obfuscation_settings,
+            )
 
             if not self.is_production:
                 # Mock certificate content for development
@@ -1078,6 +1202,7 @@ class OpenVPNManager:
             
             # Default builder for non-Apple devices
             is_windows = (os_type or "").lower() == "windows"
+<<<<<<< HEAD
             device_type = str(openvpn_settings.get("device_type", "tun")).strip().lower()
             resolv_retry_mode = str(openvpn_settings.get("resolv_retry_mode", "infinite")).strip().lower()
             persist_key = bool(openvpn_settings.get("persist_key", True))
@@ -1087,10 +1212,15 @@ class OpenVPNManager:
             config_lines: List[str] = [
                 "# Atlas VPN - OpenVPN Client Configuration",
                 f"# OS: {os_display}",
+=======
+            config_lines: List[str] = [
+                "# Atlas VPN - OpenVPN Client Configuration",
+>>>>>>> feature-server-settings
                 f"# Client: {client_name}",
                 f"# Generated: {datetime.utcnow().isoformat()}",
                 "",
                 "client",
+<<<<<<< HEAD
                 f"dev {device_type}",
                 f"proto {client_protocol}",
                 client_remote_line,
@@ -1115,25 +1245,31 @@ class OpenVPNManager:
                 "remote-cert-tls server",
                 "verb 3",
             ])
+=======
+                "dev tun",
+                f"proto {client_protocol}",
+                client_remote_line,
+                "resolv-retry infinite",
+                "nobind",
+                "persist-key",
+                "persist-tun",
+                "remote-cert-tls server",
+                "verb 3",
+            ]
+>>>>>>> feature-server-settings
 
-            # Generate .ovpn configuration
-            config = f"""# Atlas VPN - OpenVPN Client Configuration
-# Client: {client_name}
-# Generated: {datetime.utcnow().isoformat()}
+            # Conditional Whitelist: Cryptography (Always Safe)
+            if client_data_ciphers:
+                config_lines.append(f"data-ciphers {client_data_ciphers}")
+            if data_cipher_fallback:
+                config_lines.append(f"data-ciphers-fallback {data_cipher_fallback}")
+            if auth_digest:
+                config_lines.append(f"auth {auth_digest}")
+            if tls_version_min:
+                config_lines.append(f"tls-version-min {tls_version_min}")
 
-client
-dev tun
-proto {resolved_protocol}
-remote {resolved_server_address} {resolved_port}
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-remote-cert-tls server
-cipher AES-256-GCM
-auth SHA256
-key-direction 1
-verb 3
+            if tls_mode == "tls-auth":
+                config_lines.append("key-direction 1")
 
             # Stage 2: Safe Builder - Extract DB values with NoneType protection
             tun_mtu = _safe_int(openvpn_settings.get("tun_mtu"))
@@ -1153,11 +1289,17 @@ verb 3
             if mssfix:
                 config_lines.append(f"mssfix {int(mssfix)}")
             
+<<<<<<< HEAD
             # sndbuf/rcvbuf: Only for non-Apple devices (Android/Windows/Linux)
             # Apple devices (iOS/Mac) don't support these directives
             if sndbuf and sndbuf > 0:
                 config_lines.append(f"sndbuf {int(sndbuf)}")
             if rcvbuf and rcvbuf > 0:
+=======
+            if sndbuf:
+                config_lines.append(f"sndbuf {int(sndbuf)}")
+            if rcvbuf:
+>>>>>>> feature-server-settings
                 config_lines.append(f"rcvbuf {int(rcvbuf)}")
             
             # Conditional Whitelist: Keepalive
@@ -1196,17 +1338,30 @@ verb 3
                     if route_clean:
                         config_lines.append(f"route {route_clean}")
             
+<<<<<<< HEAD
             # Windows-only directive (NOT supported on iOS/Mac)
+=======
+            # Windows-only directive
+>>>>>>> feature-server-settings
             if is_windows:
                 config_lines.append("block-outside-dns")
 
-<cert>
-{client_cert}
-</cert>
+            # Conditional Whitelist: Obfuscation Directives (Proxy/SOCKS)
+            # STRICT BLACKLIST: Never inject comp-lzo or compress (deprecated/vulnerable)
+            for directive in obfuscation_directives:
+                normalized = (directive or "").strip().lower()
+                if normalized:
+                    # Blacklist forbidden directives
+                    if "comp-lzo" in normalized or "compress" in normalized:
+                        continue
+                    config_lines.append((directive or "").strip())
 
-<key>
-{client_key}
-</key>
+            # AUTHENTICATION: auth-user-pass and conditional auth-nocache (BEFORE certificates)
+            config_lines.append("")
+            config_lines.append("auth-user-pass")
+            enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
+            if enable_auth_nocache:
+                config_lines.append("auth-nocache")
 
             # CERTIFICATES (always last for readability)
             config_lines.extend(
@@ -1253,6 +1408,17 @@ verb 3
                             continue
                         config_lines.append(line.strip())
             
+<<<<<<< HEAD
+=======
+            # Always add auth-user-pass for user authentication
+            config_lines.append("")
+            config_lines.append("auth-user-pass")
+            enable_auth_nocache_final = bool(openvpn_settings.get("enable_auth_nocache", True))
+            if enable_auth_nocache_final:
+                config_lines.append("auth-nocache")
+            config_lines.append("")
+
+>>>>>>> feature-server-settings
             config = "\n".join(config_lines)
             
             # Stage 3: Final Sanity Check - Verify core directives exist
@@ -1264,6 +1430,91 @@ verb 3
         except Exception as e:
             logger.error(f"Config generation failed: {e}")
             return None
+
+    @staticmethod
+    def _extract_remote_hostname(value: str) -> str:
+        candidate = (value or "").strip()
+        if not candidate:
+            return ""
+
+        parsed = urlparse(candidate if "://" in candidate else f"//{candidate}")
+        hostname = (parsed.hostname or "").strip()
+        if hostname:
+            return hostname
+
+        return candidate.split("/")[0].split(":")[0].strip()
+
+    def _build_client_transport_directives(
+        self,
+        server_address: str,
+        default_port: int,
+        default_protocol: str,
+        obfuscation_settings: Dict[str, any],
+    ) -> Tuple[str, str, List[str]]:
+        mode = str(obfuscation_settings.get("obfuscation_mode", "standard") or "standard").strip().lower()
+
+        proxy_server = (obfuscation_settings.get("proxy_server") or "").strip()
+        proxy_address = (obfuscation_settings.get("proxy_address") or "").strip()
+        proxy_target = proxy_server or proxy_address or server_address
+        proxy_port = int(obfuscation_settings.get("proxy_port") or 8080)
+        spoofed_host = (obfuscation_settings.get("spoofed_host") or "").strip()
+        socks_server = (obfuscation_settings.get("socks_server") or "").strip()
+        socks_port = obfuscation_settings.get("socks_port")
+        stunnel_port = int(obfuscation_settings.get("stunnel_port") or 443)
+        sni_domain = (obfuscation_settings.get("sni_domain") or "").strip()
+        ws_path = (obfuscation_settings.get("ws_path") or "/stream").strip() or "/stream"
+        ws_port = int(obfuscation_settings.get("ws_port") or 8080)
+        cdn_raw = (obfuscation_settings.get("cdn_domain") or "").strip()
+        cdn_host = self._extract_remote_hostname(cdn_raw)
+
+        if mode == "stealth":
+            directives: List[str] = ["http-proxy-retry"]
+            if spoofed_host:
+                directives.append(f"http-proxy-option CUSTOM-HEADER Host {spoofed_host}")
+            return "tcp", f"remote {server_address} 443", directives
+
+        if mode == "http_proxy_basic":
+            directives = [
+                f"http-proxy {proxy_target} {proxy_port}",
+                "http-proxy-retry",
+            ]
+            return "tcp", f"remote {server_address} 443", directives
+
+        if mode == "http_proxy_advanced":
+            directives: List[str] = [
+                f"http-proxy {proxy_target} {proxy_port}",
+                "http-proxy-retry",
+            ]
+            if spoofed_host:
+                directives.append(f"http-proxy-option CUSTOM-HEADER Host {spoofed_host}")
+            return "tcp", f"remote {server_address} 443", directives
+
+        if mode == "socks5_proxy_injection":
+            socks_target = socks_server or proxy_target
+            socks_target_port = int(socks_port or 1080)
+            directives = [
+                f"socks-proxy {socks_target} {socks_target_port}",
+                "socks-proxy-retry",
+            ]
+            return "tcp", f"remote {server_address} 443", directives
+
+        if mode == "tls_tunnel":
+            directives = [
+                "# TLS tunnel mode: run local Stunnel client before connecting.",
+            ]
+            if sni_domain:
+                directives.append(f"# TLS SNI domain hint: {sni_domain}")
+            return "tcp", f"remote 127.0.0.1 {stunnel_port}", directives
+
+        if mode == "websocket_cdn":
+            remote_target = cdn_host or server_address
+            directives = [
+                f"# WebSocket path hint: {ws_path}",
+                f"# Local WebSocket port hint: {ws_port}",
+            ]
+            return "tcp", f"remote {remote_target} 443", directives
+
+        return default_protocol, f"remote {server_address} {default_port}", []
 
     def _resolve_client_transport_settings(
         self,
@@ -1293,6 +1544,49 @@ verb 3
         resolved_protocol = str(protocol or "udp").strip().lower()
         return resolved_port, resolved_protocol
 
+    def _resolve_client_obfuscation_settings(self) -> Dict[str, any]:
+        try:
+            from backend.database import SessionLocal
+            from backend.models.openvpn_settings import OpenVPNSettings
+
+            db = SessionLocal()
+            try:
+                settings = db.query(OpenVPNSettings).order_by(OpenVPNSettings.id.asc()).first()
+                if settings:
+                    return {
+                        "obfuscation_mode": settings.obfuscation_mode,
+                        "proxy_server": settings.proxy_server,
+                        "proxy_address": settings.proxy_address,
+                        "proxy_port": settings.proxy_port,
+                        "spoofed_host": settings.spoofed_host,
+                        "socks_server": settings.socks_server,
+                        "socks_port": settings.socks_port,
+                        "stunnel_port": settings.stunnel_port,
+                        "sni_domain": settings.sni_domain,
+                        "cdn_domain": settings.cdn_domain,
+                        "ws_path": settings.ws_path,
+                        "ws_port": settings.ws_port,
+                    }
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.warning(f"Falling back to default obfuscation settings: {exc}")
+
+        return {
+            "obfuscation_mode": "standard",
+            "proxy_server": None,
+            "proxy_address": None,
+            "proxy_port": 8080,
+            "spoofed_host": "speedtest.net",
+            "socks_server": None,
+            "socks_port": None,
+            "stunnel_port": 443,
+            "sni_domain": None,
+            "cdn_domain": None,
+            "ws_path": "/stream",
+            "ws_port": 8080,
+        }
+
     def _resolve_client_remote_address(
         self,
         server_address: Optional[str],
@@ -1310,19 +1604,9 @@ verb 3
             try:
                 settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
                 if settings:
-                    wants_ipv6 = str(protocol or "").lower().endswith("6")
-                    if wants_ipv6:
-                        ipv6_address = (settings.public_ipv6_address or "").strip()
-                        if ipv6_address:
-                            return ipv6_address
-
-                    ipv4_address = (settings.public_ipv4_address or "").strip()
-                    if ipv4_address:
-                        return ipv4_address
-
-                    fallback_ipv6 = (settings.public_ipv6_address or "").strip()
-                    if fallback_ipv6:
-                        return fallback_ipv6
+                    persisted_address = (settings.server_address or "").strip()
+                    if persisted_address:
+                        return persisted_address
             finally:
                 db.close()
         except Exception as exc:
@@ -1330,11 +1614,28 @@ verb 3
 
         return "YOUR_SERVER_IP"
 
-    def generate_server_config(self, settings: Dict[str, any]) -> Dict[str, any]:
+    def _validate_openvpn_settings(self, settings: Dict[str, Any]) -> None:
+        """Legacy validation - kept for compatibility but should not be used."""
+        pass
+
+    def generate_server_config(self, settings: Optional[Dict[str, any]] = None) -> Dict[str, any]:
         """Generate OpenVPN 2.6 server.conf content from persisted settings."""
         try:
+            runtime_openvpn_settings, _ = self._load_runtime_settings()
+            effective_settings: Dict[str, any] = dict(runtime_openvpn_settings)
+            if settings:
+                for key, value in settings.items():
+                    if value is not None:
+                        effective_settings[key] = value
+
+            settings = effective_settings
+            self._validate_openvpn_settings(settings)
+
             port = int(settings.get("port", 1194))
             protocol = str(settings.get("protocol", "udp")).lower().strip()
+            obfuscation_mode = str(settings.get("obfuscation_mode", "standard") or "standard").strip().lower()
+            if obfuscation_mode != "standard":
+                protocol = "tcp"
             device_type = str(settings.get("device_type", "tun")).lower().strip()
             topology = str(settings.get("topology", "subnet")).lower().strip()
             ipv4_network = str(settings.get("ipv4_network", "10.8.0.0")).strip()
@@ -1380,11 +1681,20 @@ verb 3
             auth_digest = str(settings.get("auth_digest", "SHA256")).upper().strip()
             reneg_sec = int(settings.get("reneg_sec", 3600))
 
-            tun_mtu = int(settings.get("tun_mtu", 1500))
-            mssfix = int(settings.get("mssfix", 1450))
-            sndbuf = int(settings.get("sndbuf", 393216))
-            rcvbuf = int(settings.get("rcvbuf", 393216))
+            def _safe_int(value, default=None):
+                try:
+                    if value is None or (isinstance(value, str) and not value.strip()):
+                        return default
+                    return int(value)
+                except (ValueError, TypeError):
+                    return default
+
+            tun_mtu = _safe_int(settings.get("tun_mtu"))
+            mssfix = _safe_int(settings.get("mssfix"))
+            sndbuf = _safe_int(settings.get("sndbuf"))
+            rcvbuf = _safe_int(settings.get("rcvbuf"))
             fast_io = bool(settings.get("fast_io", False))
+            tcp_nodelay = bool(settings.get("tcp_nodelay", False))
             explicit_exit_notify = int(settings.get("explicit_exit_notify", 1))
 
             keepalive_ping = int(settings.get("keepalive_ping", 10))
@@ -1394,7 +1704,6 @@ verb 3
             verbosity = int(settings.get("verbosity", 3))
 
             custom_directives = (settings.get("custom_directives") or "").strip()
-            advanced_client_push = (settings.get("advanced_client_push") or "").strip()
 
             if protocol not in {"udp", "tcp", "udp6", "tcp6"}:
                 raise ValueError("Protocol must be udp, tcp, udp6, or tcp6")
@@ -1409,21 +1718,28 @@ verb 3
             if auth_digest not in {"SHA256", "SHA384", "SHA512"}:
                 raise ValueError("Auth digest must be SHA256, SHA384, or SHA512")
 
-            push_lines = []
+            push_lines: List[str] = []
             if redirect_gateway:
-                push_lines.append('push "redirect-gateway def1 bypass-dhcp"')
+                ipv6_enabled = bool(ipv6_network and ipv6_prefix is not None)
+                if ipv6_enabled:
+                    push_lines.append('push "redirect-gateway def1 ipv6 bypass-dhcp"')
+                else:
+                    push_lines.append('push "redirect-gateway def1 bypass-dhcp"')
             if primary_dns:
                 push_lines.append(f'push "dhcp-option DNS {primary_dns}"')
             if secondary_dns:
                 push_lines.append(f'push "dhcp-option DNS {secondary_dns}"')
             if block_outside_dns:
                 push_lines.append('push "block-outside-dns"')
+            # Custom Routes (comma or newline separated)
+            push_custom_routes = (settings.get("push_custom_routes") or "").strip()
             if push_custom_routes:
-                for route in [line.strip() for line in push_custom_routes.splitlines() if line.strip()]:
-                    if route.startswith("push "):
-                        push_lines.append(route)
-                    else:
-                        push_lines.append(f'push "{route}"')
+                for route in [seg.strip() for seg in push_custom_routes.replace(',', '\n').splitlines() if seg.strip()]:
+                    # Normalize and prepend push route
+                    sanitized = route.replace('route ', '').strip()
+                    push_lines.append(f'push "route {sanitized}"')
+            
+            advanced_client_push = (settings.get("advanced_client_push") or "").strip()
             if advanced_client_push:
                 for directive in [line.strip() for line in advanced_client_push.splitlines() if line.strip()]:
                     if directive.startswith("push "):
@@ -1436,70 +1752,87 @@ verb 3
             elif tls_mode == "tls-auth":
                 tls_mode_line = f"tls-auth {self.config.TA_KEY} 0"
             else:
-                tls_mode_line = "# tls mode disabled"
+                tls_mode_line = None
 
-            fast_io_line = "fast-io" if fast_io else "# fast-io disabled"
-            client_to_client_line = "client-to-client" if client_to_client else "# client-to-client disabled"
-            reneg_line = "reneg-sec 0" if reneg_sec == 0 else f"reneg-sec {reneg_sec}"
-            inactive_line = "inactive 0" if inactive_timeout == 0 else f"inactive {inactive_timeout}"
-            explicit_exit_line = (
-                f"explicit-exit-notify {explicit_exit_notify}"
-                if protocol in {"udp", "udp6"}
-                else "# explicit-exit-notify is UDP-only"
+            server_lines: List[str] = [
+                "# Atlas VPN - OpenVPN Server Configuration",
+                f"# Generated: {datetime.utcnow().isoformat()}",
+                "",
+                f"port {port}",
+                f"proto {protocol}",
+                f"dev {device_type}",
+                f"topology {topology}",
+                f"server {ipv4_pool}",
+            ]
+
+            if ipv6_network and ipv6_prefix is not None:
+                server_lines.append(f"server-ipv6 {ipv6_network}/{int(ipv6_prefix)}")
+
+            if max_clients:
+                server_lines.append(f"max-clients {max_clients}")
+            if client_to_client:
+                server_lines.append("client-to-client")
+
+            server_lines.extend(
+                [
+                    "",
+                    f"ca {self.config.CA_CERT}",
+                    f"cert {self.config.SERVER_CERT}",
+                    f"key {self.config.SERVER_KEY}",
+                    f"dh {self.config.DH_PARAMS}",
+                ]
             )
-            ipv6_line = (
-                f"server-ipv6 {ipv6_network}/{int(ipv6_prefix)}"
-                if ipv6_network and ipv6_prefix is not None
-                else "# ipv6 subnet disabled"
-            )
 
-            push_block = "\n".join(push_lines) if push_lines else "# no push directives configured"
-            custom_block = custom_directives if custom_directives else "# no custom directives"
+            if data_ciphers:
+                server_lines.append(f"data-ciphers {data_ciphers}")
+                server_lines.append("data-ciphers-fallback AES-256-GCM")
+            if auth_digest:
+                server_lines.append(f"auth {auth_digest}")
+            if tls_version_min:
+                server_lines.append(f"tls-version-min {tls_version_min}")
+            if tls_mode_line:
+                server_lines.append(tls_mode_line)
+            if reneg_sec is not None:
+                server_lines.append(f"reneg-sec {int(reneg_sec)}")
 
-            server_conf = f"""# Atlas VPN - OpenVPN Server Configuration
-# Generated: {datetime.utcnow().isoformat()}
+            if keepalive_ping and keepalive_timeout:
+                server_lines.append(f"keepalive {keepalive_ping} {keepalive_timeout}")
+            if inactive_timeout and int(inactive_timeout) > 0:
+                server_lines.append(f"inactive {int(inactive_timeout)}")
 
-port {port}
-proto {protocol}
-dev {device_type}
-topology {topology}
-server {ipv4_pool}
-{ipv6_line}
-max-clients {max_clients}
-{client_to_client_line}
+            server_lines.extend(["persist-key", "persist-tun"])
 
-ca {self.config.CA_CERT}
-cert {self.config.SERVER_CERT}
-key {self.config.SERVER_KEY}
-dh {self.config.DH_PARAMS}
+            if sndbuf and int(sndbuf) > 0:
+                server_lines.append(f"sndbuf {int(sndbuf)}")
+            if rcvbuf and int(rcvbuf) > 0:
+                server_lines.append(f"rcvbuf {int(rcvbuf)}")
+            if fast_io and protocol in {"udp", "udp6"}:
+                server_lines.append("fast-io")
+            if tcp_nodelay and protocol in {"tcp", "tcp6"}:
+                server_lines.append("tcp-nodelay")
+            if tun_mtu and int(tun_mtu) > 0:
+                server_lines.append(f"tun-mtu {int(tun_mtu)}")
+            if mssfix and int(mssfix) > 0:
+                server_lines.append(f"mssfix {int(mssfix)}")
+            if protocol in {"udp", "udp6"} and explicit_exit_notify and int(explicit_exit_notify) > 0:
+                server_lines.append(f"explicit-exit-notify {int(explicit_exit_notify)}")
+            if management_port and int(management_port) > 0:
+                server_lines.append(f"management 127.0.0.1 {int(management_port)}")
 
-data-ciphers {data_ciphers}
-data-ciphers-fallback AES-256-GCM
-auth {auth_digest}
-tls-version-min {tls_version_min}
-{tls_mode_line}
-{reneg_line}
+            if push_lines:
+                server_lines.append("")
+                server_lines.extend(push_lines)
 
-keepalive {keepalive_ping} {keepalive_timeout}
-{inactive_line}
-persist-key
-persist-tun
-sndbuf {sndbuf}
-rcvbuf {rcvbuf}
-{fast_io_line}
-tun-mtu {tun_mtu}
-mssfix {mssfix}
-{explicit_exit_line}
-management 127.0.0.1 {management_port}
+            server_lines.extend(["", "user nobody", "group nogroup"])
+            if verbosity is not None:
+                server_lines.append(f"verb {int(verbosity)}")
 
-{push_block}
+            if custom_directives:
+                server_lines.append("")
+                server_lines.extend([line.strip() for line in custom_directives.splitlines() if line.strip()])
 
-user nobody
-group nogroup
-verb {verbosity}
-
-{custom_block}
-"""
+            server_lines.append("")
+            server_conf = "\n".join(server_lines)
 
             if self.is_production:
                 self.config.SERVER_CONF.parent.mkdir(parents=True, exist_ok=True)

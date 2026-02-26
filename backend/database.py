@@ -66,6 +66,7 @@ def init_db():
                 "sndbuf": "ALTER TABLE openvpn_settings ADD COLUMN sndbuf INTEGER NOT NULL DEFAULT 393216",
                 "rcvbuf": "ALTER TABLE openvpn_settings ADD COLUMN rcvbuf INTEGER NOT NULL DEFAULT 393216",
                 "explicit_exit_notify": "ALTER TABLE openvpn_settings ADD COLUMN explicit_exit_notify INTEGER NOT NULL DEFAULT 1",
+                "tcp_nodelay": "ALTER TABLE openvpn_settings ADD COLUMN tcp_nodelay BOOLEAN NOT NULL DEFAULT 0",
                 "keepalive_ping": "ALTER TABLE openvpn_settings ADD COLUMN keepalive_ping INTEGER NOT NULL DEFAULT 10",
                 "keepalive_timeout": "ALTER TABLE openvpn_settings ADD COLUMN keepalive_timeout INTEGER NOT NULL DEFAULT 120",
                 "inactive_timeout": "ALTER TABLE openvpn_settings ADD COLUMN inactive_timeout INTEGER NOT NULL DEFAULT 300",
@@ -89,9 +90,12 @@ def init_db():
                 "custom_windows": "ALTER TABLE openvpn_settings ADD COLUMN custom_windows TEXT",
                 "custom_mac": "ALTER TABLE openvpn_settings ADD COLUMN custom_mac TEXT",
                 "enable_auth_nocache": "ALTER TABLE openvpn_settings ADD COLUMN enable_auth_nocache BOOLEAN NOT NULL DEFAULT 1",
+<<<<<<< HEAD
                 "resolv_retry_mode": "ALTER TABLE openvpn_settings ADD COLUMN resolv_retry_mode VARCHAR(16) NOT NULL DEFAULT 'infinite'",
                 "persist_key": "ALTER TABLE openvpn_settings ADD COLUMN persist_key BOOLEAN NOT NULL DEFAULT 1",
                 "persist_tun": "ALTER TABLE openvpn_settings ADD COLUMN persist_tun BOOLEAN NOT NULL DEFAULT 1",
+=======
+>>>>>>> feature-server-settings
             }
 
             for column_name, migration_sql in openvpn_column_migrations.items():
@@ -100,6 +104,21 @@ def init_db():
 
             openvpn_columns = connection.execute(text("PRAGMA table_info(openvpn_settings)")).fetchall()
             openvpn_column_names = {col[1] for col in openvpn_columns}
+
+            if "obfuscation_mode" in openvpn_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE openvpn_settings
+                        SET obfuscation_mode = CASE LOWER(TRIM(COALESCE(obfuscation_mode, 'standard')))
+                            WHEN 'native_stealth' THEN 'stealth'
+                            WHEN 'tls_tunnel' THEN 'standard'
+                            WHEN 'websocket_cdn' THEN 'standard'
+                            ELSE LOWER(TRIM(COALESCE(obfuscation_mode, 'standard')))
+                        END
+                        """
+                    )
+                )
 
             if "mtu" in openvpn_column_names and "tun_mtu" in openvpn_column_names:
                 connection.execute(
@@ -127,6 +146,7 @@ def init_db():
                         """
                     )
                 )
+<<<<<<< HEAD
             
             # Update default values for improved settings
             if "tls_version_min" in openvpn_column_names:
@@ -161,6 +181,8 @@ def init_db():
                         """
                     )
                 )
+=======
+>>>>>>> feature-server-settings
 
             if {"ipv4_pool", "ipv4_network", "ipv4_netmask"}.issubset(openvpn_column_names):
                 connection.execute(
@@ -211,9 +233,10 @@ def init_db():
                             max_clients, client_to_client,
                             redirect_gateway, primary_dns, secondary_dns, block_outside_dns, push_custom_routes,
                             data_ciphers, tls_version_min, tls_mode, auth_digest, reneg_sec,
-                            tun_mtu, mssfix, sndbuf, rcvbuf, fast_io, explicit_exit_notify,
+                            tun_mtu, mssfix, sndbuf, rcvbuf, fast_io, explicit_exit_notify, tcp_nodelay,
                             keepalive_ping, keepalive_timeout, inactive_timeout, management_port, verbosity,
                             custom_directives, advanced_client_push,
+                            obfuscation_mode, proxy_server, proxy_address, proxy_port, spoofed_host, socks_server, socks_port, stunnel_port, sni_domain, cdn_domain, ws_path, ws_port,
                             created_at, updated_at
                         ) VALUES (
                             1, 1194, 'udp', 'tun', 'subnet',
@@ -221,9 +244,10 @@ def init_db():
                             100, 0,
                             1, '8.8.8.8', '1.1.1.1', 0, NULL,
                             'AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305', '1.2', 'tls-crypt', 'SHA256', 3600,
-                            1500, 1450, 393216, 393216, 0, 1,
+                            1500, 1450, 393216, 393216, 0, 1, 0,
                             10, 120, 300, 5555, 3,
                             NULL, NULL,
+                            'standard', NULL, NULL, 8080, 'speedtest.net', NULL, NULL, 443, NULL, NULL, '/stream', 8080,
                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         )
                         """
@@ -238,6 +262,7 @@ def init_db():
             general_column_names = {col[1] for col in general_columns}
 
             general_column_migrations = {
+                "server_address": "ALTER TABLE general_settings ADD COLUMN server_address VARCHAR(255)",
                 "public_ipv4_address": "ALTER TABLE general_settings ADD COLUMN public_ipv4_address VARCHAR(64)",
                 "public_ipv6_address": "ALTER TABLE general_settings ADD COLUMN public_ipv6_address VARCHAR(64)",
                 "global_ipv6_support": "ALTER TABLE general_settings ADD COLUMN global_ipv6_support BOOLEAN NOT NULL DEFAULT 1",
@@ -262,6 +287,22 @@ def init_db():
             for column_name, migration_sql in general_column_migrations.items():
                 if column_name not in general_column_names:
                     connection.execute(text(migration_sql))
+
+            general_columns = connection.execute(text("PRAGMA table_info(general_settings)")).fetchall()
+            general_column_names = {col[1] for col in general_columns}
+
+            if {"server_address", "public_ipv4_address"}.issubset(general_column_names):
+                connection.execute(
+                    text(
+                        """
+                        UPDATE general_settings
+                        SET server_address = TRIM(public_ipv4_address)
+                        WHERE (server_address IS NULL OR TRIM(server_address) = '')
+                          AND public_ipv4_address IS NOT NULL
+                          AND TRIM(public_ipv4_address) != ''
+                        """
+                    )
+                )
 
             if {"panel_https_port", "subscription_https_port"}.issubset(general_column_names):
                 connection.execute(
@@ -289,6 +330,7 @@ def init_db():
                         """
                         INSERT INTO general_settings (
                             id,
+                            server_address,
                             public_ipv4_address,
                             public_ipv6_address,
                             global_ipv6_support,
@@ -310,6 +352,7 @@ def init_db():
                             updated_at
                         ) VALUES (
                             1,
+                            NULL,
                             NULL,
                             NULL,
                             1,
