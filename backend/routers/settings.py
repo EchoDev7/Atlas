@@ -377,64 +377,69 @@ def update_openvpn_settings(
     db.commit()
     db.refresh(settings)
 
-    generation_result = openvpn_manager.generate_server_config(
-        {
-            "port": settings.port,
-            "protocol": settings.protocol,
-            "device_type": settings.device_type,
-            "topology": settings.topology,
-            "ipv4_network": settings.ipv4_network,
-            "ipv4_netmask": settings.ipv4_netmask,
-            "ipv6_network": settings.ipv6_network,
-            "ipv6_prefix": settings.ipv6_prefix,
-            "ipv4_pool": settings.ipv4_pool,
-            "ipv6_pool": settings.ipv6_pool,
-            "max_clients": settings.max_clients,
-            "client_to_client": settings.client_to_client,
-            "redirect_gateway": settings.redirect_gateway,
-            "primary_dns": settings.primary_dns,
-            "secondary_dns": settings.secondary_dns,
-            "block_outside_dns": settings.block_outside_dns,
-            "push_custom_routes": settings.push_custom_routes,
-            "data_ciphers": settings.data_ciphers,
-            "tls_version_min": settings.tls_version_min,
-            "tls_mode": settings.tls_mode,
-            "auth_digest": settings.auth_digest,
-            "reneg_sec": settings.reneg_sec,
-            "tun_mtu": settings.tun_mtu,
-            "mssfix": settings.mssfix,
-            "sndbuf": settings.sndbuf,
-            "rcvbuf": settings.rcvbuf,
-            "fast_io": settings.fast_io,
-            "tcp_nodelay": settings.tcp_nodelay,
-            "explicit_exit_notify": settings.explicit_exit_notify,
-            "keepalive_ping": settings.keepalive_ping,
-            "keepalive_timeout": settings.keepalive_timeout,
-            "inactive_timeout": settings.inactive_timeout,
-            "management_port": settings.management_port,
-            "verbosity": settings.verbosity,
-            "custom_directives": settings.custom_directives,
-            "advanced_client_push": settings.advanced_client_push,
-            "obfuscation_mode": settings.obfuscation_mode,
-            "proxy_server": settings.proxy_server,
-            "proxy_address": settings.proxy_address,
-            "proxy_port": settings.proxy_port,
-            "spoofed_host": settings.spoofed_host,
-            "socks_server": settings.socks_server,
-            "socks_port": settings.socks_port,
-            "stunnel_port": settings.stunnel_port,
-            "sni_domain": settings.sni_domain,
-            "cdn_domain": settings.cdn_domain,
-            "ws_path": settings.ws_path,
-            "ws_port": settings.ws_port,
-        }
-    )
-
-    if not generation_result.get("success"):
-        raise HTTPException(
-            status_code=500,
-            detail=generation_result.get("message", "Failed to generate server configuration"),
+    try:
+        generation_result = openvpn_manager.generate_server_config(
+            {
+                "port": settings.port,
+                "protocol": settings.protocol,
+                "device_type": settings.device_type,
+                "topology": settings.topology,
+                "ipv4_network": settings.ipv4_network,
+                "ipv4_netmask": settings.ipv4_netmask,
+                "ipv4_pool": settings.ipv4_pool,
+                "ipv6_network": settings.ipv6_network,
+                "ipv6_prefix": settings.ipv6_prefix,
+                "max_clients": settings.max_clients,
+                "client_to_client": settings.client_to_client,
+                "redirect_gateway": settings.redirect_gateway,
+                "primary_dns": settings.primary_dns,
+                "secondary_dns": settings.secondary_dns,
+                "block_outside_dns": settings.block_outside_dns,
+                "push_custom_routes": settings.push_custom_routes,
+                "data_ciphers": settings.data_ciphers,
+                "tls_version_min": settings.tls_version_min,
+                "tls_mode": settings.tls_mode,
+                "auth_digest": settings.auth_digest,
+                "reneg_sec": settings.reneg_sec,
+                "tun_mtu": settings.tun_mtu,
+                "mssfix": settings.mssfix,
+                "sndbuf": settings.sndbuf,
+                "rcvbuf": settings.rcvbuf,
+                "fast_io": settings.fast_io,
+                "tcp_nodelay": settings.tcp_nodelay,
+                "explicit_exit_notify": settings.explicit_exit_notify,
+                "keepalive_ping": settings.keepalive_ping,
+                "keepalive_timeout": settings.keepalive_timeout,
+                "inactive_timeout": settings.inactive_timeout,
+                "management_port": settings.management_port,
+                "verbosity": settings.verbosity,
+                "custom_directives": settings.custom_directives,
+                "advanced_client_push": settings.advanced_client_push,
+                "obfuscation_mode": settings.obfuscation_mode,
+                "proxy_server": settings.proxy_server,
+                "proxy_address": settings.proxy_address,
+                "proxy_port": settings.proxy_port,
+                "spoofed_host": settings.spoofed_host,
+                "socks_server": settings.socks_server,
+                "socks_port": settings.socks_port,
+                "stunnel_port": settings.stunnel_port,
+                "sni_domain": settings.sni_domain,
+                "cdn_domain": settings.cdn_domain,
+                "ws_path": settings.ws_path,
+                "ws_port": settings.ws_port,
+            }
         )
+        if not generation_result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=generation_result.get("message", "Failed to generate server configuration"),
+            )
+    except ValueError as ve:
+        # Validation errors from generate_server_config (missing fields)
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Failed to generate server configuration: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate server configuration")
 
     service_restart_result = openvpn_manager.control_service("restart")
     if not service_restart_result.get("success"):

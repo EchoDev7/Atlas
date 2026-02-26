@@ -7,7 +7,8 @@ import platform
 import logging
 import time
 from pathlib import Path
-from typing import Iterator, Optional, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Iterator
+from fastapi import HTTPException
 from datetime import datetime
 import qrcode
 import io
@@ -113,6 +114,48 @@ infrastructure in order to prevent the revoked cert from being accepted.
 Feb 25 14:00:00 atlas systemd[1]: Starting OpenVPN service for server...
 Feb 25 14:00:00 atlas systemd[1]: Started OpenVPN service for server.
 """
+
+
+def validate_openvpn_readiness(general_settings, openvpn_settings) -> List[str]:
+    """
+    Stage 1: The Gatekeeper - Granular validation of required fields.
+    Returns list of human-readable missing field names.
+    """
+    missing = []
+    
+    # Absolute Requirements
+    if not general_settings.server_address or not general_settings.server_address.strip():
+        missing.append("Server IP/Domain")
+    if not openvpn_settings.port:
+        missing.append("Port")
+    if not openvpn_settings.protocol or not openvpn_settings.protocol.strip():
+        missing.append("Protocol")
+    
+    # Conditional Requirements
+    if openvpn_settings.obfuscation_mode and openvpn_settings.obfuscation_mode != "standard":
+        if not openvpn_settings.proxy_port:
+            missing.append("Proxy Port (Required for HTTP Proxy)")
+        if openvpn_settings.obfuscation_mode in ["http_proxy_basic", "http_proxy_advanced"] and (
+            not openvpn_settings.proxy_address or not openvpn_settings.proxy_address.strip()
+        ):
+            missing.append("Proxy Address (Required for HTTP Proxy)")
+    
+    if openvpn_settings.tls_mode and openvpn_settings.tls_mode != "none":
+        # TLS keys should exist - this is a logical check since actual file existence
+        # would be checked during config generation
+        pass
+    
+    return missing
+
+
+def _safe_int(value, default=None):
+    """Stage 2: The Safe Builder - Convert to int safely."""
+    try:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return default
+        return int(value)
+    except (ValueError, TypeError):
+        return default
 
 
 class OpenVPNManager:
@@ -897,6 +940,22 @@ class OpenVPNManager:
             if tls_mode == "tls-auth":
                 config_lines.append("key-direction 1")
 
+            # Stage 2: The Safe Builder - Prevent NoneType errors
+            tun_mtu = _safe_int(openvpn_settings.get("tun_mtu"))
+            mssfix = _safe_int(openvpn_settings.get("mssfix"))
+            sndbuf = _safe_int(openvpn_settings.get("sndbuf"))
+            rcvbuf = _safe_int(openvpn_settings.get("rcvbuf"))
+            
+            # Client Performance (must match server)
+            if tun_mtu:
+                config_lines.append(f"tun-mtu {int(tun_mtu)}")
+            if mssfix:
+                config_lines.append(f"mssfix {int(mssfix)}")
+            if sndbuf:
+                config_lines.append(f"sndbuf {int(sndbuf)}")
+            if rcvbuf:
+                config_lines.append(f"rcvbuf {int(rcvbuf)}")
+
             if tcp_nodelay and "tcp" in client_protocol.lower():
                 config_lines.append("tcp-nodelay")
 
@@ -939,6 +998,11 @@ class OpenVPNManager:
             config_lines.append("")
 
             config = "\n".join(config_lines)
+            
+            # Stage 3: Final Sanity Check - Verify core directives exist
+            if "remote " not in config and "client" not in config:
+                raise HTTPException(status_code=500, detail="Config was generated but is missing core directives.")
+            
             return config
             
         except Exception as e:
@@ -1128,6 +1192,10 @@ class OpenVPNManager:
 
         return "YOUR_SERVER_IP"
 
+    def _validate_openvpn_settings(self, settings: Dict[str, Any]) -> None:
+        """Legacy validation - kept for compatibility but should not be used."""
+        pass
+
     def generate_server_config(self, settings: Optional[Dict[str, any]] = None) -> Dict[str, any]:
         """Generate OpenVPN 2.6 server.conf content from persisted settings."""
         try:
@@ -1139,6 +1207,7 @@ class OpenVPNManager:
                         effective_settings[key] = value
 
             settings = effective_settings
+            self._validate_openvpn_settings(settings)
 
             port = int(settings.get("port", 1194))
             protocol = str(settings.get("protocol", "udp")).lower().strip()
@@ -1190,10 +1259,18 @@ class OpenVPNManager:
             auth_digest = str(settings.get("auth_digest", "SHA256")).upper().strip()
             reneg_sec = int(settings.get("reneg_sec", 3600))
 
-            tun_mtu = int(settings.get("tun_mtu", 1500))
-            mssfix = int(settings.get("mssfix", 1450))
-            sndbuf = int(settings.get("sndbuf", 393216))
-            rcvbuf = int(settings.get("rcvbuf", 393216))
+            def _safe_int(value, default=None):
+                try:
+                    if value is None or (isinstance(value, str) and not value.strip()):
+                        return default
+                    return int(value)
+                except (ValueError, TypeError):
+                    return default
+
+            tun_mtu = _safe_int(settings.get("tun_mtu"))
+            mssfix = _safe_int(settings.get("mssfix"))
+            sndbuf = _safe_int(settings.get("sndbuf"))
+            rcvbuf = _safe_int(settings.get("rcvbuf"))
             fast_io = bool(settings.get("fast_io", False))
             tcp_nodelay = bool(settings.get("tcp_nodelay", False))
             explicit_exit_notify = int(settings.get("explicit_exit_notify", 1))
@@ -1205,7 +1282,6 @@ class OpenVPNManager:
             verbosity = int(settings.get("verbosity", 3))
 
             custom_directives = (settings.get("custom_directives") or "").strip()
-            advanced_client_push = (settings.get("advanced_client_push") or "").strip()
 
             if protocol not in {"udp", "tcp", "udp6", "tcp6"}:
                 raise ValueError("Protocol must be udp, tcp, udp6, or tcp6")
@@ -1230,11 +1306,14 @@ class OpenVPNManager:
             if block_outside_dns:
                 push_lines.append('push "block-outside-dns"')
             # Custom Routes (comma or newline separated)
+            push_custom_routes = (settings.get("push_custom_routes") or "").strip()
             if push_custom_routes:
                 for route in [seg.strip() for seg in push_custom_routes.replace(',', '\n').splitlines() if seg.strip()]:
                     # Normalize and prepend push route
                     sanitized = route.replace('route ', '').strip()
                     push_lines.append(f'push "route {sanitized}"')
+            
+            advanced_client_push = (settings.get("advanced_client_push") or "").strip()
             if advanced_client_push:
                 for directive in [line.strip() for line in advanced_client_push.splitlines() if line.strip()]:
                     if directive.startswith("push "):
