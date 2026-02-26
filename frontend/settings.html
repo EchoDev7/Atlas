@@ -741,6 +741,16 @@
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Management Interface Port</span><span class="relative" @mouseenter="showTooltip('management_port')" @mouseleave="hideTooltip('management_port')"><button type="button" @click.stop="toggleTooltip('management_port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'management_port'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Internal port used by the dashboard to read live server stats. Recommended: 5555.</div></span></span><input type="number" min="1" max="65535" x-model.number="form.management_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Verbosity</span><span class="relative" @mouseenter="showTooltip('verbosity')" @mouseleave="hideTooltip('verbosity')"><button type="button" @click.stop="toggleTooltip('verbosity')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'verbosity'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The level of detail in the server log file. 0 is silent, 4 is debug. Recommended: 3.</div></span></span><select x-model.number="form.verbosity" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label>
                         </div>
+                        <div class="flex items-center justify-between p-4 rounded-xl border theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700' : 'bg-white border-slate-300'">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Enable Auth No-Cache (Enhanced RAM Security)</span>
+                                <span class="relative" @mouseenter="showTooltip('enable_auth_nocache')" @mouseleave="hideTooltip('enable_auth_nocache')">
+                                    <button type="button" @click.stop="toggleTooltip('enable_auth_nocache')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                    <div x-cloak x-show="openTooltip === 'enable_auth_nocache'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl w-64 z-50" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Prevents OpenVPN from caching authentication credentials in RAM. Recommended for high-security environments. Default: ON.</div>
+                                </span>
+                            </div>
+                            <button type="button" @click="form.enable_auth_nocache = !form.enable_auth_nocache" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.enable_auth_nocache ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.enable_auth_nocache ? 'ON' : 'OFF'"></button>
+                        </div>
                     </div>
 
                     <div x-show="activeSection === 'custom'" class="space-y-4">
@@ -765,90 +775,111 @@
                             </span>
                             <textarea x-model="form.advanced_client_push" rows="6" placeholder="dhcp-option DOMAIN corp.local" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
                         </label>
-                    </div>
-                </div>
 
-                <!-- OS-Specific Directives Section -->
-                <div class="rounded-2xl border p-6 theme-transition" :class="darkMode ? 'bg-slate-800/30 border-slate-700' : 'bg-white border-slate-200'">
-                    <h3 class="text-base font-semibold mb-4 theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
-                        OS-Specific Directives
-                    </h3>
-                    <p class="text-xs mb-4 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
-                        Inject custom OpenVPN directives per operating system. These will be appended to client configs based on the target OS.
-                    </p>
-                    
-                    <!-- OS Tabs -->
-                    <div x-data="{ activeOsTab: 'ios' }" class="space-y-4">
-                        <div class="flex gap-2 border-b" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
-                            <button @click="activeOsTab = 'ios'" type="button" 
-                                    class="px-4 py-2 text-sm font-medium border-b-2 transition"
-                                    :class="activeOsTab === 'ios' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
-                                iOS
-                            </button>
-                            <button @click="activeOsTab = 'android'" type="button"
-                                    class="px-4 py-2 text-sm font-medium border-b-2 transition"
-                                    :class="activeOsTab === 'android' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
-                                Android
-                            </button>
-                            <button @click="activeOsTab = 'windows'" type="button"
-                                    class="px-4 py-2 text-sm font-medium border-b-2 transition"
-                                    :class="activeOsTab === 'windows' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
-                                Windows
-                            </button>
-                            <button @click="activeOsTab = 'mac'" type="button"
-                                    class="px-4 py-2 text-sm font-medium border-b-2 transition"
-                                    :class="activeOsTab === 'mac' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
-                                Mac
-                            </button>
-                        </div>
+                        <!-- OS-Specific Directives Section (Inside Custom Tab) -->
+                        <div class="rounded-2xl border p-6 theme-transition" :class="darkMode ? 'bg-slate-800/30 border-slate-700' : 'bg-white border-slate-200'">
+                            <h3 class="text-base font-semibold mb-4 theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                OS-Specific Directives
+                            </h3>
+                            <p class="text-xs mb-4 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                Inject custom OpenVPN directives per operating system. These will be appended to client configs based on the target OS.
+                            </p>
+                            
+                            <!-- OS Tabs -->
+                            <div x-data="{ activeOsTab: 'ios' }" class="space-y-4">
+                                <div class="flex gap-2 border-b" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                                    <button @click="activeOsTab = 'ios'" type="button" 
+                                            class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                            :class="activeOsTab === 'ios' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                        iOS
+                                    </button>
+                                    <button @click="activeOsTab = 'android'" type="button"
+                                            class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                            :class="activeOsTab === 'android' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                        Android
+                                    </button>
+                                    <button @click="activeOsTab = 'windows'" type="button"
+                                            class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                            :class="activeOsTab === 'windows' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                        Windows
+                                    </button>
+                                    <button @click="activeOsTab = 'mac'" type="button"
+                                            class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                            :class="activeOsTab === 'mac' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                        Mac
+                                    </button>
+                                </div>
 
-                        <!-- iOS Tab -->
-                        <div x-show="activeOsTab === 'ios'" x-transition>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    iOS Custom Directives
-                                </span>
-                                <textarea x-model="form.custom_ios" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
-                                <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
-                                    Note: iOS blocks sndbuf/rcvbuf modifications (automatically excluded).
-                                </p>
-                            </label>
-                        </div>
+                                <!-- iOS Tab -->
+                                <div x-show="activeOsTab === 'ios'" x-transition>
+                                    <div class="space-y-4">
+                                        <div class="rounded-xl border p-4 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700' : 'bg-white border-slate-300'">
+                                            <h4 class="text-sm font-semibold mb-2 theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
+                                                📱 iOS/Mac Config Template
+                                            </h4>
+                                            <p class="text-xs mb-3 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                                This is the complete iOS/Mac OpenVPN configuration template. You can manually edit any directive below. Changes will be reflected in downloaded .ovpn files for iOS/Mac users.
+                                            </p>
+                                            <div class="flex items-center gap-2 mb-3">
+                                                <span class="text-xs font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                    ⚠️ Restrictions:
+                                                </span>
+                                                <span class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                                    sndbuf, rcvbuf, block-outside-dns, comp-lzo, compress, explicit-exit-notify (TCP) are automatically excluded
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <label class="block">
+                                            <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                <span>iOS/Mac Full Configuration</span>
+                                                <span class="text-xs px-2 py-0.5 rounded-full" :class="darkMode ? 'bg-cyan-500/20 text-cyan-400' : 'bg-cyan-100 text-cyan-700'">
+                                                    Editable
+                                                </span>
+                                            </span>
+                                            <textarea x-model="form.custom_ios" rows="20" placeholder="# Enter custom directives here&#10;# Example:&#10;# route 192.168.10.0 255.255.255.0&#10;# setenv opt block-outside-dns" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs leading-relaxed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                            <p class="mt-2 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
+                                                💡 Tip: The base iOS config (client, dev tun, proto, remote, certificates, etc.) is auto-generated. Use this field to add extra custom directives that will be injected into the iOS config.
+                                            </p>
+                                        </label>
+                                    </div>
+                                </div>
 
-                        <!-- Android Tab -->
-                        <div x-show="activeOsTab === 'android'" x-transition>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    Android Custom Directives
-                                </span>
-                                <textarea x-model="form.custom_android" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
-                            </label>
-                        </div>
+                                <!-- Android Tab -->
+                                <div x-show="activeOsTab === 'android'" x-transition>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Android Custom Directives
+                                        </span>
+                                        <textarea x-model="form.custom_android" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                    </label>
+                                </div>
 
-                        <!-- Windows Tab -->
-                        <div x-show="activeOsTab === 'windows'" x-transition>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    Windows Custom Directives
-                                </span>
-                                <textarea x-model="form.custom_windows" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
-                                <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
-                                    Note: block-outside-dns is automatically added for Windows clients.
-                                </p>
-                            </label>
-                        </div>
+                                <!-- Windows Tab -->
+                                <div x-show="activeOsTab === 'windows'" x-transition>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Windows Custom Directives
+                                        </span>
+                                        <textarea x-model="form.custom_windows" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                        <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
+                                            Note: block-outside-dns is automatically added for Windows clients.
+                                        </p>
+                                    </label>
+                                </div>
 
-                        <!-- Mac Tab -->
-                        <div x-show="activeOsTab === 'mac'" x-transition>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    Mac Custom Directives
-                                </span>
-                                <textarea x-model="form.custom_mac" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
-                                <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
-                                    Note: Mac blocks sndbuf/rcvbuf modifications (automatically excluded).
-                                </p>
-                            </label>
+                                <!-- Mac Tab -->
+                                <div x-show="activeOsTab === 'mac'" x-transition>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Mac Custom Directives
+                                        </span>
+                                        <textarea x-model="form.custom_mac" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                        <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
+                                            Note: Mac blocks sndbuf/rcvbuf modifications (automatically excluded).
+                                        </p>
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -944,6 +975,7 @@
                     inactive_timeout: 300,
                     management_port: 5555,
                     verbosity: 3,
+                    enable_auth_nocache: true,
                     custom_directives: '',
                     advanced_client_push: '',
                     custom_ios: '',
@@ -1192,6 +1224,7 @@
                             ws_path: data.ws_path || '/stream',
                             ws_port: Number(data.ws_port) || 8080,
                             tcp_nodelay: !!data.tcp_nodelay,
+                            enable_auth_nocache: data.enable_auth_nocache !== undefined ? !!data.enable_auth_nocache : true,
                         };
                         if (this.form.obfuscation_mode !== 'standard') {
                             this.form.protocol = 'tcp';
@@ -1241,6 +1274,7 @@
                             inactive_timeout: Number(this.form.inactive_timeout),
                             management_port: Number(this.form.management_port),
                             verbosity: Number(this.form.verbosity),
+                            enable_auth_nocache: Boolean(this.form.enable_auth_nocache),
                             protocol: this.form.protocol,
                             device_type: this.form.device_type,
                             topology: 'subnet',

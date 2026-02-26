@@ -49,6 +49,7 @@ class OpenVPNSettings(Base):
     inactive_timeout = Column(Integer, nullable=False, default=300)
     management_port = Column(Integer, nullable=False, default=5555)
     verbosity = Column(Integer, nullable=False, default=3)
+    enable_auth_nocache = Column(Boolean, nullable=False, default=True)
 
     custom_directives = Column(Text, nullable=True)
     advanced_client_push = Column(Text, nullable=True)

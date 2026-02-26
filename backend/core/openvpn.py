@@ -221,6 +221,7 @@ class OpenVPNManager:
             "inactive_timeout": 300,
             "management_port": 5555,
             "verbosity": 3,
+            "enable_auth_nocache": True,
             "custom_directives": None,
             "advanced_client_push": None,
         }
@@ -924,7 +925,13 @@ class OpenVPNManager:
         # CONDITIONAL: Routing
         redirect_gateway = bool(openvpn_settings.get("redirect_gateway", False))
         if redirect_gateway:
-            lines.append("redirect-gateway def1 ipv6 bypass-dhcp")
+            ipv6_network = (openvpn_settings.get("ipv6_network") or "").strip()
+            ipv6_prefix = openvpn_settings.get("ipv6_prefix")
+            ipv6_enabled = bool(ipv6_network and ipv6_prefix is not None)
+            if ipv6_enabled:
+                lines.append("redirect-gateway def1 ipv6 bypass-dhcp")
+            else:
+                lines.append("redirect-gateway def1 bypass-dhcp")
         
         # CONDITIONAL: DNS
         primary_dns = (openvpn_settings.get("primary_dns") or "").strip()
@@ -997,7 +1004,14 @@ class OpenVPNManager:
                     if "sndbuf" not in custom_clean.lower() and "rcvbuf" not in custom_clean.lower():
                         lines.append(custom_clean)
         
-        # CERTIFICATES
+        # AUTHENTICATION: auth-user-pass and conditional auth-nocache (BEFORE certificates)
+        lines.append("")
+        lines.append("auth-user-pass")
+        enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
+        if enable_auth_nocache:
+            lines.append("auth-nocache")
+        
+        # CERTIFICATES (always last for readability)
         if not self.is_production:
             ca_cert = "-----BEGIN CERTIFICATE-----\nMOCK CA CERTIFICATE\n-----END CERTIFICATE-----"
             client_cert = "-----BEGIN CERTIFICATE-----\nMOCK CLIENT CERTIFICATE\n-----END CERTIFICATE-----"
@@ -1035,12 +1049,7 @@ class OpenVPNManager:
         elif tls_mode == "tls-auth":
             lines.extend(["", "<tls-auth>", ta_key, "</tls-auth>"])
         
-        # MANDATORY: auth-user-pass and auth-nocache
         lines.append("")
-        lines.append("auth-user-pass")
-        lines.append("auth-nocache")
-        lines.append("")
-        
         return "\n".join(lines)
     
     def generate_client_config(
@@ -1222,7 +1231,13 @@ class OpenVPNManager:
             
             # Conditional Whitelist: Routing
             if redirect_gateway:
-                config_lines.append("redirect-gateway def1 ipv6 bypass-dhcp")
+                ipv6_network = (openvpn_settings.get("ipv6_network") or "").strip()
+                ipv6_prefix = openvpn_settings.get("ipv6_prefix")
+                ipv6_enabled = bool(ipv6_network and ipv6_prefix is not None)
+                if ipv6_enabled:
+                    config_lines.append("redirect-gateway def1 ipv6 bypass-dhcp")
+                else:
+                    config_lines.append("redirect-gateway def1 bypass-dhcp")
             
             # Conditional Whitelist: DNS Servers
             if primary_dns:
@@ -1251,6 +1266,14 @@ class OpenVPNManager:
                         continue
                     config_lines.append((directive or "").strip())
 
+            # AUTHENTICATION: auth-user-pass and conditional auth-nocache (BEFORE certificates)
+            config_lines.append("")
+            config_lines.append("auth-user-pass")
+            enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
+            if enable_auth_nocache:
+                config_lines.append("auth-nocache")
+
+            # CERTIFICATES (always last for readability)
             config_lines.extend(
                 [
                     "",
@@ -1298,7 +1321,9 @@ class OpenVPNManager:
             # Always add auth-user-pass for user authentication
             config_lines.append("")
             config_lines.append("auth-user-pass")
-            config_lines.append("auth-nocache")
+            enable_auth_nocache_final = bool(openvpn_settings.get("enable_auth_nocache", True))
+            if enable_auth_nocache_final:
+                config_lines.append("auth-nocache")
             config_lines.append("")
 
             config = "\n".join(config_lines)
@@ -1602,7 +1627,11 @@ class OpenVPNManager:
 
             push_lines: List[str] = []
             if redirect_gateway:
-                push_lines.append('push "redirect-gateway def1 bypass-dhcp"')
+                ipv6_enabled = bool(ipv6_network and ipv6_prefix is not None)
+                if ipv6_enabled:
+                    push_lines.append('push "redirect-gateway def1 ipv6 bypass-dhcp"')
+                else:
+                    push_lines.append('push "redirect-gateway def1 bypass-dhcp"')
             if primary_dns:
                 push_lines.append(f'push "dhcp-option DNS {primary_dns}"')
             if secondary_dns:

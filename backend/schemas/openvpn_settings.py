@@ -52,6 +52,7 @@ class OpenVPNSettingsBase(BaseModel):
     inactive_timeout: int = Field(300, ge=0, le=86400)
     management_port: int = Field(5555, ge=1, le=65535)
     verbosity: int = Field(3, ge=0, le=6)
+    enable_auth_nocache: bool = Field(True)
 
     custom_directives: Optional[str] = None
     advanced_client_push: Optional[str] = None

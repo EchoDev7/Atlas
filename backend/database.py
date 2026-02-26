@@ -89,6 +89,7 @@ def init_db():
                 "custom_android": "ALTER TABLE openvpn_settings ADD COLUMN custom_android TEXT",
                 "custom_windows": "ALTER TABLE openvpn_settings ADD COLUMN custom_windows TEXT",
                 "custom_mac": "ALTER TABLE openvpn_settings ADD COLUMN custom_mac TEXT",
+                "enable_auth_nocache": "ALTER TABLE openvpn_settings ADD COLUMN enable_auth_nocache BOOLEAN NOT NULL DEFAULT 1",
             }
 
             for column_name, migration_sql in openvpn_column_migrations.items():

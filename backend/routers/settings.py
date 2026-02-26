@@ -89,6 +89,7 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
         inactive_timeout=settings.inactive_timeout,
         management_port=settings.management_port,
         verbosity=settings.verbosity,
+        enable_auth_nocache=settings.enable_auth_nocache,
         custom_directives=settings.custom_directives,
         advanced_client_push=settings.advanced_client_push,
         obfuscation_mode=settings.obfuscation_mode,
@@ -332,6 +333,7 @@ def update_openvpn_settings(
     settings.inactive_timeout = payload.inactive_timeout
     settings.management_port = payload.management_port
     settings.verbosity = payload.verbosity
+    settings.enable_auth_nocache = payload.enable_auth_nocache
 
     settings.custom_directives = payload.custom_directives.strip() if payload.custom_directives else None
     settings.advanced_client_push = payload.advanced_client_push.strip() if payload.advanced_client_push else None
