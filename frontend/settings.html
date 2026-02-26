@@ -702,6 +702,56 @@
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Management Interface Port</span><span class="relative" @mouseenter="showTooltip('management_port')" @mouseleave="hideTooltip('management_port')"><button type="button" @click.stop="toggleTooltip('management_port')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'management_port'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Internal port used by the dashboard to read live server stats. Recommended: 5555.</div></span></span><input type="number" min="1" max="65535" x-model.number="form.management_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Verbosity</span><span class="relative" @mouseenter="showTooltip('verbosity')" @mouseleave="hideTooltip('verbosity')"><button type="button" @click.stop="toggleTooltip('verbosity')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'verbosity'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The level of detail in the server log file. 0 is silent, 4 is debug. Recommended: 3.</div></span></span><select x-model.number="form.verbosity" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label>
                         </div>
+                        <div class="flex items-center justify-between p-4 rounded-xl border theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700' : 'bg-white border-slate-300'">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Enable Auth No-Cache (Enhanced RAM Security)</span>
+                                <span class="relative" @mouseenter="showTooltip('enable_auth_nocache')" @mouseleave="hideTooltip('enable_auth_nocache')">
+                                    <button type="button" @click.stop="toggleTooltip('enable_auth_nocache')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                    <div x-cloak x-show="openTooltip === 'enable_auth_nocache'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl w-64 z-50" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Prevents OpenVPN from caching authentication credentials in RAM. Recommended for high-security environments. Default: ON.</div>
+                                </span>
+                            </div>
+                            <button type="button" @click="form.enable_auth_nocache = !form.enable_auth_nocache" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.enable_auth_nocache ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.enable_auth_nocache ? 'ON' : 'OFF'"></button>
+                        </div>
+                        
+                        <h3 class="text-lg font-semibold mt-6 theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Client Behavior</h3>
+                        <div class="grid grid-cols-1 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>DNS Resolve Retry Mode</span>
+                                    <span class="relative" @mouseenter="showTooltip('resolv_retry_mode')" @mouseleave="hideTooltip('resolv_retry_mode')">
+                                        <button type="button" @click.stop="toggleTooltip('resolv_retry_mode')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                        <div x-cloak x-show="openTooltip === 'resolv_retry_mode'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl w-64 z-50" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Controls DNS resolution retry behavior. Infinite: retry forever (best for laptops), 60: retry for 60 seconds, Disabled: no retry. Default: Infinite.</div>
+                                    </span>
+                                </span>
+                                <select x-model="form.resolv_retry_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="infinite">Infinite (Recommended)</option>
+                                    <option value="60">60 Seconds</option>
+                                    <option value="disabled">Disabled</option>
+                                </select>
+                            </label>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 rounded-xl border theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700' : 'bg-white border-slate-300'">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Persist Key on Reconnect</span>
+                                <span class="relative" @mouseenter="showTooltip('persist_key')" @mouseleave="hideTooltip('persist_key')">
+                                    <button type="button" @click.stop="toggleTooltip('persist_key')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                    <div x-cloak x-show="openTooltip === 'persist_key'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl w-64 z-50" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Keep encryption keys in memory during reconnects. Improves reconnection speed. Disable for maximum security. Default: ON.</div>
+                                </span>
+                            </div>
+                            <button type="button" @click="form.persist_key = !form.persist_key" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.persist_key ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.persist_key ? 'ON' : 'OFF'"></button>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 rounded-xl border theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700' : 'bg-white border-slate-300'">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Persist TUN Interface on Reconnect</span>
+                                <span class="relative" @mouseenter="showTooltip('persist_tun')" @mouseleave="hideTooltip('persist_tun')">
+                                    <button type="button" @click.stop="toggleTooltip('persist_tun')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                    <div x-cloak x-show="openTooltip === 'persist_tun'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl w-64 z-50" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Keep TUN/TAP device open during reconnects. Improves reconnection speed. Disable to fully reset interface. Default: ON.</div>
+                                </span>
+                            </div>
+                            <button type="button" @click="form.persist_tun = !form.persist_tun" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.persist_tun ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.persist_tun ? 'ON' : 'OFF'"></button>
+                        </div>
                     </div>
 
                     <div x-show="activeSection === 'custom'" class="space-y-4">
@@ -973,6 +1023,23 @@
                             push_custom_routes: data.push_custom_routes || '',
                             custom_directives: data.custom_directives || '',
                             advanced_client_push: data.advanced_client_push || '',
+                            obfuscation_mode: data.obfuscation_mode || 'standard',
+                            proxy_server: data.proxy_server || data.proxy_address || '',
+                            proxy_address: data.proxy_address || '',
+                            proxy_port: Number(data.proxy_port) || 8080,
+                            spoofed_host: data.spoofed_host || '',
+                            socks_server: data.socks_server || '',
+                            socks_port: Number.isInteger(data.socks_port) ? data.socks_port : null,
+                            stunnel_port: Number(data.stunnel_port) || 443,
+                            sni_domain: data.sni_domain || '',
+                            cdn_domain: data.cdn_domain || '',
+                            ws_path: data.ws_path || '/stream',
+                            ws_port: Number(data.ws_port) || 8080,
+                            tcp_nodelay: !!data.tcp_nodelay,
+                            enable_auth_nocache: data.enable_auth_nocache !== undefined ? !!data.enable_auth_nocache : true,
+                            resolv_retry_mode: data.resolv_retry_mode || 'infinite',
+                            persist_key: data.persist_key !== undefined ? !!data.persist_key : true,
+                            persist_tun: data.persist_tun !== undefined ? !!data.persist_tun : true,
                         };
                         if (!this.generalForm.global_ipv6_support) {
                             this.form.ipv6_network = '';
@@ -1012,6 +1079,10 @@
                             inactive_timeout: Number(this.form.inactive_timeout),
                             management_port: Number(this.form.management_port),
                             verbosity: Number(this.form.verbosity),
+                            enable_auth_nocache: Boolean(this.form.enable_auth_nocache),
+                            resolv_retry_mode: this.form.resolv_retry_mode || 'infinite',
+                            persist_key: Boolean(this.form.persist_key),
+                            persist_tun: Boolean(this.form.persist_tun),
                             protocol: this.form.protocol,
                             device_type: this.form.device_type,
                             topology: 'subnet',

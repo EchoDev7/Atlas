@@ -29,15 +29,15 @@ class OpenVPNSettingsBase(BaseModel):
     push_custom_routes: Optional[str] = None
 
     data_ciphers: List[str] = Field(default_factory=lambda: ["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"])
-    tls_version_min: str = Field("1.2")
+    tls_version_min: str = Field("1.3")
     tls_mode: str = Field("tls-crypt")
     auth_digest: str = Field("SHA256")
     reneg_sec: int = Field(3600, ge=0, le=86400)
 
     tun_mtu: int = Field(1500, ge=1200, le=9000)
     mssfix: int = Field(1450, ge=0, le=9000)
-    sndbuf: int = Field(393216, ge=0, le=10485760)
-    rcvbuf: int = Field(393216, ge=0, le=10485760)
+    sndbuf: int = Field(0, ge=0, le=10485760)
+    rcvbuf: int = Field(0, ge=0, le=10485760)
     fast_io: bool = Field(False)
     explicit_exit_notify: int = Field(1, ge=0, le=10)
 
@@ -46,6 +46,10 @@ class OpenVPNSettingsBase(BaseModel):
     inactive_timeout: int = Field(300, ge=0, le=86400)
     management_port: int = Field(5555, ge=1, le=65535)
     verbosity: int = Field(3, ge=0, le=6)
+
+    resolv_retry_mode: str = Field("infinite")
+    persist_key: bool = Field(True)
+    persist_tun: bool = Field(True)
 
     custom_directives: Optional[str] = None
     advanced_client_push: Optional[str] = None
@@ -98,15 +102,24 @@ class OpenVPNSettingsBase(BaseModel):
             raise ValueError("Auth digest must be SHA256, SHA384, or SHA512")
         return normalized
 
-    @field_validator("data_ciphers")
+    @field_validator("data_ciphers", mode="before")
     @classmethod
-    def validate_data_ciphers(cls, value: List[str]) -> List[str]:
-        normalized = [cipher.upper().strip() for cipher in value if cipher and cipher.strip()]
+    def validate_data_ciphers(cls, value) -> List[str]:
+        # Accept both API list payloads and DB colon-separated strings.
+        if isinstance(value, list):
+            normalized = [str(cipher).upper().strip() for cipher in value if str(cipher).strip()]
+        elif isinstance(value, str):
+            normalized = [cipher.upper().strip() for cipher in value.split(":") if cipher and cipher.strip()]
+        else:
+            raise ValueError("data_ciphers must be a list or colon-separated string")
+
         if not normalized:
             raise ValueError("At least one data cipher is required")
+
         invalid = [cipher for cipher in normalized if cipher not in _ALLOWED_DATA_CIPHERS]
         if invalid:
             raise ValueError(f"Unsupported data cipher(s): {', '.join(invalid)}")
+
         deduped: List[str] = []
         for cipher in normalized:
             if cipher not in deduped:

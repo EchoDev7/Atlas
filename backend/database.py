@@ -72,6 +72,26 @@ def init_db():
                 "management_port": "ALTER TABLE openvpn_settings ADD COLUMN management_port INTEGER NOT NULL DEFAULT 5555",
                 "verbosity": "ALTER TABLE openvpn_settings ADD COLUMN verbosity INTEGER NOT NULL DEFAULT 3",
                 "advanced_client_push": "ALTER TABLE openvpn_settings ADD COLUMN advanced_client_push TEXT",
+                "obfuscation_mode": "ALTER TABLE openvpn_settings ADD COLUMN obfuscation_mode VARCHAR(32) NOT NULL DEFAULT 'standard'",
+                "proxy_server": "ALTER TABLE openvpn_settings ADD COLUMN proxy_server VARCHAR(255)",
+                "proxy_address": "ALTER TABLE openvpn_settings ADD COLUMN proxy_address VARCHAR(255)",
+                "proxy_port": "ALTER TABLE openvpn_settings ADD COLUMN proxy_port INTEGER NOT NULL DEFAULT 8080",
+                "spoofed_host": "ALTER TABLE openvpn_settings ADD COLUMN spoofed_host VARCHAR(255)",
+                "socks_server": "ALTER TABLE openvpn_settings ADD COLUMN socks_server VARCHAR(255)",
+                "socks_port": "ALTER TABLE openvpn_settings ADD COLUMN socks_port INTEGER",
+                "stunnel_port": "ALTER TABLE openvpn_settings ADD COLUMN stunnel_port INTEGER NOT NULL DEFAULT 443",
+                "sni_domain": "ALTER TABLE openvpn_settings ADD COLUMN sni_domain VARCHAR(255)",
+                "cdn_domain": "ALTER TABLE openvpn_settings ADD COLUMN cdn_domain VARCHAR(255)",
+                "ws_path": "ALTER TABLE openvpn_settings ADD COLUMN ws_path VARCHAR(255) NOT NULL DEFAULT '/stream'",
+                "ws_port": "ALTER TABLE openvpn_settings ADD COLUMN ws_port INTEGER NOT NULL DEFAULT 8080",
+                "custom_ios": "ALTER TABLE openvpn_settings ADD COLUMN custom_ios TEXT",
+                "custom_android": "ALTER TABLE openvpn_settings ADD COLUMN custom_android TEXT",
+                "custom_windows": "ALTER TABLE openvpn_settings ADD COLUMN custom_windows TEXT",
+                "custom_mac": "ALTER TABLE openvpn_settings ADD COLUMN custom_mac TEXT",
+                "enable_auth_nocache": "ALTER TABLE openvpn_settings ADD COLUMN enable_auth_nocache BOOLEAN NOT NULL DEFAULT 1",
+                "resolv_retry_mode": "ALTER TABLE openvpn_settings ADD COLUMN resolv_retry_mode VARCHAR(16) NOT NULL DEFAULT 'infinite'",
+                "persist_key": "ALTER TABLE openvpn_settings ADD COLUMN persist_key BOOLEAN NOT NULL DEFAULT 1",
+                "persist_tun": "ALTER TABLE openvpn_settings ADD COLUMN persist_tun BOOLEAN NOT NULL DEFAULT 1",
             }
 
             for column_name, migration_sql in openvpn_column_migrations.items():
@@ -84,6 +104,62 @@ def init_db():
             if "mtu" in openvpn_column_names and "tun_mtu" in openvpn_column_names:
                 connection.execute(
                     text("UPDATE openvpn_settings SET tun_mtu = COALESCE(tun_mtu, mtu)")
+                )
+
+            if {"proxy_server", "proxy_address"}.issubset(openvpn_column_names):
+                connection.execute(
+                    text(
+                        """
+                        UPDATE openvpn_settings
+                        SET proxy_server = COALESCE(NULLIF(TRIM(proxy_server), ''), NULLIF(TRIM(proxy_address), ''), proxy_server)
+                        WHERE proxy_server IS NULL OR TRIM(proxy_server) = ''
+                        """
+                    )
+                )
+
+            if "ws_path" in openvpn_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE openvpn_settings
+                        SET ws_path = '/stream'
+                        WHERE ws_path IS NULL OR TRIM(ws_path) = '' OR ws_path = '/vpn-ws'
+                        """
+                    )
+                )
+            
+            # Update default values for improved settings
+            if "tls_version_min" in openvpn_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE openvpn_settings
+                        SET tls_version_min = '1.3'
+                        WHERE tls_version_min = '1.2'
+                        """
+                    )
+                )
+            
+            if "sndbuf" in openvpn_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE openvpn_settings
+                        SET sndbuf = 0
+                        WHERE sndbuf = 393216
+                        """
+                    )
+                )
+            
+            if "rcvbuf" in openvpn_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE openvpn_settings
+                        SET rcvbuf = 0
+                        WHERE rcvbuf = 393216
+                        """
+                    )
                 )
 
             if {"ipv4_pool", "ipv4_network", "ipv4_netmask"}.issubset(openvpn_column_names):

@@ -31,15 +31,15 @@ class OpenVPNSettings(Base):
     push_custom_routes = Column(Text, nullable=True)
 
     data_ciphers = Column(String(160), nullable=False, default="AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305")
-    tls_version_min = Column(String(8), nullable=False, default="1.2")
+    tls_version_min = Column(String(8), nullable=False, default="1.3")
     tls_mode = Column(String(16), nullable=False, default="tls-crypt")
     auth_digest = Column(String(16), nullable=False, default="SHA256")
     reneg_sec = Column(Integer, nullable=False, default=3600)
 
     tun_mtu = Column(Integer, nullable=False, default=1500)
     mssfix = Column(Integer, nullable=False, default=1450)
-    sndbuf = Column(Integer, nullable=False, default=393216)
-    rcvbuf = Column(Integer, nullable=False, default=393216)
+    sndbuf = Column(Integer, nullable=False, default=0)
+    rcvbuf = Column(Integer, nullable=False, default=0)
     fast_io = Column(Boolean, nullable=False, default=False)
     explicit_exit_notify = Column(Integer, nullable=False, default=1)
 
@@ -48,6 +48,12 @@ class OpenVPNSettings(Base):
     inactive_timeout = Column(Integer, nullable=False, default=300)
     management_port = Column(Integer, nullable=False, default=5555)
     verbosity = Column(Integer, nullable=False, default=3)
+    enable_auth_nocache = Column(Boolean, nullable=False, default=True)
+    
+    # Client Behavior
+    resolv_retry_mode = Column(String(16), nullable=False, default="infinite")
+    persist_key = Column(Boolean, nullable=False, default=True)
+    persist_tun = Column(Boolean, nullable=False, default=True)
 
     custom_directives = Column(Text, nullable=True)
     advanced_client_push = Column(Text, nullable=True)

@@ -45,13 +45,23 @@ def _get_or_create_general_settings(db: Session) -> GeneralSettings:
 
 
 def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
+    allowed_ciphers = ["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"]
+    raw_ciphers = (settings.data_ciphers or "").strip()
+
     ciphers = [
-        cipher.strip()
-        for cipher in (settings.data_ciphers or "").split(":")
-        if cipher and cipher.strip()
+        item.strip().upper()
+        for item in raw_ciphers.split(":")
+        if item and item.strip()
     ]
+    ciphers = [cipher for cipher in ciphers if cipher in allowed_ciphers]
+
+    # Recover from previously corrupted char-split values like A:E:S:-:2:5:6...
     if not ciphers:
-        ciphers = ["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"]
+        compact = raw_ciphers.replace(":", "").upper()
+        if all(cipher.replace("-", "") in compact for cipher in ["AES-256-GCM", "AES-128-GCM"]):
+            ciphers = ["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"]
+        else:
+            ciphers = ["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"]
 
     return OpenVPNSettingsResponse(
         id=settings.id,
@@ -86,6 +96,10 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
         inactive_timeout=settings.inactive_timeout,
         management_port=settings.management_port,
         verbosity=settings.verbosity,
+        enable_auth_nocache=settings.enable_auth_nocache,
+        resolv_retry_mode=settings.resolv_retry_mode,
+        persist_key=settings.persist_key,
+        persist_tun=settings.persist_tun,
         custom_directives=settings.custom_directives,
         advanced_client_push=settings.advanced_client_push,
         created_at=settings.created_at,
@@ -294,7 +308,10 @@ def update_openvpn_settings(
     settings.block_outside_dns = payload.block_outside_dns
     settings.push_custom_routes = payload.push_custom_routes
 
-    settings.data_ciphers = ":".join(payload.data_ciphers)
+    if isinstance(payload.data_ciphers, list):
+        settings.data_ciphers = ":".join(payload.data_ciphers)
+    else:
+        settings.data_ciphers = str(payload.data_ciphers or "").strip()
     settings.tls_version_min = payload.tls_version_min
     settings.tls_mode = payload.tls_mode
     settings.auth_digest = payload.auth_digest
@@ -312,6 +329,11 @@ def update_openvpn_settings(
     settings.inactive_timeout = payload.inactive_timeout
     settings.management_port = payload.management_port
     settings.verbosity = payload.verbosity
+    settings.enable_auth_nocache = payload.enable_auth_nocache
+    
+    settings.resolv_retry_mode = payload.resolv_retry_mode
+    settings.persist_key = payload.persist_key
+    settings.persist_tun = payload.persist_tun
 
     settings.custom_directives = payload.custom_directives.strip() if payload.custom_directives else None
     settings.advanced_client_push = payload.advanced_client_push.strip() if payload.advanced_client_push else None
