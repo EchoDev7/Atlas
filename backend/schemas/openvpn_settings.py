@@ -55,6 +55,13 @@ class OpenVPNSettingsBase(BaseModel):
 
     custom_directives: Optional[str] = None
     advanced_client_push: Optional[str] = None
+    
+    # OS-Specific Custom Directives
+    custom_ios: Optional[str] = None
+    custom_android: Optional[str] = None
+    custom_windows: Optional[str] = None
+    custom_mac: Optional[str] = None
+    
     obfuscation_mode: Literal["standard", "stealth", "http_proxy_basic", "http_proxy_advanced", "socks5_proxy_injection"] = Field("standard")
     proxy_server: Optional[str] = Field(default=None, max_length=255)
     proxy_address: Optional[str] = Field(default=None, max_length=255)

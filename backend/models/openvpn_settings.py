@@ -53,6 +53,12 @@ class OpenVPNSettings(Base):
     custom_directives = Column(Text, nullable=True)
     advanced_client_push = Column(Text, nullable=True)
 
+    # OS-Specific Custom Directives
+    custom_ios = Column(Text, nullable=True)
+    custom_android = Column(Text, nullable=True)
+    custom_windows = Column(Text, nullable=True)
+    custom_mac = Column(Text, nullable=True)
+
     obfuscation_mode = Column(String(32), nullable=False, default="standard")
     proxy_server = Column(String(255), nullable=True)
     proxy_address = Column(String(255), nullable=True)

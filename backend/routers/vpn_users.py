@@ -340,9 +340,6 @@ async def download_config(
                 db.commit()
                 db.refresh(user)
             
-            # Add auth-user-pass directive
-            config_content += "\nauth-user-pass\n"
-            
             return Response(
                 content=config_content,
                 media_type="application/x-openvpn-profile",

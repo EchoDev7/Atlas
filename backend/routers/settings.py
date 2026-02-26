@@ -335,6 +335,13 @@ def update_openvpn_settings(
 
     settings.custom_directives = payload.custom_directives.strip() if payload.custom_directives else None
     settings.advanced_client_push = payload.advanced_client_push.strip() if payload.advanced_client_push else None
+    
+    # OS-Specific Custom Directives
+    settings.custom_ios = payload.custom_ios.strip() if payload.custom_ios else None
+    settings.custom_android = payload.custom_android.strip() if payload.custom_android else None
+    settings.custom_windows = payload.custom_windows.strip() if payload.custom_windows else None
+    settings.custom_mac = payload.custom_mac.strip() if payload.custom_mac else None
+    
     settings.obfuscation_mode = payload.obfuscation_mode
     settings.proxy_server = payload.proxy_server
     settings.proxy_address = payload.proxy_address

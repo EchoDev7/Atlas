@@ -85,6 +85,10 @@ def init_db():
                 "cdn_domain": "ALTER TABLE openvpn_settings ADD COLUMN cdn_domain VARCHAR(255)",
                 "ws_path": "ALTER TABLE openvpn_settings ADD COLUMN ws_path VARCHAR(255) NOT NULL DEFAULT '/stream'",
                 "ws_port": "ALTER TABLE openvpn_settings ADD COLUMN ws_port INTEGER NOT NULL DEFAULT 8080",
+                "custom_ios": "ALTER TABLE openvpn_settings ADD COLUMN custom_ios TEXT",
+                "custom_android": "ALTER TABLE openvpn_settings ADD COLUMN custom_android TEXT",
+                "custom_windows": "ALTER TABLE openvpn_settings ADD COLUMN custom_windows TEXT",
+                "custom_mac": "ALTER TABLE openvpn_settings ADD COLUMN custom_mac TEXT",
             }
 
             for column_name, migration_sql in openvpn_column_migrations.items():

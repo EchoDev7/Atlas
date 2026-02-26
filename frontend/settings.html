@@ -768,6 +768,91 @@
                     </div>
                 </div>
 
+                <!-- OS-Specific Directives Section -->
+                <div class="rounded-2xl border p-6 theme-transition" :class="darkMode ? 'bg-slate-800/30 border-slate-700' : 'bg-white border-slate-200'">
+                    <h3 class="text-base font-semibold mb-4 theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                        OS-Specific Directives
+                    </h3>
+                    <p class="text-xs mb-4 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                        Inject custom OpenVPN directives per operating system. These will be appended to client configs based on the target OS.
+                    </p>
+                    
+                    <!-- OS Tabs -->
+                    <div x-data="{ activeOsTab: 'ios' }" class="space-y-4">
+                        <div class="flex gap-2 border-b" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                            <button @click="activeOsTab = 'ios'" type="button" 
+                                    class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                    :class="activeOsTab === 'ios' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                iOS
+                            </button>
+                            <button @click="activeOsTab = 'android'" type="button"
+                                    class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                    :class="activeOsTab === 'android' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                Android
+                            </button>
+                            <button @click="activeOsTab = 'windows'" type="button"
+                                    class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                    :class="activeOsTab === 'windows' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                Windows
+                            </button>
+                            <button @click="activeOsTab = 'mac'" type="button"
+                                    class="px-4 py-2 text-sm font-medium border-b-2 transition"
+                                    :class="activeOsTab === 'mac' ? (darkMode ? 'border-cyan-400 text-cyan-400' : 'border-cyan-600 text-cyan-600') : (darkMode ? 'border-transparent text-slate-400 hover:text-slate-300' : 'border-transparent text-slate-600 hover:text-slate-900')">
+                                Mac
+                            </button>
+                        </div>
+
+                        <!-- iOS Tab -->
+                        <div x-show="activeOsTab === 'ios'" x-transition>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    iOS Custom Directives
+                                </span>
+                                <textarea x-model="form.custom_ios" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
+                                    Note: iOS blocks sndbuf/rcvbuf modifications (automatically excluded).
+                                </p>
+                            </label>
+                        </div>
+
+                        <!-- Android Tab -->
+                        <div x-show="activeOsTab === 'android'" x-transition>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    Android Custom Directives
+                                </span>
+                                <textarea x-model="form.custom_android" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                            </label>
+                        </div>
+
+                        <!-- Windows Tab -->
+                        <div x-show="activeOsTab === 'windows'" x-transition>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    Windows Custom Directives
+                                </span>
+                                <textarea x-model="form.custom_windows" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
+                                    Note: block-outside-dns is automatically added for Windows clients.
+                                </p>
+                            </label>
+                        </div>
+
+                        <!-- Mac Tab -->
+                        <div x-show="activeOsTab === 'mac'" x-transition>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    Mac Custom Directives
+                                </span>
+                                <textarea x-model="form.custom_mac" rows="5" placeholder="route 192.168.10.0 255.255.255.0&#10;comp-lzo no" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                                <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-600'">
+                                    Note: Mac blocks sndbuf/rcvbuf modifications (automatically excluded).
+                                </p>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mt-8 sticky bottom-0 pt-4 flex justify-end border-t backdrop-blur-sm"
                      :class="darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white/80'">
                     <button @click="saveChanges()" :disabled="saving || loading"
@@ -861,6 +946,10 @@
                     verbosity: 3,
                     custom_directives: '',
                     advanced_client_push: '',
+                    custom_ios: '',
+                    custom_android: '',
+                    custom_windows: '',
+                    custom_mac: '',
                     obfuscation_mode: 'standard',
                     proxy_server: '',
                     proxy_address: '',
