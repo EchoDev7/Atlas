@@ -171,6 +171,7 @@ class OpenVPNManager:
             "sndbuf": 393216,
             "rcvbuf": 393216,
             "fast_io": False,
+            "tcp_nodelay": False,
             "explicit_exit_notify": 1,
             "keepalive_ping": 10,
             "keepalive_timeout": 120,
@@ -799,6 +800,8 @@ class OpenVPNManager:
 
             resolved_port = int(server_port if server_port is not None else openvpn_settings.get("port", 1194))
             resolved_protocol = str(protocol or openvpn_settings.get("protocol", "udp")).strip().lower()
+            obfuscation_mode = str(openvpn_settings.get("obfuscation_mode") or "standard").strip().lower()
+            effective_protocol = "tcp" if obfuscation_mode != "standard" else resolved_protocol
             resolved_server_address = (
                 (server_address or "").strip()
                 or (general_settings.get("server_address") or "").strip()
@@ -829,6 +832,7 @@ class OpenVPNManager:
             auth_digest = str(openvpn_settings.get("auth_digest") or "SHA256").strip().upper()
             tls_version_min = str(openvpn_settings.get("tls_version_min") or "1.2").strip()
             tls_mode = str(openvpn_settings.get("tls_mode") or "tls-crypt").strip().lower()
+            tcp_nodelay = bool(openvpn_settings.get("tcp_nodelay", False))
             explicit_exit_notify = openvpn_settings.get("explicit_exit_notify")
 
             (
@@ -838,7 +842,7 @@ class OpenVPNManager:
             ) = self._build_client_transport_directives(
                 server_address=resolved_server_address,
                 default_port=resolved_port,
-                default_protocol=resolved_protocol,
+                default_protocol=effective_protocol,
                 obfuscation_settings=obfuscation_settings,
             )
 
@@ -893,6 +897,9 @@ class OpenVPNManager:
             if tls_mode == "tls-auth":
                 config_lines.append("key-direction 1")
 
+            if tcp_nodelay and "tcp" in client_protocol.lower():
+                config_lines.append("tcp-nodelay")
+
             if explicit_exit_notify and "udp" in client_protocol.lower():
                 config_lines.append(f"explicit-exit-notify {int(explicit_exit_notify)}")
 
@@ -904,7 +911,7 @@ class OpenVPNManager:
             if os_directives:
                 for directive in os_directives.splitlines():
                     normalized = directive.strip()
-                    if normalized and normalized != "resolv-retry 30" and not normalized.startswith("explicit-exit-notify"):
+                    if normalized and not normalized.startswith("resolv-retry") and not normalized.startswith("explicit-exit-notify"):
                         config_lines.append(normalized)
 
             config_lines.extend(
@@ -1135,6 +1142,9 @@ class OpenVPNManager:
 
             port = int(settings.get("port", 1194))
             protocol = str(settings.get("protocol", "udp")).lower().strip()
+            obfuscation_mode = str(settings.get("obfuscation_mode", "standard") or "standard").strip().lower()
+            if obfuscation_mode != "standard":
+                protocol = "tcp"
             device_type = str(settings.get("device_type", "tun")).lower().strip()
             topology = str(settings.get("topology", "subnet")).lower().strip()
             ipv4_network = str(settings.get("ipv4_network", "10.8.0.0")).strip()
@@ -1185,6 +1195,7 @@ class OpenVPNManager:
             sndbuf = int(settings.get("sndbuf", 393216))
             rcvbuf = int(settings.get("rcvbuf", 393216))
             fast_io = bool(settings.get("fast_io", False))
+            tcp_nodelay = bool(settings.get("tcp_nodelay", False))
             explicit_exit_notify = int(settings.get("explicit_exit_notify", 1))
 
             keepalive_ping = int(settings.get("keepalive_ping", 10))
@@ -1218,12 +1229,12 @@ class OpenVPNManager:
                 push_lines.append(f'push "dhcp-option DNS {secondary_dns}"')
             if block_outside_dns:
                 push_lines.append('push "block-outside-dns"')
+            # Custom Routes (comma or newline separated)
             if push_custom_routes:
-                for route in [line.strip() for line in push_custom_routes.splitlines() if line.strip()]:
-                    if route.startswith("push "):
-                        push_lines.append(route)
-                    else:
-                        push_lines.append(f'push "{route}"')
+                for route in [seg.strip() for seg in push_custom_routes.replace(',', '\n').splitlines() if seg.strip()]:
+                    # Normalize and prepend push route
+                    sanitized = route.replace('route ', '').strip()
+                    push_lines.append(f'push "route {sanitized}"')
             if advanced_client_push:
                 for directive in [line.strip() for line in advanced_client_push.splitlines() if line.strip()]:
                     if directive.startswith("push "):
@@ -1290,8 +1301,10 @@ class OpenVPNManager:
                 server_lines.append(f"sndbuf {int(sndbuf)}")
             if rcvbuf and int(rcvbuf) > 0:
                 server_lines.append(f"rcvbuf {int(rcvbuf)}")
-            if fast_io:
+            if fast_io and protocol in {"udp", "udp6"}:
                 server_lines.append("fast-io")
+            if tcp_nodelay and protocol in {"tcp", "tcp6"}:
+                server_lines.append("tcp-nodelay")
             if tun_mtu and int(tun_mtu) > 0:
                 server_lines.append(f"tun-mtu {int(tun_mtu)}")
             if mssfix and int(mssfix) > 0:

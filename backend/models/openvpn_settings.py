@@ -41,6 +41,7 @@ class OpenVPNSettings(Base):
     sndbuf = Column(Integer, nullable=False, default=393216)
     rcvbuf = Column(Integer, nullable=False, default=393216)
     fast_io = Column(Boolean, nullable=False, default=False)
+    tcp_nodelay = Column(Boolean, nullable=False, default=False)
     explicit_exit_notify = Column(Integer, nullable=False, default=1)
 
     keepalive_ping = Column(Integer, nullable=False, default=10)

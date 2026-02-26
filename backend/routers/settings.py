@@ -82,6 +82,7 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
         sndbuf=settings.sndbuf,
         rcvbuf=settings.rcvbuf,
         fast_io=settings.fast_io,
+        tcp_nodelay=settings.tcp_nodelay,
         explicit_exit_notify=settings.explicit_exit_notify,
         keepalive_ping=settings.keepalive_ping,
         keepalive_timeout=settings.keepalive_timeout,
@@ -323,6 +324,7 @@ def update_openvpn_settings(
     settings.sndbuf = payload.sndbuf
     settings.rcvbuf = payload.rcvbuf
     settings.fast_io = payload.fast_io
+    settings.tcp_nodelay = payload.tcp_nodelay
     settings.explicit_exit_notify = payload.explicit_exit_notify
 
     settings.keepalive_ping = payload.keepalive_ping
@@ -404,6 +406,7 @@ def update_openvpn_settings(
             "sndbuf": settings.sndbuf,
             "rcvbuf": settings.rcvbuf,
             "fast_io": settings.fast_io,
+            "tcp_nodelay": settings.tcp_nodelay,
             "explicit_exit_notify": settings.explicit_exit_notify,
             "keepalive_ping": settings.keepalive_ping,
             "keepalive_timeout": settings.keepalive_timeout,

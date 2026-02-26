@@ -44,6 +44,7 @@ class OpenVPNSettingsBase(BaseModel):
     sndbuf: int = Field(393216, ge=0, le=10485760)
     rcvbuf: int = Field(393216, ge=0, le=10485760)
     fast_io: bool = Field(False)
+    tcp_nodelay: bool = Field(False)
     explicit_exit_notify: int = Field(1, ge=0, le=10)
 
     keepalive_ping: int = Field(10, ge=1, le=3600)
@@ -206,6 +207,14 @@ class OpenVPNSettingsBase(BaseModel):
 
     @model_validator(mode="after")
     def validate_obfuscation_fields(self):
+        effective_protocol = "tcp" if self.obfuscation_mode != "standard" else self.protocol
+
+        if "udp" in effective_protocol:
+            self.tcp_nodelay = False
+        else:
+            self.fast_io = False
+            self.explicit_exit_notify = 0
+
         if self.obfuscation_mode not in {"stealth", "http_proxy_advanced"}:
             self.spoofed_host = None
 

@@ -427,12 +427,13 @@
                                         <div x-cloak x-show="openTooltip === 'protocol'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">UDP is faster for streaming/gaming. TCP is slower but bypasses strict firewalls better. Recommended: UDP.</div>
                                     </span>
                                 </span>
-                                <select x-model="form.protocol" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <select x-model="form.protocol" :disabled="isProtocolForcedByObfuscation()" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="isProtocolForcedByObfuscation() ? (darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-400 cursor-not-allowed' : 'bg-slate-100 border-slate-300 text-slate-500 cursor-not-allowed') : (darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900')">
                                     <option value="udp">udp</option>
                                     <option value="tcp">tcp</option>
                                     <option value="udp6">udp6</option>
                                     <option value="tcp6">tcp6</option>
                                 </select>
+                                <p x-show="isProtocolForcedByObfuscation()" class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-amber-300' : 'text-amber-700'">TCP (Forced by Obfuscation)</p>
                             </label>
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
@@ -713,9 +714,10 @@
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>MSSFix</span><span class="relative" @mouseenter="showTooltip('mssfix')" @mouseleave="hideTooltip('mssfix')"><button type="button" @click.stop="toggleTooltip('mssfix')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'mssfix'" x-transition class="tooltip-glass absolute z-40 left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Prevents packet fragmentation on bad networks. Recommended: 1450.</div></span></span><input type="number" min="0" max="9000" x-model.number="form.mssfix" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Send Buffer (sndbuf)</span><span class="relative" @mouseenter="showTooltip('sndbuf')" @mouseleave="hideTooltip('sndbuf')"><button type="button" @click.stop="toggleTooltip('sndbuf')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'sndbuf'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Increases network speed on fast servers. Recommended: 393216.</div></span></span><input type="number" min="0" x-model.number="form.sndbuf" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
                             <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Receive Buffer (rcvbuf)</span><span class="relative" @mouseenter="showTooltip('rcvbuf')" @mouseleave="hideTooltip('rcvbuf')"><button type="button" @click.stop="toggleTooltip('rcvbuf')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'rcvbuf'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Increases network speed on fast servers. Recommended: 393216.</div></span></span><input type="number" min="0" x-model.number="form.rcvbuf" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
-                            <label class="block"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Explicit Exit Notify</span><span class="relative" @mouseenter="showTooltip('explicit_exit_notify')" @mouseleave="hideTooltip('explicit_exit_notify')"><button type="button" @click.stop="toggleTooltip('explicit_exit_notify')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'explicit_exit_notify'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Tells the server/client to gracefully close the connection. Recommended: 1 (for UDP).</div></span></span><input type="number" min="0" max="10" x-model.number="form.explicit_exit_notify" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block" x-show="effectiveProtocol === 'udp'"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>Explicit Exit Notify</span><span class="relative" @mouseenter="showTooltip('explicit_exit_notify')" @mouseleave="hideTooltip('explicit_exit_notify')"><button type="button" @click.stop="toggleTooltip('explicit_exit_notify')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'explicit_exit_notify'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Tells the server/client to gracefully close the connection. Recommended: 1 (for UDP).</div></span></span><input type="number" min="0" max="10" x-model.number="form.explicit_exit_notify" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                            <label class="block" x-show="effectiveProtocol === 'tcp'"><span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'"><span>TCP No Delay</span><span class="relative" @mouseenter="showTooltip('tcp_nodelay')" @mouseleave="hideTooltip('tcp_nodelay')"><button type="button" @click.stop="toggleTooltip('tcp_nodelay')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button><div x-cloak x-show="openTooltip === 'tcp_nodelay'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Disables Nagle's algorithm to reduce TCP latency.</div></span></span><button type="button" @click="form.tcp_nodelay = !form.tcp_nodelay" class="mt-1 px-3 py-2 rounded-lg text-xs font-semibold" :class="form.tcp_nodelay ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.tcp_nodelay ? 'ON' : 'OFF'"></button></label>
                         </div>
-                        <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                        <div class="rounded-xl border px-4 py-3 flex items-center justify-between" x-show="effectiveProtocol === 'udp'" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
                             <div>
                                 <p class="text-sm font-semibold theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">
                                     <span>Fast I/O</span>
@@ -850,6 +852,7 @@
                     sndbuf: 393216,
                     rcvbuf: 393216,
                     fast_io: false,
+                    tcp_nodelay: false,
                     explicit_exit_notify: 1,
                     keepalive_ping: 10,
                     keepalive_timeout: 120,
@@ -898,6 +901,27 @@
                     visible: false,
                     message: '',
                     type: 'success',
+                },
+
+                get effectiveProtocol() {
+                    if ((this.form.obfuscation_mode || '').toLowerCase() !== 'standard') {
+                        return 'tcp';
+                    }
+                    const selected = (this.form.protocol || 'udp').toLowerCase();
+                    return selected.includes('udp') ? 'udp' : 'tcp';
+                },
+
+                isProtocolForcedByObfuscation() {
+                    return (this.form.obfuscation_mode || '').toLowerCase() !== 'standard';
+                },
+
+                syncProtocolSpecificSettings() {
+                    if (this.effectiveProtocol === 'tcp') {
+                        this.form.fast_io = false;
+                        this.form.explicit_exit_notify = 0;
+                    } else {
+                        this.form.tcp_nodelay = false;
+                    }
                 },
 
                 initTheme() {
@@ -970,6 +994,11 @@
                         } else {
                             this.form.proxy_address = this.form.proxy_server || '';
                         }
+                        this.syncProtocolSpecificSettings();
+                    });
+
+                    this.$watch('form.protocol', () => {
+                        this.syncProtocolSpecificSettings();
                     });
 
                     this.$watch('form.proxy_server', (proxyServer) => {
@@ -1073,6 +1102,7 @@
                             cdn_domain: data.cdn_domain || '',
                             ws_path: data.ws_path || '/stream',
                             ws_port: Number(data.ws_port) || 8080,
+                            tcp_nodelay: !!data.tcp_nodelay,
                         };
                         if (this.form.obfuscation_mode !== 'standard') {
                             this.form.protocol = 'tcp';
@@ -1082,6 +1112,7 @@
                             }
                         }
                         this.form.proxy_address = this.form.proxy_server || '';
+                        this.syncProtocolSpecificSettings();
                         if (!this.generalForm.global_ipv6_support) {
                             this.form.ipv6_network = '';
                             this.form.ipv6_prefix = null;
@@ -1114,6 +1145,7 @@
                             mssfix: Number(this.form.mssfix),
                             sndbuf: Number(this.form.sndbuf),
                             rcvbuf: Number(this.form.rcvbuf),
+                            tcp_nodelay: !!this.form.tcp_nodelay,
                             explicit_exit_notify: Number(this.form.explicit_exit_notify),
                             keepalive_ping: Number(this.form.keepalive_ping),
                             keepalive_timeout: Number(this.form.keepalive_timeout),
@@ -1159,6 +1191,13 @@
                         if (payload.obfuscation_mode !== 'standard') {
                             payload.protocol = 'tcp';
                             payload.port = 443;
+                        }
+
+                        if ((payload.protocol || '').toLowerCase().includes('udp')) {
+                            payload.tcp_nodelay = false;
+                        } else {
+                            payload.fast_io = false;
+                            payload.explicit_exit_notify = 0;
                         }
 
                         const response = await fetch('/api/settings/openvpn', {
@@ -1207,6 +1246,7 @@
                             cdn_domain: updated.cdn_domain || '',
                             ws_path: updated.ws_path || '/stream',
                             ws_port: Number(updated.ws_port) || 8080,
+                            tcp_nodelay: !!updated.tcp_nodelay,
                         };
 
                         if (this.form.obfuscation_mode !== 'standard') {
@@ -1214,6 +1254,7 @@
                             this.form.port = 443;
                         }
                         this.form.proxy_address = this.form.proxy_server || '';
+                        this.syncProtocolSpecificSettings();
 
                         this.showToast('Settings applied successfully', 'success');
                     } catch (error) {
