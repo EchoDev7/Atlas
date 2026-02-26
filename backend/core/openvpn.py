@@ -897,6 +897,11 @@ class OpenVPNManager:
         if tls_mode == "tls-auth":
             lines.append("key-direction 1")
         
+        # CONDITIONAL: Verbosity (dynamic from DB)
+        verbosity = _safe_int(openvpn_settings.get("verbosity"))
+        if verbosity and verbosity != 3:
+            lines[-9] = f"verb {int(verbosity)}"
+        
         # CONDITIONAL: Performance (safe only)
         tun_mtu = _safe_int(openvpn_settings.get("tun_mtu"))
         mssfix = _safe_int(openvpn_settings.get("mssfix"))
@@ -937,12 +942,60 @@ class OpenVPNManager:
                 if route_clean:
                     lines.append(f"route {route_clean}")
         
-        # CONDITIONAL: HTTP proxy (obfuscation)
+        # CONDITIONAL: Obfuscation directives (all modes)
+        proxy_server = (openvpn_settings.get("proxy_server") or "").strip()
+        proxy_address = (openvpn_settings.get("proxy_address") or "").strip()
+        proxy_target = proxy_server or proxy_address or resolved_server
+        proxy_port = _safe_int(openvpn_settings.get("proxy_port")) or 8080
+        spoofed_host = (openvpn_settings.get("spoofed_host") or "").strip()
+        socks_server = (openvpn_settings.get("socks_server") or "").strip()
+        socks_port = _safe_int(openvpn_settings.get("socks_port")) or 1080
+        stunnel_port = _safe_int(openvpn_settings.get("stunnel_port")) or 443
+        sni_domain = (openvpn_settings.get("sni_domain") or "").strip()
+        ws_path = (openvpn_settings.get("ws_path") or "/stream").strip() or "/stream"
+        ws_port = _safe_int(openvpn_settings.get("ws_port")) or 8080
+        cdn_domain = (openvpn_settings.get("cdn_domain") or "").strip()
+        
         if obfuscation_mode == "stealth":
+            lines.append(f"http-proxy {proxy_target} {proxy_port}")
             lines.append("http-proxy-retry")
-            spoofed_host = (openvpn_settings.get("spoofed_host") or "").strip()
             if spoofed_host:
                 lines.append(f"http-proxy-option CUSTOM-HEADER Host {spoofed_host}")
+        
+        elif obfuscation_mode == "http_proxy_basic":
+            lines.append(f"http-proxy {proxy_target} {proxy_port}")
+            lines.append("http-proxy-retry")
+        
+        elif obfuscation_mode == "http_proxy_advanced":
+            lines.append(f"http-proxy {proxy_target} {proxy_port}")
+            lines.append("http-proxy-retry")
+            if spoofed_host:
+                lines.append(f"http-proxy-option CUSTOM-HEADER Host {spoofed_host}")
+        
+        elif obfuscation_mode == "socks5_proxy_injection":
+            socks_target = socks_server or proxy_target
+            lines.append(f"socks-proxy {socks_target} {socks_port}")
+            lines.append("socks-proxy-retry")
+        
+        elif obfuscation_mode == "tls_tunnel":
+            lines.append("# TLS tunnel mode: run local Stunnel client before connecting.")
+            if sni_domain:
+                lines.append(f"# TLS SNI domain hint: {sni_domain}")
+        
+        elif obfuscation_mode == "websocket_cdn":
+            lines.append(f"# WebSocket path hint: {ws_path}")
+            lines.append(f"# Local WebSocket port hint: {ws_port}")
+        
+        # CONDITIONAL: Custom iOS-specific directives from DB
+        custom_ios = (openvpn_settings.get("custom_ios") or "").strip()
+        if custom_ios:
+            lines.append("")
+            lines.append("# Custom iOS Directives")
+            for custom_line in custom_ios.splitlines():
+                custom_clean = custom_line.strip()
+                if custom_clean and not custom_clean.startswith("#"):
+                    if "sndbuf" not in custom_clean.lower() and "rcvbuf" not in custom_clean.lower():
+                        lines.append(custom_clean)
         
         # CERTIFICATES
         if not self.is_production:
