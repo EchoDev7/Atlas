@@ -90,6 +90,7 @@ def init_db():
                 "custom_windows": "ALTER TABLE openvpn_settings ADD COLUMN custom_windows TEXT",
                 "custom_mac": "ALTER TABLE openvpn_settings ADD COLUMN custom_mac TEXT",
                 "enable_auth_nocache": "ALTER TABLE openvpn_settings ADD COLUMN enable_auth_nocache BOOLEAN NOT NULL DEFAULT 1",
+                "enable_dns_leak_protection": "ALTER TABLE openvpn_settings ADD COLUMN enable_dns_leak_protection BOOLEAN NOT NULL DEFAULT 1",
             }
 
             for column_name, migration_sql in openvpn_column_migrations.items():
@@ -192,6 +193,7 @@ def init_db():
                             data_ciphers, tls_version_min, tls_mode, auth_digest, reneg_sec,
                             tun_mtu, mssfix, sndbuf, rcvbuf, fast_io, explicit_exit_notify, tcp_nodelay,
                             keepalive_ping, keepalive_timeout, inactive_timeout, management_port, verbosity,
+                            enable_auth_nocache, enable_dns_leak_protection,
                             custom_directives, advanced_client_push,
                             obfuscation_mode, proxy_server, proxy_address, proxy_port, spoofed_host, socks_server, socks_port, stunnel_port, sni_domain, cdn_domain, ws_path, ws_port,
                             created_at, updated_at
@@ -203,6 +205,7 @@ def init_db():
                             'AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305', '1.2', 'tls-crypt', 'SHA256', 3600,
                             1500, 1450, 393216, 393216, 0, 1, 0,
                             10, 120, 300, 5555, 3,
+                            1, 1,
                             NULL, NULL,
                             'standard', NULL, NULL, 8080, 'speedtest.net', NULL, NULL, 443, NULL, NULL, '/stream', 8080,
                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
