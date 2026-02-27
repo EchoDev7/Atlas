@@ -826,23 +826,26 @@ class OpenVPNManager:
         general_settings: dict,
         server_address: str,
         server_port: int,
-        protocol: str
+        protocol: str,
+        os_type: str = "ios",
     ) -> str:
         """
         Standalone Apple (iOS/macOS) config generator with strict whitelist.
-        NO sndbuf, NO rcvbuf, NO block-outside-dns, NO comp-lzo.
+        NO sndbuf, NO rcvbuf, NO block-outside-dns, NO comp-lzo/compress.
         """
         # Clean slate
         lines: List[str] = []
         
         # MANDATORY FIXED CORE
+        device_type = str(openvpn_settings.get("device_type", "tun")).strip().lower()
         lines.extend([
             "# Atlas VPN - OpenVPN Client Configuration",
+            "# OS: iOS/macOS",
             f"# Client: {client_name}",
             f"# Generated: {datetime.utcnow().isoformat()}",
             "",
             "client",
-            "dev tun",
+            f"dev {device_type}",
             "resolv-retry infinite",
             "nobind",
             "persist-key",
@@ -993,16 +996,28 @@ class OpenVPNManager:
             lines.append(f"# WebSocket path hint: {ws_path}")
             lines.append(f"# Local WebSocket port hint: {ws_port}")
         
-        # CONDITIONAL: Custom iOS-specific directives from DB
-        custom_ios = (openvpn_settings.get("custom_ios") or "").strip()
-        if custom_ios:
+        # CONDITIONAL: Custom Apple-specific directives from DB
+        os_name = (os_type or "").strip().lower()
+        custom_apple = (openvpn_settings.get("custom_mac") if os_name in {"mac", "macos"} else openvpn_settings.get("custom_ios"))
+        custom_apple = (custom_apple or "").strip()
+        blocked_directives = (
+            "sndbuf",
+            "rcvbuf",
+            "comp-lzo",
+            "compress",
+            "explicit-exit-notify",
+            "block-outside-dns",
+        )
+        if custom_apple:
             lines.append("")
-            lines.append("# Custom iOS Directives")
-            for custom_line in custom_ios.splitlines():
+            lines.append("# Custom Apple Directives")
+            for custom_line in custom_apple.splitlines():
                 custom_clean = custom_line.strip()
                 if custom_clean and not custom_clean.startswith("#"):
-                    if "sndbuf" not in custom_clean.lower() and "rcvbuf" not in custom_clean.lower():
-                        lines.append(custom_clean)
+                    custom_lower = custom_clean.lower()
+                    if any(custom_lower == directive or custom_lower.startswith(f"{directive} ") for directive in blocked_directives):
+                        continue
+                    lines.append(custom_clean)
         
         # AUTHENTICATION: auth-user-pass and conditional auth-nocache (BEFORE certificates)
         lines.append("")
@@ -1049,8 +1064,18 @@ class OpenVPNManager:
         elif tls_mode == "tls-auth":
             lines.extend(["", "<tls-auth>", ta_key, "</tls-auth>"])
         
-        lines.append("")
-        return "\n".join(lines)
+        # Final strict sanitize pass to guarantee blocked directives are never emitted.
+        sanitized_lines: List[str] = []
+        for line in lines:
+            stripped = line.strip()
+            lowered = stripped.lower()
+            if stripped and not stripped.startswith("#"):
+                if any(lowered == directive or lowered.startswith(f"{directive} ") for directive in blocked_directives):
+                    continue
+            sanitized_lines.append(line)
+
+        sanitized_lines.append("")
+        return "\n".join(sanitized_lines)
     
     def generate_client_config(
         self,
@@ -1084,7 +1109,8 @@ class OpenVPNManager:
                     general_settings=general_settings,
                     server_address=server_address,
                     server_port=server_port,
-                    protocol=protocol
+                    protocol=protocol,
+                    os_type=os_type,
                 )
             except Exception as e:
                 logger.error(f"Apple config generation failed: {e}")
