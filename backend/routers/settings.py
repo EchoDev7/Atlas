@@ -101,10 +101,14 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
         verbosity=settings.verbosity,
         enable_auth_nocache=settings.enable_auth_nocache,
 <<<<<<< HEAD
+<<<<<<< HEAD
         resolv_retry_mode=settings.resolv_retry_mode,
         persist_key=settings.persist_key,
         persist_tun=settings.persist_tun,
 =======
+>>>>>>> feature-server-settings
+=======
+        enable_dns_leak_protection=settings.enable_dns_leak_protection,
 >>>>>>> feature-server-settings
         custom_directives=settings.custom_directives,
         advanced_client_push=settings.advanced_client_push,
@@ -354,11 +358,15 @@ def update_openvpn_settings(
     settings.verbosity = payload.verbosity
     settings.enable_auth_nocache = payload.enable_auth_nocache
 <<<<<<< HEAD
+<<<<<<< HEAD
     
     settings.resolv_retry_mode = payload.resolv_retry_mode
     settings.persist_key = payload.persist_key
     settings.persist_tun = payload.persist_tun
 =======
+>>>>>>> feature-server-settings
+=======
+    settings.enable_dns_leak_protection = payload.enable_dns_leak_protection
 >>>>>>> feature-server-settings
 
     settings.custom_directives = payload.custom_directives.strip() if payload.custom_directives else None
@@ -448,6 +456,8 @@ def update_openvpn_settings(
                 "inactive_timeout": settings.inactive_timeout,
                 "management_port": settings.management_port,
                 "verbosity": settings.verbosity,
+                "enable_auth_nocache": settings.enable_auth_nocache,
+                "enable_dns_leak_protection": settings.enable_dns_leak_protection,
                 "custom_directives": settings.custom_directives,
                 "advanced_client_push": settings.advanced_client_push,
                 "obfuscation_mode": settings.obfuscation_mode,

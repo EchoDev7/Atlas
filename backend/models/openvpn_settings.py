@@ -51,12 +51,16 @@ class OpenVPNSettings(Base):
     verbosity = Column(Integer, nullable=False, default=3)
     enable_auth_nocache = Column(Boolean, nullable=False, default=True)
 <<<<<<< HEAD
+<<<<<<< HEAD
     
     # Client Behavior
     resolv_retry_mode = Column(String(16), nullable=False, default="infinite")
     persist_key = Column(Boolean, nullable=False, default=True)
     persist_tun = Column(Boolean, nullable=False, default=True)
 =======
+>>>>>>> feature-server-settings
+=======
+    enable_dns_leak_protection = Column(Boolean, nullable=False, default=True)
 >>>>>>> feature-server-settings
 
     custom_directives = Column(Text, nullable=True)
