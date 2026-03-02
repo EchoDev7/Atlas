@@ -61,6 +61,7 @@ OPENVPN_SERVER_DIR="/etc/openvpn/server"
 PKI_DIR="${OPENVPN_SERVER_DIR}/pki"
 CA_CERT="${PKI_DIR}/ca.crt"
 TA_KEY="${OPENVPN_SERVER_DIR}/ta.key"
+ATLAS_BACKEND_SERVICE_FILE="/etc/systemd/system/atlas-backend.service"
 
 # 1) PKI paths and required files
 check_exists "$OPENVPN_SERVER_DIR" "OpenVPN server directory"
@@ -146,6 +147,15 @@ fi
 check_listening_port "8000" "Atlas FastAPI panel"
 
 if command -v systemctl >/dev/null 2>&1; then
+  check_exists "$ATLAS_BACKEND_SERVICE_FILE" "Atlas backend systemd unit file"
+
+  atlas_backend_state="$(systemctl is-active atlas-backend.service 2>/dev/null || true)"
+  if [[ "$atlas_backend_state" == "active" ]]; then
+    ok "systemd service atlas-backend.service is active"
+  else
+    err "systemd service atlas-backend.service is '${atlas_backend_state:-inactive}'. Fix: sudo systemctl daemon-reload && sudo systemctl enable --now atlas-backend.service"
+  fi
+
   openvpn_service_state="$(systemctl is-active openvpn-server@server 2>/dev/null || true)"
   if [[ "$openvpn_service_state" == "active" ]]; then
     ok "systemd service openvpn-server@server is active"
