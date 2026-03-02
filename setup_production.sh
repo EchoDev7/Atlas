@@ -126,11 +126,17 @@ if [[ ! -x "${EASYRSA_BIN}" ]]; then
 fi
 
 if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/issued/server.crt" ]] || [[ ! -f "${OPENVPN_SERVER_DIR}/pki/private/server.key" ]]; then
-  "${EASYRSA_BIN}" --batch build-server-full server nopass
+  (
+    cd "${OPENVPN_SERVER_DIR}"
+    EASYRSA_BATCH=1 ./easyrsa build-server-full server nopass
+  )
 fi
 
 if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/dh.pem" ]]; then
-  "${EASYRSA_BIN}" --batch gen-dh
+  (
+    cd "${OPENVPN_SERVER_DIR}"
+    EASYRSA_BATCH=1 ./easyrsa gen-dh
+  )
 fi
 
 
