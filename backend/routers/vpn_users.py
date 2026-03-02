@@ -329,6 +329,16 @@ async def update_user(
             user.disabled_at = datetime.utcnow()
             user.disabled_reason = user.disabled_reason or "Disabled by admin"
 
+            has_openvpn_config = any(config.protocol == "openvpn" for config in user.configs)
+            if has_openvpn_config:
+                revoke_result = openvpn_manager.revoke_client_certificate(user.username)
+                if not revoke_result.get("success"):
+                    logger.warning(
+                        "OpenVPN certificate revoke skipped for disabled user %s: %s",
+                        user.username,
+                        revoke_result.get("message"),
+                    )
+
     _sync_legacy_accounting_fields(user)
     user.refresh_limit_flags(datetime.utcnow())
     
@@ -355,13 +365,14 @@ async def delete_user(
     
     username = user.username
     
-    # Revoke OpenVPN certificates if any
-    for config in user.configs:
-        if config.protocol == "openvpn" and config.is_active:
-            try:
-                openvpn_manager.revoke_client_certificate(username)
-            except Exception as e:
-                logger.error(f"Error revoking certificate for {username}: {e}")
+    # Revoke OpenVPN certificate/CRL when any OpenVPN config exists for the user.
+    if any(config.protocol == "openvpn" for config in user.configs):
+        try:
+            revoke_result = openvpn_manager.revoke_client_certificate(username)
+            if not revoke_result.get("success"):
+                logger.warning("OpenVPN revoke skipped during delete for %s: %s", username, revoke_result.get("message"))
+        except Exception as e:
+            logger.error(f"Error revoking certificate for {username}: {e}")
     
     db.delete(user)
     db.commit()

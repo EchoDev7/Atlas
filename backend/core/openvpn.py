@@ -16,6 +16,7 @@ import io
 import base64
 from urllib.parse import urlparse
 
+from backend.core.pki import PKIManager
 from backend.services.protocols.base_vpn_service import BaseVPNService
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,15 @@ class OpenVPNManager(BaseVPNService):
         self.config = OpenVPNConfig()
         self.is_production = IS_LINUX
         self.protocol_name = "openvpn"
+        self.pki_manager = PKIManager(
+            easyrsa_dir=self.config.EASYRSA_DIR,
+            pki_dir=self.config.PKI_DIR,
+            ca_cert_path=self.config.CA_CERT,
+            ta_key_path=self.config.TA_KEY,
+            client_certs_dir=self.config.CLIENT_CERTS_DIR,
+            client_keys_dir=self.config.CLIENT_KEYS_DIR,
+            is_production=self.is_production,
+        )
         
         if not self.is_production:
             logger.warning("Running in DEVELOPMENT mode - subprocess calls will be mocked")
@@ -1080,59 +1090,17 @@ if __name__ == "__main__":
     
     def check_easyrsa_installed(self) -> bool:
         """Check if Easy-RSA is installed"""
-        try:
-            success, _, _ = self._run_command(["easyrsa", "version"], check=False)
-            return success
-        except:
-            return not self.is_production  # Always true in dev mode
+        return self.pki_manager.is_easyrsa_available()
     
     def initialize_pki(self) -> Dict[str, any]:
         """
         Initialize PKI infrastructure using Easy-RSA 3.
         This should be run once during initial setup.
         """
-        try:
-            if not self.is_production:
-                logger.info("[MOCK] PKI initialization skipped in development mode")
-                return {
-                    "success": True,
-                    "message": "PKI initialized (mock)",
-                    "ca_created": True,
-                    "server_cert_created": True
-                }
-            
-            # Change to Easy-RSA directory
-            os.chdir(self.config.EASYRSA_DIR)
-            
-            # Initialize PKI
-            self._run_command(["./easyrsa", "init-pki"])
-            
-            # Build CA (non-interactive)
-            self._run_command(["./easyrsa", "build-ca", "nopass"])
-            
-            # Generate DH parameters
-            self._run_command(["./easyrsa", "gen-dh"])
-            
-            # Build server certificate
-            self._run_command(["./easyrsa", "build-server-full", "server", "nopass"])
-            
-            # Generate TLS auth key
-            self._run_command(["openvpn", "--genkey", "--secret", str(self.config.TA_KEY)])
-            
-            return {
-                "success": True,
-                "message": "PKI initialized successfully",
-                "ca_created": True,
-                "server_cert_created": True
-            }
-            
-        except Exception as e:
-            logger.error(f"PKI initialization failed: {e}")
-            return {
-                "success": False,
-                "message": f"PKI initialization failed: {str(e)}",
-                "error": str(e)
-            }
+        result = self.pki_manager.ensure_ready()
+        if not result.get("success") and result.get("degraded"):
+            logger.warning("PKI initialize skipped with graceful degradation: %s", result.get("message"))
+        return result
     
     def create_client_certificate(self, client_name: str) -> Dict[str, any]:
         """
@@ -1144,52 +1112,16 @@ if __name__ == "__main__":
         Returns:
             Dict with success status and file paths
         """
-        try:
-            # Validate client name
-            if not client_name.replace("-", "").replace("_", "").isalnum():
-                return {
-                    "success": False,
-                    "message": "Client name must be alphanumeric (-, _ allowed)"
-                }
-            
-            if not self.is_production:
-                logger.info(f"[MOCK] Creating certificate for client: {client_name}")
-            
-            # Build client certificate with Easy-RSA
-            success, stdout, stderr = self._run_command([
-                "easyrsa",
-                "build-client-full",
-                client_name,
-                "nopass"
-            ])
-            
-            if not success:
-                return {
-                    "success": False,
-                    "message": f"Certificate creation failed: {stderr}"
-                }
-            
-            # Get certificate paths
-            cert_path = self.config.CLIENT_CERTS_DIR / f"{client_name}.crt"
-            key_path = self.config.CLIENT_KEYS_DIR / f"{client_name}.key"
-            
-            return {
-                "success": True,
-                "message": f"Certificate created for {client_name}",
-                "client_name": client_name,
-                "cert_path": str(cert_path),
-                "key_path": str(key_path),
-                "ca_path": str(self.config.CA_CERT),
-                "ta_key_path": str(self.config.TA_KEY)
-            }
-            
-        except Exception as e:
-            logger.error(f"Client certificate creation failed: {e}")
+        if not client_name.replace("-", "").replace("_", "").isalnum():
             return {
                 "success": False,
-                "message": f"Certificate creation failed: {str(e)}",
-                "error": str(e)
+                "message": "Client name must be alphanumeric (-, _ allowed)"
             }
+
+        result = self.pki_manager.build_client(client_name)
+        if not result.get("success"):
+            logger.warning("Client certificate creation failed for %s: %s", client_name, result.get("message"))
+        return result
     
     def revoke_client_certificate(self, client_name: str) -> Dict[str, any]:
         """
@@ -1201,53 +1133,26 @@ if __name__ == "__main__":
         Returns:
             Dict with success status
         """
-        try:
-            if not self.is_production:
-                logger.info(f"[MOCK] Revoking certificate for client: {client_name}")
-            
-            # Revoke certificate
-            success, stdout, stderr = self._run_command([
-                "easyrsa",
-                "revoke",
-                client_name
-            ])
-            
-            if not success:
-                return {
-                    "success": False,
-                    "message": f"Certificate revocation failed: {stderr}"
-                }
-            
-            # Generate new CRL
-            self._run_command(["easyrsa", "gen-crl"])
-            
-            return {
-                "success": True,
-                "message": f"Certificate revoked for {client_name}",
-                "client_name": client_name,
-                "revoked_at": datetime.utcnow().isoformat()
-            }
-            
-        except Exception as e:
-            logger.error(f"Certificate revocation failed: {e}")
-            return {
-                "success": False,
-                "message": f"Revocation failed: {str(e)}",
-                "error": str(e)
-            }
+        result = self.pki_manager.revoke_client(client_name)
+        if result.get("success"):
+            result["revoked_at"] = datetime.utcnow().isoformat()
+        else:
+            logger.warning("Client certificate revoke failed for %s: %s", client_name, result.get("message"))
+        return result
     
     def _get_client_materials(self, client_name: str) -> Tuple[str, str, str, str]:
         """Return CA cert, client cert, client key, and TLS auth/crypt key content."""
-        if not self.is_production:
-            return (
-                "-----BEGIN CERTIFICATE-----\nMOCK CA CERTIFICATE\n-----END CERTIFICATE-----",
-                "-----BEGIN CERTIFICATE-----\nMOCK CLIENT CERTIFICATE\n-----END CERTIFICATE-----",
-                "-----BEGIN PRIVATE KEY-----\nMOCK CLIENT KEY\n-----END PRIVATE KEY-----",
-                "-----BEGIN OpenVPN Static key V1-----\nMOCK TA KEY\n-----END OpenVPN Static key V1-----",
-            )
-
         cert_path = self.config.CLIENT_CERTS_DIR / f"{client_name}.crt"
         key_path = self.config.CLIENT_KEYS_DIR / f"{client_name}.key"
+        missing = [
+            str(path)
+            for path in [self.config.CA_CERT, cert_path, key_path, self.config.TA_KEY]
+            if not path.exists()
+        ]
+        if missing:
+            raise FileNotFoundError(
+                "Missing OpenVPN PKI material(s): " + ", ".join(missing)
+            )
         with open(self.config.CA_CERT, 'r') as f:
             ca_cert = f.read()
         with open(cert_path, 'r') as f:
