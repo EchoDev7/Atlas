@@ -28,6 +28,7 @@ from backend.schemas.vpn_user import (
 )
 from backend.core.openvpn import OpenVPNManager, validate_openvpn_readiness
 from backend.services.scheduler_service import get_scheduler
+from backend.services.protocols.registry import protocol_registry
 from backend.models.general_settings import GeneralSettings
 from backend.models.openvpn_settings import OpenVPNSettings
 
@@ -129,6 +130,48 @@ async def get_user(
         raise HTTPException(status_code=404, detail="User not found")
     
     return user
+
+
+@router.post("/{user_id}/disconnect")
+async def disconnect_user_sessions(
+    user_id: int,
+    protocol: str = "openvpn",
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Disconnect active sessions for a user using the selected protocol plugin."""
+    user = db.query(VPNUser).filter(VPNUser.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        manager = protocol_registry.get(protocol)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"Unsupported protocol: {protocol}")
+
+    result = manager.kill_user(user.username)
+    if not result.get("success"):
+        raise HTTPException(status_code=502, detail=result.get("message") or "Failed to disconnect user")
+
+    user.current_connections = 0
+    user.is_connection_limit_exceeded = False
+    user.updated_at = datetime.utcnow()
+    db.commit()
+
+    logger.info(
+        "User %s disconnected via %s by admin %s",
+        user.username,
+        protocol,
+        current_user.username,
+    )
+
+    return {
+        "success": True,
+        "user_id": user.id,
+        "username": user.username,
+        "protocol": protocol,
+        "message": result.get("message") or f"Disconnected active sessions for {user.username}",
+    }
 
 
 @router.post("", response_model=VPNUserCredentials, status_code=status.HTTP_201_CREATED)

@@ -6,6 +6,7 @@ import os
 import platform
 import logging
 import time
+import socket
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Iterator
 from fastapi import HTTPException
@@ -14,6 +15,8 @@ import qrcode
 import io
 import base64
 from urllib.parse import urlparse
+
+from backend.services.protocols.base_vpn_service import BaseVPNService
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +163,7 @@ def _safe_int(value, default=None):
         return default
 
 
-class OpenVPNManager:
+class OpenVPNManager(BaseVPNService):
     """
     Core OpenVPN management logic.
     Follows official OpenVPN and Easy-RSA 3 documentation.
@@ -170,9 +173,145 @@ class OpenVPNManager:
     def __init__(self):
         self.config = OpenVPNConfig()
         self.is_production = IS_LINUX
+        self.protocol_name = "openvpn"
         
         if not self.is_production:
             logger.warning("Running in DEVELOPMENT mode - subprocess calls will be mocked")
+
+    def _get_management_socket_target(self) -> Tuple[str, int]:
+        """Resolve OpenVPN management interface host/port from runtime settings."""
+        settings, _ = self._load_runtime_settings()
+        host = "127.0.0.1"
+        port = _safe_int(settings.get("management_port"), 5555)
+        return host, max(1, port)
+
+    def _send_management_command(self, command: str, timeout: float = 3.0) -> Tuple[bool, str]:
+        """Send a command to OpenVPN management interface and return raw response."""
+        host, port = self._get_management_socket_target()
+        command = (command or "").strip()
+        if not command:
+            return False, "Missing management command"
+
+        try:
+            with socket.create_connection((host, port), timeout=timeout) as sock:
+                sock.settimeout(timeout)
+
+                # Read greeting/banner if present.
+                greeting_chunks: List[str] = []
+                for _ in range(2):
+                    try:
+                        chunk = sock.recv(4096)
+                    except socket.timeout:
+                        break
+                    if not chunk:
+                        break
+                    greeting_chunks.append(chunk.decode(errors="ignore"))
+                    if ">" in greeting_chunks[-1] or "END" in greeting_chunks[-1]:
+                        break
+
+                sock.sendall(f"{command}\n".encode())
+
+                response_chunks: List[str] = []
+                while True:
+                    try:
+                        data = sock.recv(8192)
+                    except socket.timeout:
+                        break
+
+                    if not data:
+                        break
+
+                    text = data.decode(errors="ignore")
+                    response_chunks.append(text)
+                    merged = "".join(response_chunks)
+                    if (
+                        "\nEND" in merged
+                        or "END\n" in merged
+                        or "SUCCESS:" in merged
+                        or "ERROR:" in merged
+                        or "OpenVPN Version" in merged
+                    ):
+                        break
+
+                return True, "".join(response_chunks).strip()
+
+        except (socket.timeout, TimeoutError):
+            return False, f"Management interface timeout on {host}:{port}"
+        except OSError as exc:
+            return False, f"Management interface unavailable on {host}:{port}: {exc}"
+
+    def get_active_sessions(self) -> List[Dict[str, Any]]:
+        """Return active OpenVPN sessions from management interface (status 3)."""
+        success, response = self._send_management_command("status 3")
+        if not success:
+            logger.warning("OpenVPN management status query failed: %s", response)
+            return []
+
+        sessions: List[Dict[str, Any]] = []
+        for raw_line in response.splitlines():
+            line = raw_line.strip()
+            if not line.startswith("CLIENT_LIST,"):
+                continue
+
+            parts = [segment.strip() for segment in line.split(",")]
+            if len(parts) < 6:
+                continue
+
+            common_name = parts[1]
+            if not common_name or common_name.upper() == "UNDEF":
+                continue
+
+            sessions.append(
+                {
+                    "username": common_name,
+                    "real_address": parts[2] if len(parts) > 2 else None,
+                    "virtual_address": parts[3] if len(parts) > 3 else None,
+                    "bytes_received": _safe_int(parts[4], 0) if len(parts) > 4 else 0,
+                    "bytes_sent": _safe_int(parts[5], 0) if len(parts) > 5 else 0,
+                    "connected_since": parts[7] if len(parts) > 7 else None,
+                    "raw": line,
+                }
+            )
+
+        return sessions
+
+    def kill_user(self, username: str) -> Dict[str, Any]:
+        """Disconnect a user immediately via management `kill <common_name>` command."""
+        username = (username or "").strip()
+        if not username:
+            return {"success": False, "message": "Missing username", "protocol": self.protocol_name}
+
+        success, response = self._send_management_command(f"kill {username}")
+        if not success:
+            return {"success": False, "message": response, "protocol": self.protocol_name}
+
+        is_ok = "ERROR:" not in response
+        return {
+            "success": is_ok,
+            "message": response or f"Kill command executed for {username}",
+            "protocol": self.protocol_name,
+            "username": username,
+        }
+
+    def get_traffic_usage(self, username: Optional[str] = None) -> Dict[str, Any]:
+        """Aggregate traffic usage from live management sessions."""
+        sessions = self.get_active_sessions()
+        usage_by_user: Dict[str, Dict[str, int]] = {}
+
+        for session in sessions:
+            key = session.get("username")
+            if not key:
+                continue
+            usage = usage_by_user.setdefault(key, {"bytes_received": 0, "bytes_sent": 0, "total_bytes": 0})
+            usage["bytes_received"] += _safe_int(session.get("bytes_received"), 0)
+            usage["bytes_sent"] += _safe_int(session.get("bytes_sent"), 0)
+            usage["total_bytes"] = usage["bytes_received"] + usage["bytes_sent"]
+
+        if username:
+            scoped = usage_by_user.get(username, {"bytes_received": 0, "bytes_sent": 0, "total_bytes": 0})
+            return {"protocol": self.protocol_name, "username": username, "usage": scoped}
+
+        return {"protocol": self.protocol_name, "users": usage_by_user, "session_count": len(sessions)}
 
     def _load_runtime_settings(self) -> Tuple[Dict[str, any], Dict[str, any]]:
         """Load persisted OpenVPN and General settings from SQLite."""

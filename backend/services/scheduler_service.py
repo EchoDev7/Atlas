@@ -10,7 +10,7 @@ import logging
 
 from backend.database import SessionLocal
 from backend.models.vpn_user import VPNUser, VPNConfig
-from backend.core.openvpn import OpenVPNConfig
+from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ class LimitEnforcementScheduler:
     def __init__(self):
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.is_running = False
+        self.openvpn_manager = OpenVPNManager()
     
     def start(self):
         """Start the background scheduler"""
@@ -93,6 +94,41 @@ class LimitEnforcementScheduler:
 
         return online_counts
 
+    def _get_openvpn_online_counts(self) -> dict:
+        """
+        Prefer OpenVPN management interface for live sessions.
+        Fallback to status.log when management interface is unavailable/empty.
+        """
+        online_counts = {}
+
+        try:
+            sessions = self.openvpn_manager.get_active_sessions()
+            if sessions:
+                for session in sessions:
+                    username = (session.get("username") or "").strip()
+                    if not username:
+                        continue
+                    online_counts[username] = int(online_counts.get(username, 0)) + 1
+
+                logger.info(
+                    "Reconcile source=management_interface users=%s online=%s",
+                    len(online_counts),
+                    sum(online_counts.values()),
+                )
+                return online_counts
+
+            logger.warning("Management interface returned no sessions; falling back to status.log")
+        except Exception as exc:
+            logger.warning("Management interface read failed; falling back to status.log: %s", exc)
+
+        online_counts = self._parse_openvpn_status_online_counts()
+        logger.info(
+            "Reconcile source=status_log users=%s online=%s",
+            len(online_counts),
+            sum(online_counts.values()),
+        )
+        return online_counts
+
     async def reconcile_openvpn_sessions(self):
         """
         Reconcile vpn_users.current_connections with real OpenVPN online sessions.
@@ -103,7 +139,7 @@ class LimitEnforcementScheduler:
         """
         db: Session = SessionLocal()
         try:
-            online_counts = self._parse_openvpn_status_online_counts()
+            online_counts = self._get_openvpn_online_counts()
             now = datetime.utcnow()
 
             users = db.query(VPNUser).all()
