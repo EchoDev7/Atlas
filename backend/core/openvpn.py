@@ -30,14 +30,15 @@ class OpenVPNConfig:
     OpenVPN configuration paths following Ubuntu standard locations.
     Based on official OpenVPN documentation.
     """
-    # Standard Ubuntu paths
+    # Standard Ubuntu/Debian paths for openvpn-server@server service.
     OPENVPN_DIR = Path("/etc/openvpn")
-    EASYRSA_DIR = Path("/usr/share/easy-rsa")
-    PKI_DIR = Path("/etc/openvpn/easy-rsa/pki")
+    OPENVPN_SERVER_DIR = OPENVPN_DIR / "server"
+    EASYRSA_DIR = OPENVPN_SERVER_DIR
+    PKI_DIR = OPENVPN_SERVER_DIR / "pki"
     
     # Server configuration
-    SERVER_CONF = OPENVPN_DIR / "server" / "server.conf"
-    ENFORCEMENT_HOOK = OPENVPN_DIR / "server" / "atlas_enforcement_hook.py"
+    SERVER_CONF = OPENVPN_SERVER_DIR / "server.conf"
+    ENFORCEMENT_HOOK = OPENVPN_SERVER_DIR / "atlas_enforcement_hook.py"
     STATUS_LOG = Path("/run/openvpn-server/status-server.log")
     
     # PKI paths (Easy-RSA 3 standard structure)
@@ -45,7 +46,9 @@ class OpenVPNConfig:
     SERVER_CERT = PKI_DIR / "issued" / "server.crt"
     SERVER_KEY = PKI_DIR / "private" / "server.key"
     DH_PARAMS = PKI_DIR / "dh.pem"
-    TA_KEY = OPENVPN_DIR / "server" / "ta.key"
+    TA_KEY = OPENVPN_SERVER_DIR / "ta.key"
+    PKI_CRL = PKI_DIR / "crl.pem"
+    CRL_FILE = OPENVPN_SERVER_DIR / "crl.pem"
     
     # Client certificates directory
     CLIENT_CERTS_DIR = PKI_DIR / "issued"
@@ -180,6 +183,8 @@ class OpenVPNManager(BaseVPNService):
             pki_dir=self.config.PKI_DIR,
             ca_cert_path=self.config.CA_CERT,
             ta_key_path=self.config.TA_KEY,
+            pki_crl_path=self.config.PKI_CRL,
+            openvpn_crl_path=self.config.CRL_FILE,
             client_certs_dir=self.config.CLIENT_CERTS_DIR,
             client_keys_dir=self.config.CLIENT_KEYS_DIR,
             is_production=self.is_production,
@@ -685,6 +690,22 @@ if __name__ == "__main__":
                 logger.warning("Failed to chmod enforcement hook script: %s", exc)
 
         return hook_path
+
+    def _harden_sensitive_file_permissions(self) -> None:
+        """Harden sensitive key material file permissions in production."""
+        if not self.is_production:
+            return
+
+        sensitive_paths = [
+            self.config.SERVER_KEY,
+            self.config.TA_KEY,
+        ]
+        for path in sensitive_paths:
+            try:
+                if path.exists():
+                    os.chmod(path, 0o600)
+            except Exception as exc:
+                logger.warning("Failed to chmod %s to 600: %s", path, exc)
     
     def _run_command(self, cmd: List[str], check: bool = True) -> Tuple[bool, str, str]:
         """
@@ -2478,6 +2499,7 @@ if __name__ == "__main__":
                     f"cert {self.config.SERVER_CERT}",
                     f"key {self.config.SERVER_KEY}",
                     f"dh {self.config.DH_PARAMS}",
+                    f"crl-verify {self.config.CRL_FILE}",
                 ]
             )
 
@@ -2549,6 +2571,7 @@ if __name__ == "__main__":
             if self.is_production:
                 self.config.SERVER_CONF.parent.mkdir(parents=True, exist_ok=True)
                 self.config.SERVER_CONF.write_text(server_conf)
+                self._harden_sensitive_file_permissions()
                 logger.info(f"OpenVPN server configuration written to {self.config.SERVER_CONF}")
             else:
                 logger.info("[MOCK] OpenVPN server configuration generated (not written in development mode)")

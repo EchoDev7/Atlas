@@ -20,6 +20,8 @@ class PKIManager:
         pki_dir: Path,
         ca_cert_path: Path,
         ta_key_path: Path,
+        pki_crl_path: Path,
+        openvpn_crl_path: Path,
         client_certs_dir: Path,
         client_keys_dir: Path,
         is_production: bool,
@@ -28,9 +30,20 @@ class PKIManager:
         self.pki_dir = Path(pki_dir)
         self.ca_cert_path = Path(ca_cert_path)
         self.ta_key_path = Path(ta_key_path)
+        self.pki_crl_path = Path(pki_crl_path)
+        self.openvpn_crl_path = Path(openvpn_crl_path)
         self.client_certs_dir = Path(client_certs_dir)
         self.client_keys_dir = Path(client_keys_dir)
         self.is_production = bool(is_production)
+
+    def _chmod_if_exists(self, path: Path, mode: int) -> None:
+        if not self._is_supported_runtime():
+            return
+        try:
+            if path.exists():
+                os.chmod(path, mode)
+        except Exception as exc:
+            logger.warning("Failed to chmod %s to %o: %s", path, mode, exc)
 
     def _is_supported_runtime(self) -> bool:
         return self.is_production and platform.system() == "Linux"
@@ -124,6 +137,8 @@ class PKIManager:
             if not ok:
                 return {"success": False, "message": f"ta.key generation failed: {err or out}"}
 
+        self._chmod_if_exists(self.ta_key_path, 0o600)
+
         return {
             "success": True,
             "message": "PKI initialized",
@@ -155,6 +170,7 @@ class PKIManager:
 
         cert_path = self.client_certs_dir / f"{username}.crt"
         key_path = self.client_keys_dir / f"{username}.key"
+        self._chmod_if_exists(key_path, 0o600)
         return {
             "success": cert_path.exists() and key_path.exists(),
             "message": f"Client certificate created for {username}",
@@ -195,8 +211,19 @@ class PKIManager:
         if not ok:
             return {"success": False, "message": f"gen-crl failed: {err or out}"}
 
+        if self.pki_crl_path.exists():
+            self.openvpn_crl_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(self.pki_crl_path, self.openvpn_crl_path)
+            except Exception as exc:
+                return {"success": False, "message": f"failed to place crl.pem for OpenVPN: {exc}"}
+
+            # CRL should be readable by OpenVPN process immediately.
+            self._chmod_if_exists(self.openvpn_crl_path, 0o644)
+
         return {
             "success": True,
             "message": f"Certificate revoked and CRL regenerated for {username}",
             "client_name": username,
+            "crl_path": str(self.openvpn_crl_path),
         }
