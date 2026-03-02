@@ -2548,8 +2548,8 @@ if __name__ == "__main__":
                 [
                     "script-security 2",
                     f"setenv ATLAS_DB_PATH {db_path}" if db_path else "# setenv ATLAS_DB_PATH <path_to_atlas.db>",
-                    f"client-connect {enforcement_hook_path} connect",
-                    f"client-disconnect {enforcement_hook_path} disconnect",
+                    f'client-connect "{enforcement_hook_path} connect"',
+                    f'client-disconnect "{enforcement_hook_path} disconnect"',
                 ]
             )
 
