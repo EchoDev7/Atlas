@@ -39,6 +39,68 @@ def init_db():
             connection.execute(
                 text("ALTER TABLE vpn_users ADD COLUMN max_devices INTEGER NOT NULL DEFAULT 1")
             )
+        vpn_user_column_migrations = {
+            "traffic_limit_bytes": "ALTER TABLE vpn_users ADD COLUMN traffic_limit_bytes BIGINT",
+            "traffic_used_bytes": "ALTER TABLE vpn_users ADD COLUMN traffic_used_bytes BIGINT NOT NULL DEFAULT 0",
+            "access_start_at": "ALTER TABLE vpn_users ADD COLUMN access_start_at DATETIME",
+            "access_expires_at": "ALTER TABLE vpn_users ADD COLUMN access_expires_at DATETIME",
+            "max_concurrent_connections": "ALTER TABLE vpn_users ADD COLUMN max_concurrent_connections INTEGER NOT NULL DEFAULT 1",
+            "current_connections": "ALTER TABLE vpn_users ADD COLUMN current_connections INTEGER NOT NULL DEFAULT 0",
+            "is_connection_limit_exceeded": "ALTER TABLE vpn_users ADD COLUMN is_connection_limit_exceeded BOOLEAN NOT NULL DEFAULT 0",
+        }
+        for column_name, migration_sql in vpn_user_column_migrations.items():
+            if column_name not in column_names:
+                connection.execute(text(migration_sql))
+
+        columns = connection.execute(text("PRAGMA table_info(vpn_users)")).fetchall()
+        column_names = {col[1] for col in columns}
+
+        if {"traffic_limit_bytes", "data_limit_gb"}.issubset(column_names):
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET traffic_limit_bytes = CAST(data_limit_gb * 1073741824 AS INTEGER)
+                    WHERE traffic_limit_bytes IS NULL
+                      AND data_limit_gb IS NOT NULL
+                    """
+                )
+            )
+
+        if {"traffic_used_bytes", "total_bytes_sent", "total_bytes_received"}.issubset(column_names):
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET traffic_used_bytes = COALESCE(
+                        MAX(COALESCE(traffic_used_bytes, 0), COALESCE(total_bytes_sent, 0) + COALESCE(total_bytes_received, 0)),
+                        0
+                    )
+                    """
+                )
+            )
+
+        if {"access_expires_at", "expiry_date"}.issubset(column_names):
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET access_expires_at = expiry_date
+                    WHERE access_expires_at IS NULL
+                      AND expiry_date IS NOT NULL
+                    """
+                )
+            )
+
+        if {"max_concurrent_connections", "max_devices"}.issubset(column_names):
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET max_concurrent_connections = COALESCE(NULLIF(max_concurrent_connections, 0), max_devices, 1)
+                    """
+                )
+            )
 
         openvpn_settings_table_exists = connection.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='openvpn_settings'")

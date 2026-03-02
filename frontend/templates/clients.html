@@ -346,7 +346,7 @@
                                             <div class="mt-1">
                                                 <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded-full theme-transition"
                                                       :class="darkMode ? 'bg-slate-700/60 text-slate-300 border border-slate-600/60' : 'bg-slate-100 text-slate-600 border border-slate-200'"
-                                                      x-text="'Max Devices: ' + (client.max_devices || 1)"></span>
+                                                      x-text="'Max: ' + getMaxConcurrent(client) + ' | Online: ' + (client.current_connections || 0)"></span>
                                             </div>
                                             <div class="flex items-center space-x-1 mt-1">
                                                 <span x-show="client.has_openvpn" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">OpenVPN</span>
@@ -372,9 +372,9 @@
                                                     </span>
                                                 </div>
                                                 <div class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
-                                                    Usage: <span x-text="client.total_gb_used.toFixed(2)"></span><span x-show="client.data_limit_gb"> / <span x-text="client.data_limit_gb"></span></span> GB
+                                                    Usage: <span x-text="client.total_gb_used.toFixed(2)"></span><span x-show="getTrafficLimitGB(client)"> / <span x-text="getTrafficLimitGB(client)"></span></span> GB
                                                 </div>
-                                                <div x-show="client.data_limit_gb" class="w-full h-1.5 rounded-full overflow-hidden theme-transition"
+                                                <div x-show="getTrafficLimitGB(client)" class="w-full h-1.5 rounded-full overflow-hidden theme-transition"
                                                      :class="darkMode ? 'bg-slate-700' : 'bg-slate-200'">
                                                     <div class="h-full rounded-full transition-all duration-500"
                                                          :class="{
@@ -384,8 +384,8 @@
                                                          }"
                                                          :style="'width: ' + Math.min(client.data_usage_percentage, 100) + '%'"></div>
                                                 </div>
-                                                <div x-show="client.expiry_date" class="text-xs theme-transition" :class="getRemainingDays(client.expiry_date) < 0 ? 'text-red-500 font-semibold' : (darkMode ? 'text-slate-400' : 'text-slate-600')">
-                                                    <span x-text="getRemainingDays(client.expiry_date) < 0 ? 'Expired' : ('Remaining: ' + getRemainingDays(client.expiry_date) + ' days')"></span>
+                                                <div x-show="getExpiryDate(client)" class="text-xs theme-transition" :class="getRemainingDays(getExpiryDate(client)) < 0 ? 'text-red-500 font-semibold' : (darkMode ? 'text-slate-400' : 'text-slate-600')">
+                                                    <span x-text="getRemainingDays(getExpiryDate(client)) < 0 ? 'Expired' : ('Remaining: ' + getRemainingDays(getExpiryDate(client)) + ' days')"></span>
                                                 </div>
                                             </div>
                                         </div>
@@ -411,8 +411,8 @@
                                               }"
                                               x-text="client.is_active ? 'ACTIVE' : (client.is_expired ? 'EXPIRED' : (client.is_data_limit_exceeded ? 'LIMIT EXCEEDED' : 'IDLE'))">
                                         </span>
-                                        <div x-show="client.expiry_date" class="text-xs theme-transition" :class="getRemainingDays(client.expiry_date) < 0 ? 'text-red-500 font-semibold' : (darkMode ? 'text-slate-400' : 'text-slate-600')">
-                                            <span x-text="getRemainingDays(client.expiry_date) < 0 ? 'Expired' : ('Remaining: ' + getRemainingDays(client.expiry_date) + ' days')"></span>
+                                        <div x-show="getExpiryDate(client)" class="text-xs theme-transition" :class="getRemainingDays(getExpiryDate(client)) < 0 ? 'text-red-500 font-semibold' : (darkMode ? 'text-slate-400' : 'text-slate-600')">
+                                            <span x-text="getRemainingDays(getExpiryDate(client)) < 0 ? 'Expired' : ('Remaining: ' + getRemainingDays(getExpiryDate(client)) + ' days')"></span>
                                         </div>
                                     </div>
                                 </td>
@@ -424,11 +424,11 @@
                                             <span class="text-sm font-medium theme-transition"
                                                   :class="darkMode ? 'text-slate-300' : 'text-slate-700'"
                                                   x-text="client.total_gb_used.toFixed(2) + ' GB'"></span>
-                                            <span x-show="client.data_limit_gb" class="text-xs theme-transition"
+                                            <span x-show="getTrafficLimitGB(client)" class="text-xs theme-transition"
                                                   :class="darkMode ? 'text-slate-500' : 'text-slate-500'"
-                                                  x-text="'/ ' + client.data_limit_gb + ' GB'"></span>
+                                                  x-text="'/ ' + getTrafficLimitGB(client) + ' GB'"></span>
                                         </div>
-                                        <div x-show="client.data_limit_gb" class="w-full h-2 rounded-full overflow-hidden theme-transition"
+                                        <div x-show="getTrafficLimitGB(client)" class="w-full h-2 rounded-full overflow-hidden theme-transition"
                                              :class="darkMode ? 'bg-slate-700' : 'bg-slate-200'">
                                             <div class="h-full rounded-full transition-all duration-500"
                                                  :class="{
@@ -1325,9 +1325,12 @@
                         
                         if (response.ok) {
                             this.serviceStatus = await response.json();
+                        } else {
+                            console.warn('Service status fetch failed:', response.status);
                         }
                     } catch (err) {
                         console.error('Load service status error:', err);
+                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false };
                     }
                 },
                 
@@ -1420,12 +1423,14 @@
                 openEditModal(client) {
                     this.editClientId = client.id;
                     this.editError = '';
+                    const limitGB = this.getTrafficLimitGB(client);
+                    const expiryDate = this.getExpiryDate(client);
                     this.editForm = {
                         username: client.username,
                         new_password: '',
-                        max_devices: client.max_devices || 1,
-                        data_limit_gb: client.data_limit_gb ?? '',
-                        expiry_date: client.expiry_date ? client.expiry_date.split('T')[0] : '',
+                        max_devices: this.getMaxConcurrent(client),
+                        data_limit_gb: limitGB || '',
+                        expiry_date: expiryDate ? expiryDate.split('T')[0] : '',
                         notes: client.notes || client.description || ''
                     };
                     this.showEditModal = true;
@@ -1444,6 +1449,7 @@
                     this.editing = true;
                     this.editError = '';
                     this.successMessage = '';
+                    
                     try {
                         const token = localStorage.getItem('access_token');
                         const payload = {
@@ -1464,8 +1470,18 @@
                         });
 
                         if (!response.ok) {
-                            const error = await response.json();
-                            throw new Error(error.detail || 'Failed to update user');
+                            let errorMessage = 'Failed to update user';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    errorMessage = error.detail;
+                                } else if (Array.isArray(error.detail)) {
+                                    errorMessage = error.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join(', ');
+                                }
+                            } catch (_) {
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            }
+                            throw new Error(errorMessage);
                         }
 
                         this.successMessage = `User ${this.editForm.username} updated successfully`;
@@ -1473,15 +1489,21 @@
                         await this.loadClients();
                     } catch (err) {
                         this.editError = err.message || 'Failed to update user';
+                        console.error('Edit user error:', err);
                     } finally {
                         this.editing = false;
                     }
                 },
 
                 async downloadConfig(userId, osType) {
+                    this.error = '';
+                    
                     try {
-                        this.error = '';
                         const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            throw new Error('Not authenticated. Please log in again.');
+                        }
+                        
                         const client = this.clients.find((item) => item.id === userId);
                         const safeUsername = client?.username || `user_${userId}`;
                         const normalizedOs = osType || 'default';
@@ -1499,7 +1521,7 @@
                                 const errorData = await response.json();
                                 errorMessage = errorData.detail || errorMessage;
                             } catch (_) {
-                                // Ignore JSON parsing errors for non-JSON responses
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                             }
                             throw new Error(errorMessage);
                         }
@@ -1526,6 +1548,8 @@
                             window.URL.revokeObjectURL(url);
                             document.body.removeChild(a);
                         });
+                        
+                        this.successMessage = `Config downloaded successfully for ${safeUsername}`;
                     } catch (err) {
                         this.error = err.message || 'Failed to download config';
                         console.error('Download config error:', err);
@@ -1577,7 +1601,14 @@
                         });
                         
                         if (!response.ok) {
-                            throw new Error('Failed to generate QR code');
+                            let errorMessage = 'Failed to generate QR code';
+                            try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.detail || errorMessage;
+                            } catch (_) {
+                                // Ignore JSON parsing errors
+                            }
+                            throw new Error(errorMessage);
                         }
                         
                         const data = await response.json();
@@ -1659,28 +1690,36 @@
 
                     try {
                         const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            throw new Error('Not authenticated. Please log in again.');
+                        }
+                        
                         const deletedIds = [];
                         const failedDeletes = [];
 
                         for (const target of this.deleteTargets) {
-                            const response = await fetch(`/api/users/${target.id}`, {
-                                method: 'DELETE',
-                                headers: {
-                                    'Authorization': `Bearer ${token}`
-                                }
-                            });
+                            try {
+                                const response = await fetch(`/api/users/${target.id}`, {
+                                    method: 'DELETE',
+                                    headers: {
+                                        'Authorization': `Bearer ${token}`
+                                    }
+                                });
 
-                            if (!response.ok) {
-                                let errorMessage = 'Delete failed';
-                                try {
-                                    const error = await response.json();
-                                    errorMessage = error.detail || errorMessage;
-                                } catch (_) {
-                                    // keep default message
+                                if (!response.ok) {
+                                    let errorMessage = 'Delete failed';
+                                    try {
+                                        const error = await response.json();
+                                        errorMessage = error.detail || errorMessage;
+                                    } catch (_) {
+                                        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                                    }
+                                    failedDeletes.push(`${target.username}: ${errorMessage}`);
+                                } else {
+                                    deletedIds.push(target.id);
                                 }
-                                failedDeletes.push(`${target.username}: ${errorMessage}`);
-                            } else {
-                                deletedIds.push(target.id);
+                            } catch (fetchErr) {
+                                failedDeletes.push(`${target.username}: ${fetchErr.message}`);
                             }
                         }
 
@@ -1699,6 +1738,7 @@
                         this.successMessage = `${deletedIds.length} user(s) deleted successfully`;
                     } catch (err) {
                         this.deleteError = err.message || 'Failed to delete user';
+                        console.error('Delete user error:', err);
                     } finally {
                         this.deletingUser = false;
                     }
@@ -1706,6 +1746,7 @@
                 
                 async revokeClient() {
                     this.revoking = true;
+                    this.error = '';
                     
                     try {
                         const token = localStorage.getItem('access_token');
@@ -1721,11 +1762,17 @@
                         });
                         
                         if (!response.ok) {
-                            const error = await response.json();
-                            throw new Error(error.detail || 'Failed to revoke certificate');
+                            let errorMessage = 'Failed to revoke certificate';
+                            try {
+                                const error = await response.json();
+                                errorMessage = error.detail || errorMessage;
+                            } catch (_) {
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            }
+                            throw new Error(errorMessage);
                         }
                         
-                        // Success
+                        this.successMessage = `Certificate for ${this.selectedClient.username} revoked successfully`;
                         this.showRevokeModal = false;
                         await this.loadClients();
                     } catch (err) {
@@ -1741,6 +1788,8 @@
 
                     this.statusUpdatingId = client.id;
                     this.successMessage = '';
+                    this.error = '';
+                    
                     try {
                         const token = localStorage.getItem('access_token');
                         const response = await fetch(`/api/users/${client.id}`, {
@@ -1755,8 +1804,14 @@
                         });
 
                         if (!response.ok) {
-                            const error = await response.json();
-                            throw new Error(error.detail || 'Failed to update user status');
+                            let errorMessage = 'Failed to update user status';
+                            try {
+                                const error = await response.json();
+                                errorMessage = error.detail || errorMessage;
+                            } catch (_) {
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            }
+                            throw new Error(errorMessage);
                         }
 
                         this.successMessage = `${client.username} ${client.is_enabled ? 'suspended' : 'enabled'} successfully`;
@@ -1799,6 +1854,27 @@
                     const diffTime = expiry - now;
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                     return diffDays;
+                },
+
+                getTrafficLimitGB(client) {
+                    if (!client) return null;
+                    if (client.traffic_limit_bytes != null && client.traffic_limit_bytes > 0) {
+                        return (client.traffic_limit_bytes / (1024 ** 3)).toFixed(2);
+                    }
+                    if (client.data_limit_gb != null && client.data_limit_gb > 0) {
+                        return parseFloat(client.data_limit_gb).toFixed(2);
+                    }
+                    return null;
+                },
+
+                getExpiryDate(client) {
+                    if (!client) return null;
+                    return client.access_expires_at || client.expiry_date || null;
+                },
+
+                getMaxConcurrent(client) {
+                    if (!client) return 1;
+                    return client.max_concurrent_connections || client.max_devices || 1;
                 }
             }
         }

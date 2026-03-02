@@ -1,7 +1,7 @@
 # Atlas — VPN User and Config ORM models
 # Phase 2 Enhancements: Multi-protocol architecture
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, String, DateTime, Boolean, Text, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from backend.database import Base
@@ -25,6 +25,12 @@ class VPNUser(Base):
     data_limit_gb = Column(Float, nullable=True)  # Data limit in GB (None = unlimited)
     expiry_date = Column(DateTime, nullable=True)  # Expiration date (None = no expiry)
     max_devices = Column(Integer, nullable=False, default=1)  # Concurrent device limit
+    traffic_limit_bytes = Column(BigInteger, nullable=True)  # Explicit traffic cap in bytes
+    traffic_used_bytes = Column(BigInteger, nullable=False, default=0)  # Explicit consumed traffic in bytes
+    access_start_at = Column(DateTime, nullable=True)  # Access validity start time (None = immediate)
+    access_expires_at = Column(DateTime, nullable=True)  # Access validity end time (None = no expiry)
+    max_concurrent_connections = Column(Integer, nullable=False, default=1)
+    current_connections = Column(Integer, nullable=False, default=0)
     
     # Usage tracking
     total_bytes_sent = Column(Integer, default=0)
@@ -36,6 +42,7 @@ class VPNUser(Base):
     is_enabled = Column(Boolean, default=True)
     is_expired = Column(Boolean, default=False)
     is_data_limit_exceeded = Column(Boolean, default=False)
+    is_connection_limit_exceeded = Column(Boolean, default=False)
     
     # Metadata
     description = Column(Text, nullable=True)
@@ -54,16 +61,40 @@ class VPNUser(Base):
     @property
     def is_active(self) -> bool:
         """Check if user is active and can connect"""
+        if self.access_start_at and datetime.utcnow() < self.access_start_at:
+            return False
         return (
             self.is_enabled and 
             not self.is_expired and 
-            not self.is_data_limit_exceeded
+            not self.is_data_limit_exceeded and
+            not self.is_connection_limit_exceeded
         )
+
+    @property
+    def effective_max_concurrent_connections(self) -> int:
+        """Canonical concurrent connection limit with legacy fallback."""
+        return max(1, int(self.max_concurrent_connections or self.max_devices or 1))
+
+    @property
+    def effective_access_expires_at(self):
+        """Canonical access expiry with legacy fallback."""
+        return self.access_expires_at or self.expiry_date
+
+    @property
+    def effective_traffic_limit_bytes(self):
+        """Canonical traffic limit in bytes with legacy fallback from GB."""
+        if self.traffic_limit_bytes is not None:
+            return int(self.traffic_limit_bytes)
+        if self.data_limit_gb is None:
+            return None
+        return int(self.data_limit_gb * (1024 ** 3))
     
     @property
     def total_bytes(self) -> int:
         """Total bytes transferred"""
-        return self.total_bytes_sent + self.total_bytes_received
+        transport_bytes = int(self.total_bytes_sent or 0) + int(self.total_bytes_received or 0)
+        accounting_bytes = int(self.traffic_used_bytes or 0)
+        return max(transport_bytes, accounting_bytes)
     
     @property
     def total_gb_used(self) -> float:
@@ -73,9 +104,28 @@ class VPNUser(Base):
     @property
     def data_usage_percentage(self) -> float:
         """Percentage of data limit used (0-100)"""
-        if not self.data_limit_gb:
+        limit_bytes = self.effective_traffic_limit_bytes
+        if limit_bytes in {None, 0}:
             return 0.0
-        return min(100.0, (self.total_gb_used / self.data_limit_gb) * 100)
+        return min(100.0, (self.total_bytes / limit_bytes) * 100)
+
+    def refresh_limit_flags(self, now: datetime) -> None:
+        """Recompute all limit flags from current counters and timestamps."""
+        expiry_point = self.effective_access_expires_at
+        if expiry_point and now:
+            # Ensure both are timezone-naive for comparison
+            now_naive = now.replace(tzinfo=None) if now.tzinfo else now
+            expiry_naive = expiry_point.replace(tzinfo=None) if expiry_point.tzinfo else expiry_point
+            self.is_expired = now_naive > expiry_naive
+        else:
+            self.is_expired = False
+
+        limit_bytes = self.effective_traffic_limit_bytes
+        self.is_data_limit_exceeded = bool(limit_bytes is not None and self.total_bytes >= limit_bytes)
+
+        self.is_connection_limit_exceeded = bool(
+            int(self.current_connections or 0) > self.effective_max_concurrent_connections
+        )
 
     @property
     def notes(self) -> str:

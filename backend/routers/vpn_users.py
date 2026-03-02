@@ -76,6 +76,21 @@ def _validate_required_settings(db: Session) -> None:
         )
 
 
+def _sync_legacy_accounting_fields(user: VPNUser) -> None:
+    """Keep legacy fields populated for backward compatibility."""
+    if user.traffic_limit_bytes is not None:
+        user.data_limit_gb = user.traffic_limit_bytes / float(1024 ** 3)
+    elif user.data_limit_gb is not None:
+        user.traffic_limit_bytes = int(float(user.data_limit_gb) * (1024 ** 3))
+
+    if user.access_expires_at is not None:
+        user.expiry_date = user.access_expires_at
+    elif user.expiry_date is not None:
+        user.access_expires_at = user.expiry_date
+
+    user.max_devices = user.effective_max_concurrent_connections
+
+
 @router.get("", response_model=VPNUserListResponse)
 async def list_users(
     skip: int = 0,
@@ -155,10 +170,17 @@ async def create_user(
         password=hashed_password,
         description=user_data.description,
         data_limit_gb=user_data.data_limit_gb,
+        traffic_limit_bytes=user_data.traffic_limit_bytes,
+        traffic_used_bytes=user_data.traffic_used_bytes,
         expiry_date=user_data.expiry_date,
+        access_start_at=user_data.access_start_at,
+        access_expires_at=user_data.access_expires_at,
         max_devices=user_data.max_devices,
+        max_concurrent_connections=user_data.max_concurrent_connections,
         created_by=current_user.id
     )
+    _sync_legacy_accounting_fields(new_user)
+    new_user.refresh_limit_flags(datetime.utcnow())
     
     db.add(new_user)
     db.flush()  # Get user ID
@@ -223,20 +245,37 @@ async def update_user(
         user.password = pwd_context.hash(user_data.new_password)
     if user_data.data_limit_gb is not None:
         user.data_limit_gb = user_data.data_limit_gb
-        user.is_data_limit_exceeded = False  # Reset flag when limit is updated
+        user.traffic_limit_bytes = int(float(user_data.data_limit_gb) * (1024 ** 3))
     if user_data.add_data_gb is not None:
-        current_limit = user.data_limit_gb or 0
-        user.data_limit_gb = current_limit + user_data.add_data_gb
-        user.is_data_limit_exceeded = False
+        current_limit_bytes = int(user.traffic_limit_bytes or 0)
+        user.traffic_limit_bytes = current_limit_bytes + int(float(user_data.add_data_gb) * (1024 ** 3))
+    if user_data.traffic_limit_bytes is not None:
+        user.traffic_limit_bytes = user_data.traffic_limit_bytes
+    if user_data.add_traffic_bytes is not None:
+        user.traffic_limit_bytes = int(user.traffic_limit_bytes or 0) + int(user_data.add_traffic_bytes)
+    if user_data.traffic_used_bytes is not None:
+        user.traffic_used_bytes = user_data.traffic_used_bytes
     if user_data.expiry_date is not None:
         user.expiry_date = user_data.expiry_date
-        user.is_expired = False  # Reset flag when date is updated
+        user.access_expires_at = user_data.expiry_date
+    if user_data.access_start_at is not None:
+        user.access_start_at = user_data.access_start_at
+    if user_data.access_expires_at is not None:
+        user.access_expires_at = user_data.access_expires_at
     if user_data.max_devices is not None:
         user.max_devices = user_data.max_devices
+        user.max_concurrent_connections = user_data.max_devices
+    if user_data.max_concurrent_connections is not None:
+        user.max_concurrent_connections = user_data.max_concurrent_connections
+    if user_data.current_connections is not None:
+        user.current_connections = user_data.current_connections
     if user_data.extend_days is not None:
-        base_date = user.expiry_date if user.expiry_date and user.expiry_date > datetime.utcnow() else datetime.utcnow()
-        user.expiry_date = base_date + timedelta(days=user_data.extend_days)
-        user.is_expired = False
+        base_date = (
+            user.access_expires_at
+            if user.access_expires_at and user.access_expires_at > datetime.utcnow()
+            else datetime.utcnow()
+        )
+        user.access_expires_at = base_date + timedelta(days=user_data.extend_days)
     if user_data.is_enabled is not None:
         user.is_enabled = user_data.is_enabled
         if user_data.is_enabled:
@@ -246,6 +285,9 @@ async def update_user(
         else:
             user.disabled_at = datetime.utcnow()
             user.disabled_reason = user.disabled_reason or "Disabled by admin"
+
+    _sync_legacy_accounting_fields(user)
+    user.refresh_limit_flags(datetime.utcnow())
     
     user.updated_at = datetime.utcnow()
     

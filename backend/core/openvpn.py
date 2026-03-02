@@ -33,6 +33,8 @@ class OpenVPNConfig:
     
     # Server configuration
     SERVER_CONF = OPENVPN_DIR / "server" / "server.conf"
+    ENFORCEMENT_HOOK = OPENVPN_DIR / "server" / "atlas_enforcement_hook.py"
+    STATUS_LOG = Path("/run/openvpn-server/status-server.log")
     
     # PKI paths (Easy-RSA 3 standard structure)
     CA_CERT = PKI_DIR / "ca.crt"
@@ -259,6 +261,281 @@ class OpenVPNManager:
             logger.warning("Failed to load runtime settings from database: %s", exc)
 
         return openvpn_defaults, general_defaults
+
+    def _resolve_sqlite_db_path(self) -> str:
+        """Resolve SQLite database file path for OpenVPN hook scripts."""
+        try:
+            from backend.config import settings
+
+            db_url = str(getattr(settings, "DATABASE_URL", "") or "")
+            if db_url.startswith("sqlite:///"):
+                return db_url.replace("sqlite:///", "", 1)
+
+            return str(settings.DATA_DIR / "atlas.db")
+        except Exception as exc:
+            logger.warning("Failed to resolve SQLite database path for enforcement hook: %s", exc)
+            return ""
+
+    def _build_realtime_enforcement_hook_content(self) -> str:
+        """Build Python hook script used by OpenVPN client-connect/client-disconnect."""
+        return '''#!/usr/bin/env python3
+import os
+import sqlite3
+import sys
+from datetime import datetime
+
+BYTES_PER_GB = 1024 ** 3
+
+
+def _safe_int(value, default=0):
+    try:
+        if value is None or value == "":
+            return default
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value, default=None):
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_dt(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _get_effective_limit_bytes(row):
+    if row["traffic_limit_bytes"] is not None:
+        return _safe_int(row["traffic_limit_bytes"], None)
+    data_limit_gb = _safe_float(row["data_limit_gb"], None)
+    if data_limit_gb is None:
+        return None
+    return int(data_limit_gb * BYTES_PER_GB)
+
+
+def _get_effective_expiry(row):
+    return _parse_dt(row["access_expires_at"]) or _parse_dt(row["expiry_date"])
+
+
+def _get_effective_max_connections(row):
+    canonical = _safe_int(row["max_concurrent_connections"], 0)
+    legacy = _safe_int(row["max_devices"], 1)
+    return max(1, canonical or legacy or 1)
+
+
+def _get_current_usage_bytes(row):
+    traffic_used = _safe_int(row["traffic_used_bytes"], 0)
+    transport = _safe_int(row["total_bytes_sent"], 0) + _safe_int(row["total_bytes_received"], 0)
+    return max(traffic_used, transport)
+
+
+def _connect_db(path):
+    conn = sqlite3.connect(path, timeout=10, isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 10000")
+    return conn
+
+
+def _reject(message):
+    print(f"[ATLAS ENFORCEMENT] {message}", file=sys.stderr)
+    return 1
+
+
+def _handle_connect(conn, common_name):
+    now = datetime.utcnow()
+    conn.execute("BEGIN IMMEDIATE")
+
+    row = conn.execute(
+        (
+            "SELECT id, is_enabled, data_limit_gb, traffic_limit_bytes, traffic_used_bytes, "
+            "expiry_date, access_start_at, access_expires_at, "
+            "max_devices, max_concurrent_connections, current_connections, "
+            "total_bytes_sent, total_bytes_received "
+            "FROM vpn_users "
+            "WHERE username = ?"
+        ),
+        (common_name,),
+    ).fetchone()
+
+    if row is None:
+        conn.execute("ROLLBACK")
+        return _reject(f"Connection denied for unknown user '{common_name}'")
+
+    if not bool(row["is_enabled"]):
+        conn.execute("ROLLBACK")
+        return _reject(f"Connection denied for disabled user '{common_name}'")
+
+    access_start_at = _parse_dt(row["access_start_at"])
+    if access_start_at and now < access_start_at:
+        conn.execute("ROLLBACK")
+        return _reject(f"Connection denied: account '{common_name}' is not active yet")
+
+    access_expires_at = _get_effective_expiry(row)
+    if access_expires_at and now >= access_expires_at:
+        conn.execute("ROLLBACK")
+        return _reject(f"Connection denied: account '{common_name}' has expired")
+
+    limit_bytes = _get_effective_limit_bytes(row)
+    used_bytes = _get_current_usage_bytes(row)
+    if limit_bytes is not None and used_bytes >= limit_bytes:
+        conn.execute("ROLLBACK")
+        return _reject(
+            f"Connection denied: traffic limit exceeded for '{common_name}' ({used_bytes} / {limit_bytes})"
+        )
+
+    current_connections = max(0, _safe_int(row["current_connections"], 0))
+    max_connections = _get_effective_max_connections(row)
+    if current_connections >= max_connections:
+        conn.execute(
+            "UPDATE vpn_users SET is_connection_limit_exceeded = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (row["id"],),
+        )
+        conn.execute("COMMIT")
+        return _reject(
+            f"Connection denied: concurrent connection limit reached for '{common_name}' ({current_connections} / {max_connections})"
+        )
+
+    conn.execute(
+        (
+            "UPDATE vpn_users "
+            "SET current_connections = ?, "
+            "is_connection_limit_exceeded = 0, "
+            "updated_at = CURRENT_TIMESTAMP, "
+            "last_connected_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?"
+        ),
+        (current_connections + 1, row["id"]),
+    )
+    conn.execute("COMMIT")
+    return 0
+
+
+def _handle_disconnect(conn, common_name):
+    bytes_sent = max(0, _safe_int(os.environ.get("bytes_sent"), 0))
+    bytes_received = max(0, _safe_int(os.environ.get("bytes_received"), 0))
+    now_iso = datetime.utcnow().isoformat()
+    session_total = bytes_sent + bytes_received
+
+    conn.execute("BEGIN IMMEDIATE")
+    row = conn.execute(
+        (
+            "SELECT id, current_connections, traffic_used_bytes, total_bytes_sent, total_bytes_received, "
+            "data_limit_gb, traffic_limit_bytes, max_concurrent_connections, max_devices "
+            "FROM vpn_users "
+            "WHERE username = ?"
+        ),
+        (common_name,),
+    ).fetchone()
+
+    if row is None:
+        conn.execute("ROLLBACK")
+        return 0
+
+    current_connections = max(0, _safe_int(row["current_connections"], 0) - 1)
+    total_sent = max(0, _safe_int(row["total_bytes_sent"], 0) + bytes_sent)
+    total_received = max(0, _safe_int(row["total_bytes_received"], 0) + bytes_received)
+    traffic_used = max(0, _safe_int(row["traffic_used_bytes"], 0) + session_total)
+
+    fake_row = {
+        "traffic_limit_bytes": row["traffic_limit_bytes"],
+        "data_limit_gb": row["data_limit_gb"],
+    }
+    limit_bytes = _get_effective_limit_bytes(fake_row)
+    effective_usage = max(traffic_used, total_sent + total_received)
+    is_data_limit_exceeded = bool(limit_bytes is not None and effective_usage >= limit_bytes)
+
+    max_connections = max(1, _safe_int(row["max_concurrent_connections"], 0) or _safe_int(row["max_devices"], 1))
+    is_connection_limit_exceeded = current_connections > max_connections
+
+    conn.execute(
+        (
+            "UPDATE vpn_users "
+            "SET current_connections = ?, "
+            "traffic_used_bytes = ?, "
+            "total_bytes_sent = ?, "
+            "total_bytes_received = ?, "
+            "is_data_limit_exceeded = ?, "
+            "is_connection_limit_exceeded = ?, "
+            "last_disconnected_at = ?, "
+            "updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?"
+        ),
+        (
+            current_connections,
+            traffic_used,
+            total_sent,
+            total_received,
+            int(is_data_limit_exceeded),
+            int(is_connection_limit_exceeded),
+            now_iso,
+            row["id"],
+        ),
+    )
+    conn.execute("COMMIT")
+    return 0
+
+
+def main():
+    mode = (sys.argv[1] if len(sys.argv) > 1 else "").strip().lower()
+    common_name = (os.environ.get("common_name") or "").strip()
+    db_path = (os.environ.get("ATLAS_DB_PATH") or "").strip()
+
+    if mode not in {"connect", "disconnect"}:
+        return _reject("Invalid hook mode")
+
+    if not common_name:
+        return _reject("Missing common_name") if mode == "connect" else 0
+
+    if not db_path:
+        return _reject("Missing ATLAS_DB_PATH") if mode == "connect" else 0
+
+    try:
+        conn = _connect_db(db_path)
+    except Exception as exc:
+        return _reject(f"Failed to open database: {exc}") if mode == "connect" else 0
+
+    try:
+        if mode == "connect":
+            return _handle_connect(conn, common_name)
+        return _handle_disconnect(conn, common_name)
+    except Exception as exc:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        return _reject(f"Hook execution failed: {exc}") if mode == "connect" else 0
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+    def _ensure_realtime_enforcement_hook(self) -> Path:
+        """Ensure OpenVPN real-time enforcement hook script exists on disk."""
+        hook_path = self.config.ENFORCEMENT_HOOK
+        hook_content = self._build_realtime_enforcement_hook_content()
+
+        if self.is_production:
+            hook_path.parent.mkdir(parents=True, exist_ok=True)
+            hook_path.write_text(hook_content)
+            try:
+                os.chmod(hook_path, 0o750)
+            except Exception as exc:
+                logger.warning("Failed to chmod enforcement hook script: %s", exc)
+
+        return hook_path
     
     def _run_command(self, cmd: List[str], check: bool = True) -> Tuple[bool, str, str]:
         """
@@ -2195,6 +2472,20 @@ class OpenVPNManager:
                 server_lines.append(f"explicit-exit-notify {int(explicit_exit_notify)}")
             if management_port and int(management_port) > 0:
                 server_lines.append(f"management 127.0.0.1 {int(management_port)}")
+            server_lines.append(f"status {self.config.STATUS_LOG}")
+            server_lines.append("status-version 2")
+            server_lines.append("suppress-timestamps")
+
+            enforcement_hook_path = self._ensure_realtime_enforcement_hook()
+            db_path = self._resolve_sqlite_db_path()
+            server_lines.extend(
+                [
+                    "script-security 2",
+                    f"setenv ATLAS_DB_PATH {db_path}" if db_path else "# setenv ATLAS_DB_PATH <path_to_atlas.db>",
+                    f"client-connect {enforcement_hook_path} connect",
+                    f"client-disconnect {enforcement_hook_path} disconnect",
+                ]
+            )
 
             if push_lines:
                 server_lines.append("")

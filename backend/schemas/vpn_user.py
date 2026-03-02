@@ -1,9 +1,12 @@
 # Atlas — VPN User and Config Pydantic schemas
 # Phase 2 Enhancements: Multi-protocol architecture
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from typing import Optional, List
 from datetime import datetime
+
+
+_BYTES_PER_GB = 1024 ** 3
 
 
 # ============================================================================
@@ -15,8 +18,13 @@ class VPNUserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=100, description="Username for VPN authentication")
     description: Optional[str] = Field(None, description="Optional description")
     data_limit_gb: Optional[float] = Field(None, ge=0, description="Data limit in GB (null = unlimited)")
+    traffic_limit_bytes: Optional[int] = Field(None, ge=0, description="Traffic limit in bytes (null = unlimited)")
+    traffic_used_bytes: int = Field(0, ge=0, description="Already consumed traffic in bytes")
     expiry_date: Optional[datetime] = Field(None, description="Expiration date (null = no expiry)")
+    access_start_at: Optional[datetime] = Field(None, description="Account validity start timestamp")
+    access_expires_at: Optional[datetime] = Field(None, description="Account validity end timestamp")
     max_devices: int = Field(1, ge=1, le=100, description="Maximum concurrent devices")
+    max_concurrent_connections: Optional[int] = Field(None, ge=1, le=100, description="Maximum simultaneous connections")
 
 
 class VPNUserCreate(BaseModel):
@@ -25,14 +33,47 @@ class VPNUserCreate(BaseModel):
     password: Optional[str] = Field(None, min_length=8, description="Password (auto-generated if not provided)")
     description: Optional[str] = Field(None, description="Optional description")
     data_limit_gb: Optional[float] = Field(None, ge=0, description="Data limit in GB (null = unlimited)")
+    traffic_limit_bytes: Optional[int] = Field(None, ge=0, description="Traffic limit in bytes (null = unlimited)")
+    traffic_used_bytes: int = Field(0, ge=0, description="Already consumed traffic in bytes")
     expiry_date: Optional[datetime] = Field(None, description="Expiration date (null = no expiry)")
+    access_start_at: Optional[datetime] = Field(None, description="Account validity start timestamp")
+    access_expires_at: Optional[datetime] = Field(None, description="Account validity end timestamp")
     max_devices: int = Field(1, ge=1, le=100, description="Maximum concurrent devices")
+    max_concurrent_connections: Optional[int] = Field(None, ge=1, le=100, description="Maximum simultaneous connections")
     
     # OpenVPN config creation
     create_openvpn: bool = Field(True, description="Create OpenVPN config for this user")
     server_address: Optional[str] = Field(None, description="OpenVPN server address")
     server_port: int = Field(1194, description="OpenVPN server port")
     protocol_type: str = Field("udp", description="OpenVPN protocol (udp/tcp)")
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_accounting_inputs(cls, values):
+        if not isinstance(values, dict):
+            return values
+        
+        traffic_limit_bytes = values.get("traffic_limit_bytes")
+        data_limit_gb = values.get("data_limit_gb")
+        if traffic_limit_bytes is None and data_limit_gb is not None:
+            values["traffic_limit_bytes"] = int(float(data_limit_gb) * _BYTES_PER_GB)
+
+        access_expires_at = values.get("access_expires_at")
+        expiry_date = values.get("expiry_date")
+        if access_expires_at is None and expiry_date is not None:
+            values["access_expires_at"] = expiry_date
+
+        max_concurrent_connections = values.get("max_concurrent_connections")
+        max_devices = values.get("max_devices")
+        if max_concurrent_connections is None:
+            values["max_concurrent_connections"] = max_devices or 1
+
+        access_start_at = values.get("access_start_at")
+        access_expires_at = values.get("access_expires_at")
+        if access_start_at and access_expires_at and access_start_at >= access_expires_at:
+            raise ValueError("access_start_at must be earlier than access_expires_at")
+
+        return values
 
 
 class VPNUserUpdate(BaseModel):
@@ -42,10 +83,39 @@ class VPNUserUpdate(BaseModel):
     new_password: Optional[str] = Field(None, min_length=8)
     data_limit_gb: Optional[float] = Field(None, ge=0)
     add_data_gb: Optional[float] = Field(None, ge=0)
+    traffic_limit_bytes: Optional[int] = Field(None, ge=0)
+    add_traffic_bytes: Optional[int] = Field(None, ge=0)
+    traffic_used_bytes: Optional[int] = Field(None, ge=0)
     expiry_date: Optional[datetime] = None
+    access_start_at: Optional[datetime] = None
+    access_expires_at: Optional[datetime] = None
     extend_days: Optional[int] = Field(None, ge=1, le=3650)
     max_devices: Optional[int] = Field(None, ge=1, le=100)
+    max_concurrent_connections: Optional[int] = Field(None, ge=1, le=100)
+    current_connections: Optional[int] = Field(None, ge=0)
     is_enabled: Optional[bool] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_update_inputs(cls, values):
+        if not isinstance(values, dict):
+            return values
+        
+        if values.get("traffic_limit_bytes") is None and values.get("data_limit_gb") is not None:
+            values["traffic_limit_bytes"] = int(float(values["data_limit_gb"]) * _BYTES_PER_GB)
+
+        if values.get("access_expires_at") is None and values.get("expiry_date") is not None:
+            values["access_expires_at"] = values["expiry_date"]
+
+        if values.get("max_concurrent_connections") is None and values.get("max_devices") is not None:
+            values["max_concurrent_connections"] = values["max_devices"]
+
+        access_start_at = values.get("access_start_at")
+        access_expires_at = values.get("access_expires_at")
+        if access_start_at and access_expires_at and access_start_at >= access_expires_at:
+            raise ValueError("access_start_at must be earlier than access_expires_at")
+
+        return values
 
 
 class VPNUserResponse(BaseModel):
@@ -53,8 +123,14 @@ class VPNUserResponse(BaseModel):
     id: int
     username: str
     max_devices: int
+    max_concurrent_connections: int
+    current_connections: int
     data_limit_gb: Optional[float]
+    traffic_limit_bytes: Optional[int]
+    traffic_used_bytes: int
     expiry_date: Optional[datetime]
+    access_start_at: Optional[datetime]
+    access_expires_at: Optional[datetime]
     total_bytes_sent: int
     total_bytes_received: int
     total_gb_used: float
@@ -63,6 +139,7 @@ class VPNUserResponse(BaseModel):
     is_enabled: bool
     is_expired: bool
     is_data_limit_exceeded: bool
+    is_connection_limit_exceeded: bool
     is_active: bool
     is_online: bool = False  # Live connection status (mock for now)
     description: Optional[str]
