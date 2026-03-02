@@ -91,6 +91,23 @@ class PKIManager:
         except Exception as exc:
             return False, "", str(exc)
 
+    def _ensure_crl_available(self, easyrsa_cmd: List[str]) -> Dict[str, Any]:
+        ok, out, err = self._run_command([*easyrsa_cmd, "gen-crl"], cwd=self.easyrsa_dir, check=False)
+        if not ok:
+            return {"success": False, "message": f"gen-crl failed: {err or out}"}
+
+        if not self.pki_crl_path.exists():
+            return {"success": False, "message": f"gen-crl succeeded but CRL file missing at {self.pki_crl_path}"}
+
+        self.openvpn_crl_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(self.pki_crl_path, self.openvpn_crl_path)
+        except Exception as exc:
+            return {"success": False, "message": f"failed to place crl.pem for OpenVPN: {exc}"}
+
+        self._chmod_if_exists(self.openvpn_crl_path, 0o644)
+        return {"success": True, "crl_path": str(self.openvpn_crl_path)}
+
     def ensure_ready(self) -> Dict[str, Any]:
         """Auto-init PKI (init-pki/build-ca/ta.key) if missing; never crash in dev."""
         if not self._is_supported_runtime():
@@ -113,10 +130,14 @@ class PKIManager:
         ca_exists = self.ca_cert_path.exists()
         ta_exists = self.ta_key_path.exists()
         if ca_exists and ta_exists:
+            crl_result = self._ensure_crl_available(easyrsa_cmd)
+            if not crl_result.get("success"):
+                return crl_result
             return {
                 "success": True,
                 "message": "PKI already initialized",
                 "auto_initialized": False,
+                "crl_path": crl_result.get("crl_path"),
             }
 
         self.easyrsa_dir.mkdir(parents=True, exist_ok=True)
@@ -139,12 +160,17 @@ class PKIManager:
 
         self._chmod_if_exists(self.ta_key_path, 0o600)
 
+        crl_result = self._ensure_crl_available(easyrsa_cmd)
+        if not crl_result.get("success"):
+            return crl_result
+
         return {
             "success": True,
             "message": "PKI initialized",
             "auto_initialized": True,
             "ca_created": self.ca_cert_path.exists(),
             "ta_key_created": self.ta_key_path.exists(),
+            "crl_path": crl_result.get("crl_path"),
         }
 
     def build_client(self, username: str) -> Dict[str, Any]:
