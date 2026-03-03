@@ -74,8 +74,8 @@ def _detect_global_ip_from_interface(wan_interface: str, family: int) -> str | N
     return None
 
 
-def _detect_public_ipv4() -> str:
-    wan_interface = _detect_wan_interface()
+def _detect_public_ipv4(wan_interface: str | None = None) -> str:
+    wan_interface = (wan_interface or "").strip() or _detect_wan_interface()
     detected = _detect_global_ip_from_interface(wan_interface, family=4)
     return detected or "N/A"
 
@@ -116,13 +116,6 @@ def _detect_wan_interface() -> str:
     return "eth0"
 
 
-def _is_loopback_stub_dns(value: str) -> bool:
-    candidate = (value or "").strip()
-    if not candidate:
-        return True
-    return candidate.startswith("127.0.0.")
-
-
 def _extract_dns_ips(raw_text: str) -> list[str]:
     results: list[str] = []
     for line in (raw_text or "").splitlines():
@@ -142,19 +135,12 @@ def _extract_dns_ips(raw_text: str) -> list[str]:
 
             if parsed_ip.version not in (4, 6):
                 continue
-            if _is_loopback_stub_dns(candidate):
-                continue
             if candidate not in results:
                 results.append(candidate)
     return results
 
 
-def _read_system_dns_servers() -> tuple[str, str]:
-    primary = "1.1.1.1"
-    secondary = "8.8.8.8"
-    detected_dns: list[str] = []
-
-    wan_interface = _detect_wan_interface()
+def _read_dns_from_resolvectl_dns(wan_interface: str) -> list[str]:
     try:
         result = subprocess.run(
             ["resolvectl", "dns", wan_interface],
@@ -163,19 +149,72 @@ def _read_system_dns_servers() -> tuple[str, str]:
             check=False,
         )
         if result.returncode == 0:
-            detected_dns = _extract_dns_ips(result.stdout)
+            return _extract_dns_ips(result.stdout)
     except Exception:
         pass
+    return []
+
+
+def _read_dns_from_resolvectl_status(wan_interface: str) -> list[str]:
+    try:
+        result = subprocess.run(
+            ["resolvectl", "status", wan_interface],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+
+        status_lines = result.stdout.splitlines()
+        dns_lines: list[str] = []
+        capture_continuation = False
+        for line in status_lines:
+            stripped = line.strip()
+            if not stripped:
+                capture_continuation = False
+                continue
+
+            if stripped.startswith("DNS Servers:") or stripped.startswith("Current DNS Server:"):
+                dns_lines.append(stripped)
+                capture_continuation = True
+                continue
+
+            if capture_continuation and line.startswith(" "):
+                dns_lines.append(stripped)
+                continue
+
+            capture_continuation = False
+
+        return _extract_dns_ips("\n".join(dns_lines))
+    except Exception:
+        pass
+    return []
+
+
+def _read_dns_from_resolv_conf() -> list[str]:
+    try:
+        resolv_path = Path("/etc/resolv.conf")
+        if resolv_path.exists():
+            return _extract_dns_ips(resolv_path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        pass
+    return []
+
+
+def _read_system_dns_servers() -> tuple[str, str]:
+    primary = "1.1.1.1"
+    secondary = "8.8.8.8"
+    wan_interface = _detect_wan_interface()
+    detected_dns = _read_dns_from_resolvectl_dns(wan_interface)
 
     if not detected_dns:
-        try:
-            resolv_path = Path("/etc/resolv.conf")
-            if resolv_path.exists():
-                detected_dns = _extract_dns_ips(
-                    resolv_path.read_text(encoding="utf-8", errors="ignore")
-                )
-        except Exception:
-            pass
+        detected_dns = _read_dns_from_resolv_conf()
+
+    if detected_dns == ["127.0.0.53"]:
+        resolved_dns = _read_dns_from_resolvectl_status(wan_interface)
+        if resolved_dns:
+            detected_dns = resolved_dns
 
     if detected_dns:
         primary = detected_dns[0]
@@ -338,11 +377,22 @@ def get_general_settings(
     settings = _get_or_create_general_settings(db)
 
     detected_wan = _detect_wan_interface()
+    detected_ipv4 = _detect_public_ipv4(detected_wan)
+    detected_ipv6 = _detect_public_ipv6(detected_wan)
     dns_primary, dns_secondary = _read_system_dns_servers()
     has_change = False
 
+    normalized_ipv4 = None if detected_ipv4 == "N/A" else detected_ipv4
+    normalized_ipv6 = None if detected_ipv6 == "Not Configured" else detected_ipv6
+
     if (settings.wan_interface or "").strip() != detected_wan:
         settings.wan_interface = detected_wan
+        has_change = True
+    if (settings.public_ipv4_address or None) != normalized_ipv4:
+        settings.public_ipv4_address = normalized_ipv4
+        has_change = True
+    if (settings.public_ipv6_address or None) != normalized_ipv6:
+        settings.public_ipv6_address = normalized_ipv6
         has_change = True
     if (settings.server_system_dns_primary or "").strip() != dns_primary:
         settings.server_system_dns_primary = dns_primary
@@ -364,7 +414,7 @@ def get_server_public_ips(current_user: Admin = Depends(get_current_user)):
     _ = current_user
     detected_wan = _detect_wan_interface()
     return {
-        "public_ipv4": _detect_public_ipv4(),
+        "public_ipv4": _detect_public_ipv4(detected_wan),
         "public_ipv6": _detect_public_ipv6(detected_wan),
     }
 
@@ -390,9 +440,12 @@ def update_general_settings(
             detail="Panel HTTPS Port and Subscription HTTPS Port must be different",
         )
 
-    settings.public_ipv4_address = payload.public_ipv4_address
+    detected_ipv4 = _detect_public_ipv4(detected_wan)
+    detected_ipv6 = _detect_public_ipv6(detected_wan)
+
     settings.server_address = payload.server_address
-    settings.public_ipv6_address = payload.public_ipv6_address
+    settings.public_ipv4_address = None if detected_ipv4 == "N/A" else detected_ipv4
+    settings.public_ipv6_address = None if detected_ipv6 == "Not Configured" else detected_ipv6
     settings.global_ipv6_support = payload.global_ipv6_support
     settings.wan_interface = detected_wan
     settings.server_system_dns_primary = payload.server_system_dns_primary
