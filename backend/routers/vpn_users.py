@@ -415,7 +415,6 @@ async def download_config(
             # Generate config with username/password auth
             config_content = openvpn_manager.generate_client_config(
                 user.username,
-                server_address or "vpn.example.com",
                 os_type=os or "default"
             )
 
@@ -476,8 +475,7 @@ async def get_config(
             _validate_required_settings(db)
             
             config_content = openvpn_manager.generate_client_config(
-                user.username,
-                server_address or "vpn.example.com"
+                user.username
             )
             config_content += "\nauth-user-pass\n"
             

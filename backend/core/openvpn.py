@@ -383,7 +383,7 @@ class OpenVPNManager(BaseVPNService):
             "advanced_client_push": None,
         }
         general_defaults: Dict[str, any] = {
-            "server_address": "YOUR_SERVER_IP",
+            "server_address": "",
             "public_ipv4_address": None,
         }
 
@@ -1370,12 +1370,10 @@ if __name__ == "__main__":
         *,
         sndbuf: Optional[int],
         rcvbuf: Optional[int],
-        enable_dns_leak_protection: bool,
         is_tcp: bool,
     ) -> None:
         # Group Windows-only anti-leak and performance directives together.
-        if enable_dns_leak_protection:
-            lines.append("block-outside-dns")
+        lines.append("block-outside-dns")
         lines.append("register-dns")
 
         if sndbuf is not None:
@@ -1436,7 +1434,7 @@ if __name__ == "__main__":
         resolved_server = (
             (server_address or "").strip()
             or (general_settings.get("server_address") or "").strip()
-            or "YOUR_SERVER_IP"
+            or (general_settings.get("public_ipv4_address") or "").strip()
         )
         resolved_port = int(server_port if server_port is not None else openvpn_settings.get("port", 1194))
 
@@ -1480,6 +1478,7 @@ if __name__ == "__main__":
         verbosity = _safe_int(openvpn_settings.get("verbosity"))
         tun_mtu = _safe_int(openvpn_settings.get("tun_mtu"))
         mssfix = _safe_int(openvpn_settings.get("mssfix"))
+        apple_mssfix = mssfix if mssfix and mssfix > 0 else None
         keepalive_ping = _safe_int(openvpn_settings.get("keepalive_ping"))
         keepalive_timeout = _safe_int(openvpn_settings.get("keepalive_timeout"))
         tcp_nodelay = bool(openvpn_settings.get("tcp_nodelay", False))
@@ -1503,7 +1502,7 @@ if __name__ == "__main__":
             tls_version_min=tls_version_min,
             tls_mode=tls_mode,
             tun_mtu=tun_mtu,
-            mssfix=mssfix,
+            mssfix=apple_mssfix,
             keepalive_ping=keepalive_ping,
             keepalive_timeout=keepalive_timeout,
             redirect_gateway=redirect_gateway,
@@ -1553,9 +1552,7 @@ if __name__ == "__main__":
         # AUTHENTICATION: auth-user-pass and conditional auth-nocache (BEFORE certificates)
         lines.append("")
         lines.append("auth-user-pass")
-        enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
-        if enable_auth_nocache:
-            lines.append("auth-nocache")
+        lines.append("auth-nocache")
         
         ca_cert, client_cert, client_key, ta_key = self._get_client_materials(client_name)
         self._append_certificate_blocks(
@@ -1589,7 +1586,7 @@ if __name__ == "__main__":
         resolved_server = (
             (server_address or "").strip()
             or (general_settings.get("server_address") or "").strip()
-            or "YOUR_SERVER_IP"
+            or (general_settings.get("public_ipv4_address") or "").strip()
         )
         resolved_port = int(server_port if server_port is not None else openvpn_settings.get("port", 1194))
 
@@ -1710,9 +1707,7 @@ if __name__ == "__main__":
 
         lines.append("")
         lines.append("auth-user-pass")
-        enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
-        if enable_auth_nocache:
-            lines.append("auth-nocache")
+        lines.append("auth-nocache")
 
         ca_cert, client_cert, client_key, ta_key = self._get_client_materials(client_name)
         self._append_certificate_blocks(
@@ -1744,7 +1739,7 @@ if __name__ == "__main__":
         resolved_server = (
             (server_address or "").strip()
             or (general_settings.get("server_address") or "").strip()
-            or "YOUR_SERVER_IP"
+            or (general_settings.get("public_ipv4_address") or "").strip()
         )
         resolved_port = int(server_port if server_port is not None else openvpn_settings.get("port", 1194))
 
@@ -1833,12 +1828,10 @@ if __name__ == "__main__":
         if explicit_exit_notify and is_udp:
             lines.append(f"explicit-exit-notify {int(explicit_exit_notify)}")
 
-        enable_dns_leak_protection = bool(openvpn_settings.get("enable_dns_leak_protection", True))
         self._apply_windows_optimizations(
             lines,
             sndbuf=sndbuf,
             rcvbuf=rcvbuf,
-            enable_dns_leak_protection=enable_dns_leak_protection,
             is_tcp=is_tcp,
         )
 
@@ -1902,7 +1895,7 @@ if __name__ == "__main__":
         resolved_server = (
             (server_address or "").strip()
             or (general_settings.get("server_address") or "").strip()
-            or "YOUR_SERVER_IP"
+            or (general_settings.get("public_ipv4_address") or "").strip()
         )
         resolved_port = int(server_port if server_port is not None else openvpn_settings.get("port", 1194))
 
@@ -1987,6 +1980,17 @@ if __name__ == "__main__":
             verbosity=3,
         )
 
+        if os_name == "linux":
+            lines.extend(
+                [
+                    "script-security 2",
+                    "setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    "up /etc/openvpn/update-resolv-conf",
+                    "down /etc/openvpn/update-resolv-conf",
+                    "down-pre",
+                ]
+            )
+
         if sndbuf:
             lines.append(f"sndbuf {int(sndbuf)}")
         if rcvbuf:
@@ -2068,66 +2072,76 @@ if __name__ == "__main__":
         normalized_os = (os_type or "default").strip().lower()
 
         builder_registry = {
-            "ios": lambda ovpn, gen: self._generate_apple_config(
+            "ios": lambda ovpn, gen, remote, remote_port, transport_proto: self._generate_apple_config(
                 client_name=client_name,
                 openvpn_settings=ovpn,
                 general_settings=gen,
-                server_address=server_address,
-                server_port=server_port,
-                protocol=protocol,
+                server_address=remote,
+                server_port=remote_port,
+                protocol=transport_proto,
                 os_type="ios",
             ),
-            "mac": lambda ovpn, gen: self._generate_apple_config(
+            "mac": lambda ovpn, gen, remote, remote_port, transport_proto: self._generate_apple_config(
                 client_name=client_name,
                 openvpn_settings=ovpn,
                 general_settings=gen,
-                server_address=server_address,
-                server_port=server_port,
-                protocol=protocol,
+                server_address=remote,
+                server_port=remote_port,
+                protocol=transport_proto,
                 os_type="mac",
             ),
-            "macos": lambda ovpn, gen: self._generate_apple_config(
+            "macos": lambda ovpn, gen, remote, remote_port, transport_proto: self._generate_apple_config(
                 client_name=client_name,
                 openvpn_settings=ovpn,
                 general_settings=gen,
-                server_address=server_address,
-                server_port=server_port,
-                protocol=protocol,
+                server_address=remote,
+                server_port=remote_port,
+                protocol=transport_proto,
                 os_type="macos",
             ),
-            "android": lambda ovpn, gen: self._generate_android_config(
+            "android": lambda ovpn, gen, remote, remote_port, transport_proto: self._generate_android_config(
                 client_name=client_name,
                 openvpn_settings=ovpn,
                 general_settings=gen,
-                server_address=server_address,
-                server_port=server_port,
-                protocol=protocol,
+                server_address=remote,
+                server_port=remote_port,
+                protocol=transport_proto,
             ),
-            "windows": lambda ovpn, gen: self._generate_windows_config(
+            "windows": lambda ovpn, gen, remote, remote_port, transport_proto: self._generate_windows_config(
                 client_name=client_name,
                 openvpn_settings=ovpn,
                 general_settings=gen,
-                server_address=server_address,
-                server_port=server_port,
-                protocol=protocol,
+                server_address=remote,
+                server_port=remote_port,
+                protocol=transport_proto,
             ),
-            "win": lambda ovpn, gen: self._generate_windows_config(
+            "win": lambda ovpn, gen, remote, remote_port, transport_proto: self._generate_windows_config(
                 client_name=client_name,
                 openvpn_settings=ovpn,
                 general_settings=gen,
-                server_address=server_address,
-                server_port=server_port,
-                protocol=protocol,
+                server_address=remote,
+                server_port=remote_port,
+                protocol=transport_proto,
             ),
         }
 
         try:
             openvpn_settings, general_settings = self._load_runtime_settings()
+
+            db_server_address = (general_settings.get("server_address") or "").strip()
+            db_public_ipv4 = (general_settings.get("public_ipv4_address") or "").strip()
             resolved_server_address = (
-                (general_settings.get("server_address") or "").strip()
-                or (general_settings.get("public_ipv4_address") or "").strip()
+                db_server_address
+                or db_public_ipv4
                 or (server_address or "").strip()
             )
+
+            if not resolved_server_address:
+                logger.error("Client config generation failed: missing server address in GeneralSettings")
+                return None
+
+            resolved_server_port = int(openvpn_settings.get("port") or server_port or 1194)
+            resolved_protocol = str(openvpn_settings.get("protocol") or protocol or "udp").strip().lower()
 
             builder = builder_registry.get(normalized_os)
             if builder:
@@ -2137,6 +2151,9 @@ if __name__ == "__main__":
                         **general_settings,
                         "server_address": resolved_server_address,
                     },
+                    resolved_server_address,
+                    resolved_server_port,
+                    resolved_protocol,
                 )
 
             return self._generate_default_config(
@@ -2144,8 +2161,8 @@ if __name__ == "__main__":
                 openvpn_settings=openvpn_settings,
                 general_settings=general_settings,
                 server_address=resolved_server_address,
-                server_port=server_port,
-                protocol=protocol,
+                server_port=resolved_server_port,
+                protocol=resolved_protocol,
                 os_type=normalized_os,
             )
         except Exception as e:
@@ -2333,7 +2350,7 @@ if __name__ == "__main__":
         except Exception as exc:
             logger.warning(f"Falling back to default client remote address: {exc}")
 
-        return "YOUR_SERVER_IP"
+        return ""
 
     def _validate_openvpn_settings(self, settings: Dict[str, Any]) -> None:
         """Legacy validation - kept for compatibility but should not be used."""
