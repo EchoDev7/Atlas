@@ -2893,16 +2893,10 @@ if __name__ == "__main__":
                 server_lines.append("")
                 server_lines.extend(push_lines)
 
-            db_path_str = str(db_path or "").strip()
-            run_unprivileged = not db_path_str.startswith("/root/")
-            if run_unprivileged:
-                server_lines.extend(["", "user nobody", "group nogroup"])
-            else:
-                logger.warning(
-                    "Skipping OpenVPN user/group privilege drop because ATLAS_DB_PATH is under /root and would be inaccessible to nobody: %s",
-                    db_path_str,
-                )
-                server_lines.append("")
+            # Keep OpenVPN running as root for Atlas auth/enforcement scripts.
+            # Dropping to nobody/nogroup has caused repeated AUTH_FAILED regressions
+            # in production due to systemd sandboxing and sqlite file access constraints.
+            server_lines.append("")
             if verbosity is not None:
                 server_lines.append(f"verb {int(verbosity)}")
 
