@@ -24,6 +24,8 @@ from backend.schemas.openvpn_settings import OpenVPNSettingsResponse, OpenVPNSet
 router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_manager = OpenVPNManager()
 obfuscation_manager = ObfuscationManager()
+RESOLVED_DROPIN_DIR = Path("/etc/systemd/resolved.conf.d")
+ATLAS_DNS_DROPIN_FILE = RESOLVED_DROPIN_DIR / "atlas-dns.conf"
 
 
 def _detect_global_ip_from_interface(wan_interface: str, family: int) -> str | None:
@@ -155,6 +157,28 @@ def _read_dns_from_resolvectl_dns(wan_interface: str) -> list[str]:
     return []
 
 
+def _read_dns_from_atlas_dropin() -> list[str]:
+    try:
+        if not ATLAS_DNS_DROPIN_FILE.exists():
+            return []
+
+        raw_content = ATLAS_DNS_DROPIN_FILE.read_text(encoding="utf-8", errors="ignore")
+        dns_lines: list[str] = []
+        for line in raw_content.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or stripped.startswith(";"):
+                continue
+            if stripped.lower().startswith("dns="):
+                dns_lines.append(stripped.split("=", 1)[1].strip())
+
+        if not dns_lines:
+            return []
+
+        return _extract_dns_ips("\n".join(dns_lines))
+    except Exception:
+        return []
+
+
 def _read_dns_from_resolvectl_status(wan_interface: str) -> list[str]:
     try:
         result = subprocess.run(
@@ -206,7 +230,10 @@ def _read_system_dns_servers() -> tuple[str, str]:
     primary = "1.1.1.1"
     secondary = "8.8.8.8"
     wan_interface = _detect_wan_interface()
-    detected_dns = _read_dns_from_resolvectl_dns(wan_interface)
+    detected_dns = _read_dns_from_atlas_dropin()
+
+    if not detected_dns:
+        detected_dns = _read_dns_from_resolvectl_dns(wan_interface)
 
     if not detected_dns:
         detected_dns = _read_dns_from_resolv_conf()
@@ -225,29 +252,40 @@ def _read_system_dns_servers() -> tuple[str, str]:
 
 
 def _apply_system_dns_servers(wan_interface: str, primary_dns: str, secondary_dns: str) -> dict:
-    # Preferred path for systemd-resolved-based systems.
     try:
-        command = ["resolvectl", "dns", wan_interface, primary_dns, secondary_dns]
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
-        if result.returncode == 0:
-            return {"success": True, "method": "resolvectl"}
-    except Exception:
-        pass
-
-    # Fallback: write /etc/resolv.conf directly (works when file is writable and service runs as root).
-    resolv_path = Path("/etc/resolv.conf")
-    backup_path = Path("/etc/resolv.conf.atlas.bak")
-    try:
-        if resolv_path.exists() and not backup_path.exists():
-            backup_path.write_text(resolv_path.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
-
-        content = (
-            "# Managed by Atlas\n"
-            f"nameserver {primary_dns}\n"
-            f"nameserver {secondary_dns}\n"
+        RESOLVED_DROPIN_DIR.mkdir(parents=True, exist_ok=True)
+        dropin_content = (
+            "[Resolve]\n"
+            f"DNS={primary_dns} {secondary_dns}\n"
+            "Domains=~.\n"
         )
-        resolv_path.write_text(content, encoding="utf-8")
-        return {"success": True, "method": "resolv.conf"}
+        ATLAS_DNS_DROPIN_FILE.write_text(dropin_content, encoding="utf-8")
+
+        restart_result = subprocess.run(
+            ["systemctl", "restart", "systemd-resolved"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if restart_result.returncode != 0:
+            return {
+                "success": False,
+                "message": (restart_result.stderr or restart_result.stdout or "failed to restart systemd-resolved").strip(),
+            }
+
+        flush_result = subprocess.run(
+            ["resolvectl", "flush-caches"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if flush_result.returncode != 0:
+            return {
+                "success": False,
+                "message": (flush_result.stderr or flush_result.stdout or "failed to flush resolvectl caches").strip(),
+            }
+
+        return {"success": True, "method": "resolved-dropin"}
     except Exception as exc:
         return {"success": False, "message": f"failed to apply system DNS: {exc}"}
 
