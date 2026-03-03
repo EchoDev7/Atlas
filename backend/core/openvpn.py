@@ -469,6 +469,25 @@ class OpenVPNManager(BaseVPNService):
             logger.warning("Failed to sync DB to OpenVPN-accessible location: %s", exc)
             return str(openvpn_accessible_db)
 
+    def sync_auth_database_snapshot(self) -> Dict[str, Any]:
+        """Synchronize SQLite DB snapshot used by OpenVPN auth/enforcement scripts."""
+        target_path = Path(self._resolve_sqlite_db_path())
+        exists = target_path.exists()
+        if not exists:
+            return {
+                "success": False,
+                "message": f"OpenVPN auth DB snapshot not found at {target_path}",
+                "path": str(target_path),
+                "protocol": self.protocol_name,
+            }
+
+        return {
+            "success": True,
+            "message": "OpenVPN auth DB snapshot synchronized",
+            "path": str(target_path),
+            "protocol": self.protocol_name,
+        }
+
     def _ensure_auth_user_pass_script(self) -> Path:
         """Ensure OpenVPN auth-user-pass verifier script exists in server config dir."""
         auth_script_path = self.config.AUTH_USER_PASS_SCRIPT

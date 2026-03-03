@@ -349,6 +349,7 @@ def _get_or_create_openvpn_settings(db: Session) -> OpenVPNSettings:
     settings = OpenVPNSettings()
     db.add(settings)
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
     return settings
 
@@ -361,6 +362,7 @@ def _get_or_create_general_settings(db: Session) -> GeneralSettings:
     settings = GeneralSettings()
     db.add(settings)
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
     return settings
 
@@ -433,6 +435,16 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
     )
 
 
+def _sync_openvpn_auth_db_snapshot() -> None:
+    """Best-effort sync of OpenVPN auth DB snapshot after settings updates."""
+    try:
+        result = openvpn_manager.sync_auth_database_snapshot()
+        if not result.get("success"):
+            logger.warning("OpenVPN auth DB sync warning after settings update: %s", result.get("message"))
+    except Exception as exc:
+        logger.warning("Failed to sync OpenVPN auth DB snapshot after settings update: %s", exc)
+
+
 def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
     return GeneralSettingsResponse(
         id=settings.id,
@@ -497,6 +509,7 @@ def get_general_settings(
     if has_change:
         settings.updated_at = datetime.utcnow()
         db.commit()
+        _sync_openvpn_auth_db_snapshot()
         db.refresh(settings)
 
     return _to_general_response(settings)
@@ -588,6 +601,7 @@ def update_general_settings(
         )
 
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
     return _to_general_response(settings)
 
@@ -770,6 +784,7 @@ def update_openvpn_settings(
         )
 
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
 
     try:

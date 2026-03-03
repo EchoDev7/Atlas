@@ -91,6 +91,16 @@ def _sync_legacy_accounting_fields(user: VPNUser) -> None:
     user.max_devices = user.effective_max_concurrent_connections
 
 
+def _sync_openvpn_auth_db_snapshot() -> None:
+    """Best-effort sync of auth DB snapshot consumed by OpenVPN scripts."""
+    try:
+        sync_result = openvpn_manager.sync_auth_database_snapshot()
+        if not sync_result.get("success"):
+            logger.warning("OpenVPN auth DB sync warning: %s", sync_result.get("message"))
+    except Exception as exc:
+        logger.warning("Failed to sync OpenVPN auth DB snapshot: %s", exc)
+
+
 @router.get("", response_model=VPNUserListResponse)
 async def list_users(
     skip: int = 0,
@@ -156,6 +166,7 @@ async def disconnect_user_sessions(
     user.is_connection_limit_exceeded = False
     user.updated_at = datetime.utcnow()
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
 
     logger.info(
         "User %s disconnected via %s by admin %s",
@@ -252,6 +263,7 @@ async def create_user(
             logger.error(f"Error creating OpenVPN config: {e}")
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(new_user)
     
     logger.info(f"User {username} created by admin {current_user.username}")
@@ -344,6 +356,7 @@ async def update_user(
     user.updated_at = datetime.utcnow()
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(user)
     
     logger.info(f"User {user.username} updated by admin {current_user.username}")
@@ -375,6 +388,7 @@ async def delete_user(
     
     db.delete(user)
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     
     logger.info(f"User {username} deleted by admin {current_user.username}")
     
@@ -552,6 +566,7 @@ async def reset_password(
     user.updated_at = datetime.utcnow()
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     
     logger.info(f"Password reset for user {user.username} by admin {current_user.username}")
     
@@ -577,6 +592,7 @@ async def change_password(
     user.updated_at = datetime.utcnow()
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(user)
     
     logger.info(f"Password changed for user {user.username} by admin {current_user.username}")
