@@ -40,6 +40,7 @@ class OpenVPNConfig:
     # Server configuration
     SERVER_CONF = OPENVPN_SERVER_DIR / "server.conf"
     ENFORCEMENT_HOOK = OPENVPN_SERVER_DIR / "atlas_enforcement_hook.py"
+    AUTH_USER_PASS_SCRIPT = Path("/root/Atlas/scripts/openvpn_auth_user_pass.py")
     STATUS_LOG = Path("/run/openvpn-server/status-server.log")
     
     # PKI paths (Easy-RSA 3 standard structure)
@@ -429,6 +430,10 @@ class OpenVPNManager(BaseVPNService):
     def _resolve_sqlite_db_path(self) -> str:
         """Resolve SQLite database file path for OpenVPN hook scripts."""
         try:
+            deployed_backend_db = Path("/root/Atlas/backend/atlas.db")
+            if deployed_backend_db.exists():
+                return str(deployed_backend_db)
+
             from backend.config import settings
 
             db_url = str(getattr(settings, "DATABASE_URL", "") or "")
@@ -438,7 +443,19 @@ class OpenVPNManager(BaseVPNService):
             return str(settings.DATA_DIR / "atlas.db")
         except Exception as exc:
             logger.warning("Failed to resolve SQLite database path for enforcement hook: %s", exc)
-            return ""
+            return "/root/Atlas/backend/atlas.db"
+
+    def _ensure_auth_user_pass_script(self) -> Path:
+        """Ensure OpenVPN auth-user-pass verifier script path is usable."""
+        auth_script_path = self.config.AUTH_USER_PASS_SCRIPT
+        if self.is_production:
+            if not auth_script_path.exists():
+                raise FileNotFoundError(f"OpenVPN auth verifier script not found: {auth_script_path}")
+            try:
+                os.chmod(auth_script_path, 0o750)
+            except Exception as exc:
+                logger.warning("Failed to chmod auth verifier script %s: %s", auth_script_path, exc)
+        return auth_script_path
 
     def _build_realtime_enforcement_hook_content(self) -> str:
         """Build Python hook script used by OpenVPN client-connect/client-disconnect."""
@@ -2654,11 +2671,14 @@ if __name__ == "__main__":
             server_lines.append("suppress-timestamps")
 
             enforcement_hook_path = self._ensure_realtime_enforcement_hook()
+            auth_user_pass_script = self._ensure_auth_user_pass_script()
             db_path = self._resolve_sqlite_db_path()
             server_lines.extend(
                 [
                     "script-security 2",
                     f"setenv ATLAS_DB_PATH {db_path}" if db_path else "# setenv ATLAS_DB_PATH <path_to_atlas.db>",
+                    f'auth-user-pass-verify "{auth_user_pass_script}" via-file',
+                    "username-as-common-name",
                     f'client-connect "{enforcement_hook_path} connect"',
                     f'client-disconnect "{enforcement_hook_path} disconnect"',
                 ]
