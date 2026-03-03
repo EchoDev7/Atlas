@@ -11,6 +11,7 @@ Usage in OpenVPN server config:
     script-security 2
 """
 
+import os
 import sys
 import base64
 import hashlib
@@ -24,7 +25,7 @@ except Exception:
     bcrypt = None
 
 
-ATLAS_DB_PATH = "/root/Atlas/backend/atlas.db"
+ATLAS_DB_PATH = (os.environ.get("ATLAS_DB_PATH") or "/root/Atlas/data/atlas.db").strip()
 AUTH_LOG_PATH = "/var/log/atlas_auth.log"
 PBKDF2_SCHEME = "pbkdf2_sha256"
 
