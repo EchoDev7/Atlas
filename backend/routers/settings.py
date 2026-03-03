@@ -50,11 +50,57 @@ def _detect_public_ipv4() -> str:
     return "N/A"
 
 
-def _detect_public_ipv6() -> str:
+def _detect_ipv6_from_interface(wan_interface: str) -> str | None:
+    interface = (wan_interface or "").strip()
+    if not interface:
+        return None
+
+    try:
+        result = subprocess.run(
+            ["ip", "-6", "addr", "show", "dev", interface, "scope", "global"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("inet6 "):
+                continue
+
+            parts = stripped.split()
+            if len(parts) < 2:
+                continue
+
+            cidr = parts[1].strip()
+            candidate = cidr.split("/")[0].strip()
+            if not candidate:
+                continue
+
+            try:
+                ip_obj = ipaddress.ip_address(candidate)
+            except ValueError:
+                continue
+
+            if ip_obj.version == 6 and not ip_obj.is_link_local:
+                return candidate
+    except Exception:
+        return None
+
+    return None
+
+
+def _detect_public_ipv6(wan_interface: str | None = None) -> str:
     if not socket.has_ipv6:
         return "Not Configured"
 
-    providers = ("https://api6.ipify.org", "https://ifconfig.me/ip")
+    local_ipv6 = _detect_ipv6_from_interface((wan_interface or "").strip())
+    if local_ipv6:
+        return local_ipv6
+
+    providers = ("https://ident.me", "https://api64.ipify.org", "https://api6.ipify.org", "https://ifconfig.me/ip")
     for provider in providers:
         value = _fetch_public_ip(provider, expected_version=6)
         if value:
@@ -290,9 +336,10 @@ def get_general_settings(
 @router.get("/server-ips")
 def get_server_public_ips(current_user: Admin = Depends(get_current_user)):
     _ = current_user
+    detected_wan = _detect_wan_interface()
     return {
         "public_ipv4": _detect_public_ipv4(),
-        "public_ipv6": _detect_public_ipv6(),
+        "public_ipv6": _detect_public_ipv6(detected_wan),
     }
 
 
