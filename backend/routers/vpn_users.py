@@ -3,10 +3,9 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
-import random
 
 from backend.database import get_db
 from backend.dependencies import get_current_user
@@ -101,6 +100,76 @@ def _sync_openvpn_auth_db_snapshot() -> None:
         logger.warning("Failed to sync OpenVPN auth DB snapshot: %s", exc)
 
 
+def _get_openvpn_runtime_stats() -> Tuple[Dict[str, Dict[str, int]], bool]:
+    """Fetch live OpenVPN session stats grouped by username."""
+    try:
+        sessions = openvpn_manager.get_active_sessions()
+    except Exception as exc:
+        logger.warning("Failed to read OpenVPN active sessions for user list: %s", exc)
+        return {}, False
+
+    stats: Dict[str, Dict[str, int]] = {}
+    for session in sessions:
+        username = str(session.get("username") or "").strip()
+        if not username:
+            continue
+
+        item = stats.setdefault(
+            username,
+            {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+        )
+        item["connections"] += 1
+        item["bytes_sent"] += max(0, int(session.get("bytes_sent") or 0))
+        item["bytes_received"] += max(0, int(session.get("bytes_received") or 0))
+
+    return stats, True
+
+
+def _apply_runtime_metrics_to_user_dict(
+    user_dict: Dict[str, Any],
+    runtime_stats: Dict[str, Dict[str, int]],
+    runtime_available: bool,
+) -> Dict[str, Any]:
+    """Overlay live session/traffic metrics on top of persisted DB values."""
+    if not runtime_available:
+        user_dict["is_online"] = int(user_dict.get("current_connections") or 0) > 0
+        return user_dict
+
+    username = str(user_dict.get("username") or "").strip()
+    user_stats = runtime_stats.get(username, {})
+    live_connections = max(0, int(user_stats.get("connections") or 0))
+    live_sent = max(0, int(user_stats.get("bytes_sent") or 0))
+    live_received = max(0, int(user_stats.get("bytes_received") or 0))
+
+    db_sent = max(0, int(user_dict.get("total_bytes_sent") or 0))
+    db_received = max(0, int(user_dict.get("total_bytes_received") or 0))
+
+    total_sent = db_sent + live_sent
+    total_received = db_received + live_received
+    effective_total_bytes = max(
+        max(0, int(user_dict.get("traffic_used_bytes") or 0)),
+        total_sent + total_received,
+    )
+
+    user_dict["current_connections"] = live_connections
+    user_dict["is_online"] = live_connections > 0
+    user_dict["total_bytes_sent"] = total_sent
+    user_dict["total_bytes_received"] = total_received
+    user_dict["traffic_used_bytes"] = effective_total_bytes
+    user_dict["total_gb_used"] = effective_total_bytes / float(1024 ** 3)
+
+    limit_bytes = user_dict.get("traffic_limit_bytes")
+    if limit_bytes in {None, 0}:
+        user_dict["data_usage_percentage"] = 0.0
+    else:
+        user_dict["data_usage_percentage"] = min(100.0, (effective_total_bytes / float(limit_bytes)) * 100)
+
+    max_connections = max(1, int(user_dict.get("max_concurrent_connections") or 1))
+    user_dict["is_connection_limit_exceeded"] = live_connections > max_connections
+
+    return user_dict
+
+
 @router.get("", response_model=VPNUserListResponse)
 async def list_users(
     skip: int = 0,
@@ -111,12 +180,12 @@ async def list_users(
     """Get list of all VPN users with pagination"""
     users = db.query(VPNUser).offset(skip).limit(limit).all()
     total = db.query(VPNUser).count()
+    runtime_stats, runtime_available = _get_openvpn_runtime_stats()
     
-    # Mock is_online status for testing (30% chance of being online)
     user_responses = []
     for user in users:
         user_dict = VPNUserResponse.from_orm(user).dict()
-        user_dict['is_online'] = random.random() < 0.3 and user.is_active
+        user_dict = _apply_runtime_metrics_to_user_dict(user_dict, runtime_stats, runtime_available)
         user_responses.append(VPNUserResponse(**user_dict))
     
     return VPNUserListResponse(
@@ -137,8 +206,11 @@ async def get_user(
     user = db.query(VPNUser).filter(VPNUser.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    return user
+
+    runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    user_dict = VPNUserDetailResponse.from_orm(user).dict()
+    user_dict = _apply_runtime_metrics_to_user_dict(user_dict, runtime_stats, runtime_available)
+    return VPNUserDetailResponse(**user_dict)
 
 
 @router.post("/{user_id}/disconnect")

@@ -259,10 +259,46 @@ class OpenVPNManager(BaseVPNService):
 
     def get_active_sessions(self) -> List[Dict[str, Any]]:
         """Return active OpenVPN sessions from management interface (status 3)."""
+        def _parse_status_log_sessions() -> List[Dict[str, Any]]:
+            sessions: List[Dict[str, Any]] = []
+            status_path = self.config.STATUS_LOG
+            if not status_path.exists():
+                return sessions
+
+            try:
+                for raw_line in status_path.read_text(errors="ignore").splitlines():
+                    line = raw_line.strip()
+                    if not line.startswith("CLIENT_LIST,"):
+                        continue
+
+                    parts = [segment.strip() for segment in line.split(",")]
+                    if len(parts) < 6:
+                        continue
+
+                    common_name = parts[1]
+                    if not common_name or common_name.upper() == "UNDEF":
+                        continue
+
+                    sessions.append(
+                        {
+                            "username": common_name,
+                            "real_address": parts[2] if len(parts) > 2 else None,
+                            "virtual_address": parts[3] if len(parts) > 3 else None,
+                            "bytes_received": _safe_int(parts[4], 0) if len(parts) > 4 else 0,
+                            "bytes_sent": _safe_int(parts[5], 0) if len(parts) > 5 else 0,
+                            "connected_since": parts[7] if len(parts) > 7 else None,
+                            "raw": line,
+                        }
+                    )
+            except Exception as exc:
+                logger.warning("Failed to parse OpenVPN status log sessions: %s", exc)
+
+            return sessions
+
         success, response = self._send_management_command("status 3")
         if not success:
             logger.warning("OpenVPN management status query failed: %s", response)
-            return []
+            return _parse_status_log_sessions()
 
         sessions: List[Dict[str, Any]] = []
         for raw_line in response.splitlines():
@@ -290,7 +326,10 @@ class OpenVPNManager(BaseVPNService):
                 }
             )
 
-        return sessions
+        if sessions:
+            return sessions
+
+        return _parse_status_log_sessions()
 
     def kill_user(self, username: str) -> Dict[str, Any]:
         """Disconnect a user immediately via management `kill <common_name>` command."""
