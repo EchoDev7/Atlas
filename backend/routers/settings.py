@@ -3,7 +3,6 @@ import ipaddress
 from pathlib import Path
 import socket
 import subprocess
-import urllib.request
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -27,37 +26,17 @@ openvpn_manager = OpenVPNManager()
 obfuscation_manager = ObfuscationManager()
 
 
-def _fetch_public_ip(url: str, expected_version: int, timeout: float = 3.0) -> str | None:
-    try:
-        request = urllib.request.Request(url, headers={"User-Agent": "Atlas/1.0"})
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            ip_text = response.read().decode("utf-8").strip()
-
-        ip_obj = ipaddress.ip_address(ip_text)
-        if ip_obj.version != expected_version:
-            return None
-        return ip_text
-    except Exception:
-        return None
-
-
-def _detect_public_ipv4() -> str:
-    providers = ("https://api.ipify.org", "https://ifconfig.me/ip")
-    for provider in providers:
-        value = _fetch_public_ip(provider, expected_version=4)
-        if value:
-            return value
-    return "N/A"
-
-
-def _detect_ipv6_from_interface(wan_interface: str) -> str | None:
+def _detect_global_ip_from_interface(wan_interface: str, family: int) -> str | None:
     interface = (wan_interface or "").strip()
     if not interface:
         return None
 
+    ip_flag = "-4" if family == 4 else "-6"
+    token_prefix = "inet " if family == 4 else "inet6 "
+
     try:
         result = subprocess.run(
-            ["ip", "-6", "addr", "show", "dev", interface, "scope", "global"],
+            ["ip", ip_flag, "addr", "show", "dev", interface, "scope", "global"],
             capture_output=True,
             text=True,
             check=False,
@@ -67,44 +46,53 @@ def _detect_ipv6_from_interface(wan_interface: str) -> str | None:
 
         for line in result.stdout.splitlines():
             stripped = line.strip()
-            if not stripped.startswith("inet6 "):
+            if not stripped.startswith(token_prefix):
                 continue
 
             parts = stripped.split()
             if len(parts) < 2:
                 continue
 
-            cidr = parts[1].strip()
-            candidate = cidr.split("/")[0].strip()
+            candidate = parts[1].strip().split("/")[0].strip()
             if not candidate:
                 continue
 
             try:
-                ip_obj = ipaddress.ip_address(candidate)
+                parsed_ip = ipaddress.ip_address(candidate)
             except ValueError:
                 continue
 
-            if ip_obj.version == 6 and not ip_obj.is_link_local:
-                return candidate
+            if parsed_ip.version != family:
+                continue
+            if family == 6 and parsed_ip.is_link_local:
+                continue
+
+            return candidate
     except Exception:
         return None
 
     return None
 
 
+def _detect_public_ipv4() -> str:
+    wan_interface = _detect_wan_interface()
+    detected = _detect_global_ip_from_interface(wan_interface, family=4)
+    return detected or "N/A"
+
+
+def _detect_ipv6_from_interface(wan_interface: str) -> str | None:
+    return _detect_global_ip_from_interface(wan_interface, family=6)
+
+
 def _detect_public_ipv6(wan_interface: str | None = None) -> str:
     if not socket.has_ipv6:
         return "Not Configured"
 
-    local_ipv6 = _detect_ipv6_from_interface((wan_interface or "").strip())
+    resolved_wan = (wan_interface or "").strip() or _detect_wan_interface()
+    local_ipv6 = _detect_ipv6_from_interface(resolved_wan)
     if local_ipv6:
         return local_ipv6
 
-    providers = ("https://ident.me", "https://api64.ipify.org", "https://api6.ipify.org", "https://ifconfig.me/ip")
-    for provider in providers:
-        value = _fetch_public_ip(provider, expected_version=6)
-        if value:
-            return value
     return "Not Configured"
 
 
