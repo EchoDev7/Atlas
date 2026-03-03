@@ -509,7 +509,21 @@ class OpenVPNManager(BaseVPNService):
             return str(openvpn_accessible_db)
 
     def sync_auth_database_snapshot(self) -> Dict[str, Any]:
-        """Synchronize SQLite DB snapshot used by OpenVPN auth/enforcement scripts."""
+        """Synchronize auth assets (DB snapshot + scripts) used by OpenVPN hooks."""
+        auth_script_path: Optional[Path] = None
+        enforcement_hook_path: Optional[Path] = None
+
+        if self.is_production:
+            try:
+                auth_script_path = self._ensure_auth_user_pass_script()
+            except Exception as exc:
+                logger.warning("Failed to refresh OpenVPN auth script: %s", exc)
+
+            try:
+                enforcement_hook_path = self._ensure_realtime_enforcement_hook()
+            except Exception as exc:
+                logger.warning("Failed to refresh OpenVPN enforcement hook: %s", exc)
+
         target_path = Path(self._resolve_sqlite_db_path())
         exists = target_path.exists()
         if not exists:
@@ -517,13 +531,17 @@ class OpenVPNManager(BaseVPNService):
                 "success": False,
                 "message": f"OpenVPN auth DB snapshot not found at {target_path}",
                 "path": str(target_path),
+                "auth_script": str(auth_script_path) if auth_script_path else None,
+                "enforcement_hook": str(enforcement_hook_path) if enforcement_hook_path else None,
                 "protocol": self.protocol_name,
             }
 
         return {
             "success": True,
-            "message": "OpenVPN auth DB snapshot synchronized",
+            "message": "OpenVPN auth assets synchronized",
             "path": str(target_path),
+            "auth_script": str(auth_script_path) if auth_script_path else None,
+            "enforcement_hook": str(enforcement_hook_path) if enforcement_hook_path else None,
             "protocol": self.protocol_name,
         }
 
