@@ -381,6 +381,10 @@ class OpenVPNManager(BaseVPNService):
             "enable_dns_leak_protection": True,
             "custom_directives": None,
             "advanced_client_push": None,
+            "custom_ios": None,
+            "custom_android": None,
+            "custom_windows": None,
+            "custom_mac": None,
         }
         general_defaults: Dict[str, any] = {
             "server_address": "",
@@ -2133,15 +2137,14 @@ if __name__ == "__main__":
             resolved_server_address = (
                 db_server_address
                 or db_public_ipv4
-                or (server_address or "").strip()
             )
 
             if not resolved_server_address:
                 logger.error("Client config generation failed: missing server address in GeneralSettings")
                 return None
 
-            resolved_server_port = int(openvpn_settings.get("port") or server_port or 1194)
-            resolved_protocol = str(openvpn_settings.get("protocol") or protocol or "udp").strip().lower()
+            resolved_server_port = int(openvpn_settings.get("port") or 1194)
+            resolved_protocol = str(openvpn_settings.get("protocol") or "udp").strip().lower()
 
             builder = builder_registry.get(normalized_os)
             if builder:

@@ -713,6 +713,8 @@
                                 <option value="http_proxy_basic">HTTP Proxy Basic</option>
                                 <option value="http_proxy_advanced">HTTP Proxy Advanced</option>
                                 <option value="socks5_proxy_injection">SOCKS5 Proxy Injection</option>
+                                <option value="tls_tunnel">TLS Tunnel</option>
+                                <option value="websocket_cdn">WebSocket CDN</option>
                             </select>
                         </label>
 
@@ -1375,24 +1377,44 @@
                     this.saving = true;
                     try {
                         const token = localStorage.getItem('access_token');
+                        const toInt = (value, fallback) => {
+                            const parsed = Number.parseInt(value, 10);
+                            return Number.isFinite(parsed) ? parsed : fallback;
+                        };
+                        const toOptionalInt = (value) => {
+                            if (value === null || value === undefined) {
+                                return null;
+                            }
+                            const normalized = String(value).trim();
+                            if (!normalized) {
+                                return null;
+                            }
+                            const parsed = Number.parseInt(normalized, 10);
+                            return Number.isFinite(parsed) ? parsed : null;
+                        };
+                        const toBool = (value) => value === true || value === 'true' || value === 1 || value === '1';
                         const payload = {
                             ...this.form,
-                            port: Number(this.form.port),
-                            max_clients: Number(this.form.max_clients),
-                            reneg_sec: Number(this.form.reneg_sec),
-                            tun_mtu: Number(this.form.tun_mtu),
-                            mssfix: Number(this.form.mssfix),
-                            sndbuf: Number(this.form.sndbuf),
-                            rcvbuf: Number(this.form.rcvbuf),
-                            tcp_nodelay: !!this.form.tcp_nodelay,
-                            explicit_exit_notify: Number(this.form.explicit_exit_notify),
-                            keepalive_ping: Number(this.form.keepalive_ping),
-                            keepalive_timeout: Number(this.form.keepalive_timeout),
-                            inactive_timeout: Number(this.form.inactive_timeout),
-                            management_port: Number(this.form.management_port),
-                            verbosity: Number(this.form.verbosity),
-                            enable_auth_nocache: Boolean(this.form.enable_auth_nocache),
-                            enable_dns_leak_protection: Boolean(this.form.enable_dns_leak_protection),
+                            port: toInt(this.form.port, 1194),
+                            max_clients: toInt(this.form.max_clients, 100),
+                            client_to_client: toBool(this.form.client_to_client),
+                            redirect_gateway: toBool(this.form.redirect_gateway),
+                            block_outside_dns: toBool(this.form.block_outside_dns),
+                            reneg_sec: toInt(this.form.reneg_sec, 3600),
+                            tun_mtu: toInt(this.form.tun_mtu, 1500),
+                            mssfix: toInt(this.form.mssfix, 1450),
+                            sndbuf: toInt(this.form.sndbuf, 393216),
+                            rcvbuf: toInt(this.form.rcvbuf, 393216),
+                            fast_io: toBool(this.form.fast_io),
+                            tcp_nodelay: toBool(this.form.tcp_nodelay),
+                            explicit_exit_notify: toInt(this.form.explicit_exit_notify, 1),
+                            keepalive_ping: toInt(this.form.keepalive_ping, 10),
+                            keepalive_timeout: toInt(this.form.keepalive_timeout, 120),
+                            inactive_timeout: toInt(this.form.inactive_timeout, 300),
+                            management_port: toInt(this.form.management_port, 5555),
+                            verbosity: toInt(this.form.verbosity, 3),
+                            enable_auth_nocache: toBool(this.form.enable_auth_nocache),
+                            enable_dns_leak_protection: toBool(this.form.enable_dns_leak_protection),
                             protocol: this.form.protocol,
                             device_type: this.form.device_type,
                             topology: 'subnet',
@@ -1403,7 +1425,7 @@
                             ipv4_network: (this.form.ipv4_network || '').trim(),
                             ipv4_netmask: (this.form.ipv4_netmask || '').trim(),
                             ipv6_network: this.generalForm.global_ipv6_support ? ((this.form.ipv6_network || '').trim() || null) : null,
-                            ipv6_prefix: this.generalForm.global_ipv6_support && this.form.ipv6_network ? Number(this.form.ipv6_prefix) : null,
+                            ipv6_prefix: this.generalForm.global_ipv6_support && this.form.ipv6_network ? toOptionalInt(this.form.ipv6_prefix) : null,
                             primary_dns: (this.form.primary_dns || '').trim(),
                             secondary_dns: (this.form.secondary_dns || '').trim(),
                             push_custom_routes: (this.form.push_custom_routes || '').trim() || null,
@@ -1416,17 +1438,17 @@
                             proxy_address: this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced'
                                 ? ((this.form.proxy_server || '').trim() || (this.generalForm.server_address || '').trim() || null)
                                 : null,
-                            proxy_port: Number(this.form.proxy_port),
+                            proxy_port: toInt(this.form.proxy_port, 8080),
                             spoofed_host: this.form.obfuscation_mode === 'stealth' || this.form.obfuscation_mode === 'http_proxy_advanced'
                                 ? ((this.form.spoofed_host || 'speedtest.net').trim() || 'speedtest.net')
                                 : null,
                             socks_server: this.form.obfuscation_mode === 'socks5_proxy_injection' ? ((this.form.socks_server || '').trim() || null) : null,
-                            socks_port: this.form.obfuscation_mode === 'socks5_proxy_injection' ? Number(this.form.socks_port) : null,
-                            stunnel_port: Number(this.form.stunnel_port),
+                            socks_port: this.form.obfuscation_mode === 'socks5_proxy_injection' ? toOptionalInt(this.form.socks_port) : null,
+                            stunnel_port: toInt(this.form.stunnel_port, 443),
                             sni_domain: null,
                             cdn_domain: null,
                             ws_path: (this.form.ws_path || '').trim() || '/stream',
-                            ws_port: Number(this.form.ws_port),
+                            ws_port: toInt(this.form.ws_port, 8080),
                         };
 
                         if (payload.obfuscation_mode !== 'standard') {

@@ -10,8 +10,6 @@ _ALLOWED_DATA_CIPHERS = {"AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"}
 _ALLOWED_TLS_MODES = {"tls-crypt", "tls-auth", "none"}
 _OBFUSCATION_MODE_ALIASES = {
     "native_stealth": "stealth",
-    "tls_tunnel": "standard",
-    "websocket_cdn": "standard",
 }
 
 
@@ -64,7 +62,15 @@ class OpenVPNSettingsBase(BaseModel):
     custom_windows: Optional[str] = None
     custom_mac: Optional[str] = None
     
-    obfuscation_mode: Literal["standard", "stealth", "http_proxy_basic", "http_proxy_advanced", "socks5_proxy_injection"] = Field("standard")
+    obfuscation_mode: Literal[
+        "standard",
+        "stealth",
+        "http_proxy_basic",
+        "http_proxy_advanced",
+        "socks5_proxy_injection",
+        "tls_tunnel",
+        "websocket_cdn",
+    ] = Field("standard")
     proxy_server: Optional[str] = Field(default=None, max_length=255)
     proxy_address: Optional[str] = Field(default=None, max_length=255)
     proxy_port: int = Field(8080, ge=1, le=65535)
