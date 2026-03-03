@@ -2132,16 +2132,27 @@ if __name__ == "__main__":
 
         try:
             openvpn_settings, general_settings = self._load_runtime_settings()
+            resolved_server_address = (
+                (general_settings.get("server_address") or "").strip()
+                or (general_settings.get("public_ipv4_address") or "").strip()
+                or (server_address or "").strip()
+            )
 
             builder = builder_registry.get(normalized_os)
             if builder:
-                return builder(openvpn_settings, general_settings)
+                return builder(
+                    openvpn_settings,
+                    {
+                        **general_settings,
+                        "server_address": resolved_server_address,
+                    },
+                )
 
             return self._generate_default_config(
                 client_name=client_name,
                 openvpn_settings=openvpn_settings,
                 general_settings=general_settings,
-                server_address=server_address,
+                server_address=resolved_server_address,
                 server_port=server_port,
                 protocol=protocol,
                 os_type=normalized_os,

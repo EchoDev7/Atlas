@@ -199,23 +199,26 @@
                             </label>
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>Public IPv6 Address</span>
-                                    <span class="relative" @mouseenter="showTooltip('public_ipv6_address')" @mouseleave="hideTooltip('public_ipv6_address')">
-                                        <button type="button" @click.stop="toggleTooltip('public_ipv6_address')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'public_ipv6_address'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The public IPv6 address. Leave blank if not used.</div>
-                                    </span>
-                                </span>
-                                <input type="text" x-model="generalForm.public_ipv6_address" placeholder="2001:db8::10" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                            </label>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                                     <span>WAN Interface</span>
                                     <span class="relative" @mouseenter="showTooltip('wan_interface')" @mouseleave="hideTooltip('wan_interface')">
                                         <button type="button" @click.stop="toggleTooltip('wan_interface')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
                                         <div x-cloak x-show="openTooltip === 'wan_interface'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The main network interface providing internet access. Crucial for NAT/Routing.</div>
                                     </span>
                                 </span>
-                                <input type="text" x-model="generalForm.wan_interface" placeholder="eth0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <input type="text" x-model="generalForm.wan_interface" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition cursor-not-allowed" :class="darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-500'">
+                                <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-500'">Auto-detected from Linux routing table</p>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Server System DNS Primary</span>
+                                </span>
+                                <input type="text" x-model="generalForm.server_system_dns_primary" placeholder="1.1.1.1" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Server System DNS Secondary</span>
+                                </span>
+                                <input type="text" x-model="generalForm.server_system_dns_secondary" placeholder="8.8.8.8" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
                         </div>
                         <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
@@ -1032,6 +1035,8 @@
                     public_ipv6_address: '',
                     global_ipv6_support: true,
                     wan_interface: 'eth0',
+                    server_system_dns_primary: '1.1.1.1',
+                    server_system_dns_secondary: '8.8.8.8',
                     admin_allowed_ips: '0.0.0.0/0',
                     panel_domain: '',
                     panel_https_port: 2053,
@@ -1272,6 +1277,8 @@
                             public_ipv6_address: generalData.public_ipv6_address || '',
                             admin_allowed_ips: generalData.admin_allowed_ips || '0.0.0.0/0',
                             wan_interface: generalData.wan_interface || 'eth0',
+                            server_system_dns_primary: generalData.server_system_dns_primary || '1.1.1.1',
+                            server_system_dns_secondary: generalData.server_system_dns_secondary || '8.8.8.8',
                             panel_domain: generalData.panel_domain || '',
                             panel_https_port: Number(generalData.panel_https_port) || 2053,
                             subscription_domain: generalData.subscription_domain || '',
@@ -1571,6 +1578,8 @@
                             public_ipv6_address: (this.generalForm.public_ipv6_address || '').trim() || null,
                             global_ipv6_support: !!this.generalForm.global_ipv6_support,
                             wan_interface: (this.generalForm.wan_interface || '').trim(),
+                            server_system_dns_primary: (this.generalForm.server_system_dns_primary || '').trim(),
+                            server_system_dns_secondary: (this.generalForm.server_system_dns_secondary || '').trim(),
                             admin_allowed_ips: (this.generalForm.admin_allowed_ips || '').trim(),
                             panel_domain: (this.generalForm.panel_domain || '').trim(),
                             panel_https_port: Number(this.generalForm.panel_https_port),
@@ -1619,6 +1628,8 @@
                             public_ipv6_address: updated.public_ipv6_address || '',
                             admin_allowed_ips: updated.admin_allowed_ips || '0.0.0.0/0',
                             wan_interface: updated.wan_interface || 'eth0',
+                            server_system_dns_primary: updated.server_system_dns_primary || '1.1.1.1',
+                            server_system_dns_secondary: updated.server_system_dns_secondary || '8.8.8.8',
                             panel_domain: updated.panel_domain || '',
                             panel_https_port: Number(updated.panel_https_port) || 2053,
                             subscription_domain: updated.subscription_domain || '',

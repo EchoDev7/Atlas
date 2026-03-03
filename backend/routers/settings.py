@@ -1,6 +1,8 @@
 from datetime import datetime
 import ipaddress
+from pathlib import Path
 import socket
+import subprocess
 import urllib.request
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -58,6 +60,85 @@ def _detect_public_ipv6() -> str:
         if value:
             return value
     return "Not Configured"
+
+
+def _detect_wan_interface() -> str:
+    try:
+        result = subprocess.run(
+            ["ip", "route", "show", "default"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.strip().split()
+                if "dev" in parts:
+                    idx = parts.index("dev")
+                    if idx + 1 < len(parts):
+                        return parts[idx + 1]
+    except Exception:
+        pass
+    return "eth0"
+
+
+def _read_system_dns_servers() -> tuple[str, str]:
+    primary = "1.1.1.1"
+    secondary = "8.8.8.8"
+
+    try:
+        resolv_path = Path("/etc/resolv.conf")
+        if resolv_path.exists():
+            nameservers: list[str] = []
+            for raw_line in resolv_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.lower().startswith("nameserver"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        candidate = parts[1].strip()
+                        try:
+                            ipaddress.ip_address(candidate)
+                        except ValueError:
+                            continue
+                        nameservers.append(candidate)
+            if nameservers:
+                primary = nameservers[0]
+            if len(nameservers) > 1:
+                secondary = nameservers[1]
+    except Exception:
+        pass
+
+    return primary, secondary
+
+
+def _apply_system_dns_servers(wan_interface: str, primary_dns: str, secondary_dns: str) -> dict:
+    # Preferred path for systemd-resolved-based systems.
+    try:
+        command = ["resolvectl", "dns", wan_interface, primary_dns, secondary_dns]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            return {"success": True, "method": "resolvectl"}
+    except Exception:
+        pass
+
+    # Fallback: write /etc/resolv.conf directly (works when file is writable and service runs as root).
+    resolv_path = Path("/etc/resolv.conf")
+    backup_path = Path("/etc/resolv.conf.atlas.bak")
+    try:
+        if resolv_path.exists() and not backup_path.exists():
+            backup_path.write_text(resolv_path.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
+
+        content = (
+            "# Managed by Atlas\n"
+            f"nameserver {primary_dns}\n"
+            f"nameserver {secondary_dns}\n"
+        )
+        resolv_path.write_text(content, encoding="utf-8")
+        return {"success": True, "method": "resolv.conf"}
+    except Exception as exc:
+        return {"success": False, "message": f"failed to apply system DNS: {exc}"}
 
 
 def _get_or_create_openvpn_settings(db: Session) -> OpenVPNSettings:
@@ -156,6 +237,8 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         public_ipv6_address=settings.public_ipv6_address,
         global_ipv6_support=settings.global_ipv6_support,
         wan_interface=settings.wan_interface,
+        server_system_dns_primary=settings.server_system_dns_primary,
+        server_system_dns_secondary=settings.server_system_dns_secondary,
         admin_allowed_ips=settings.admin_allowed_ips,
         panel_domain=settings.panel_domain,
         panel_https_port=settings.panel_https_port,
@@ -181,6 +264,26 @@ def get_general_settings(
 ):
     _ = current_user
     settings = _get_or_create_general_settings(db)
+
+    detected_wan = _detect_wan_interface()
+    dns_primary, dns_secondary = _read_system_dns_servers()
+    has_change = False
+
+    if (settings.wan_interface or "").strip() != detected_wan:
+        settings.wan_interface = detected_wan
+        has_change = True
+    if (settings.server_system_dns_primary or "").strip() != dns_primary:
+        settings.server_system_dns_primary = dns_primary
+        has_change = True
+    if (settings.server_system_dns_secondary or "").strip() != dns_secondary:
+        settings.server_system_dns_secondary = dns_secondary
+        has_change = True
+
+    if has_change:
+        settings.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(settings)
+
     return _to_general_response(settings)
 
 
@@ -201,6 +304,7 @@ def update_general_settings(
 ):
     _ = current_user
     settings = _get_or_create_general_settings(db)
+    detected_wan = _detect_wan_interface()
 
     previous_ipv6_support = settings.global_ipv6_support
     previous_timezone = settings.system_timezone
@@ -217,7 +321,9 @@ def update_general_settings(
     settings.server_address = payload.server_address
     settings.public_ipv6_address = payload.public_ipv6_address
     settings.global_ipv6_support = payload.global_ipv6_support
-    settings.wan_interface = payload.wan_interface
+    settings.wan_interface = detected_wan
+    settings.server_system_dns_primary = payload.server_system_dns_primary
+    settings.server_system_dns_secondary = payload.server_system_dns_secondary
     settings.admin_allowed_ips = payload.admin_allowed_ips
     settings.panel_domain = payload.panel_domain or ""
     settings.panel_https_port = payload.panel_https_port
@@ -232,6 +338,18 @@ def update_general_settings(
     settings.system_timezone = payload.system_timezone
     settings.ntp_server = payload.ntp_server
     settings.updated_at = datetime.utcnow()
+
+    dns_apply_result = _apply_system_dns_servers(
+        wan_interface=detected_wan,
+        primary_dns=payload.server_system_dns_primary,
+        secondary_dns=payload.server_system_dns_secondary,
+    )
+    if not dns_apply_result.get("success"):
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=dns_apply_result.get("message", "Failed to update server DNS settings"),
+        )
 
     sync_result = openvpn_manager.sync_system_general_settings(
         old_global_ipv6_support=previous_ipv6_support,
