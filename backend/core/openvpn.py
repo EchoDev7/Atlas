@@ -297,6 +297,39 @@ class OpenVPNManager(BaseVPNService):
 
     def get_active_sessions(self) -> List[Dict[str, Any]]:
         """Return active OpenVPN sessions from management interface (status 3)."""
+        def _normalize_header_name(value: str) -> str:
+            return "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value or "").strip()).strip("_")
+
+        def _extract_client_metrics(parts: List[str], header_map: Optional[Dict[str, int]] = None) -> Tuple[str, int, int, Optional[str], Optional[str]]:
+            common_name = parts[1] if len(parts) > 1 else ""
+            real_address = parts[2] if len(parts) > 2 else None
+            virtual_address = parts[3] if len(parts) > 3 else None
+
+            bytes_received: int
+            bytes_sent: int
+            connected_since: Optional[str]
+
+            if header_map:
+                recv_idx = header_map.get("bytes_received")
+                sent_idx = header_map.get("bytes_sent")
+                connected_idx = header_map.get("connected_since")
+                bytes_received = _safe_int(parts[recv_idx], 0) if recv_idx is not None and recv_idx < len(parts) else 0
+                bytes_sent = _safe_int(parts[sent_idx], 0) if sent_idx is not None and sent_idx < len(parts) else 0
+                connected_since = parts[connected_idx] if connected_idx is not None and connected_idx < len(parts) else None
+                return common_name, bytes_received, bytes_sent, connected_since, real_address, virtual_address
+
+            # Fallback for status formats without a header:
+            # - status v2 CLIENT_LIST: bytes at indexes 4,5
+            # - status v3 CLIENT_LIST: bytes at indexes 5,6 (index 4 = virtual IPv6)
+            recv_idx, sent_idx = 4, 5
+            if len(parts) > 6 and not str(parts[4]).isdigit() and str(parts[5]).isdigit():
+                recv_idx, sent_idx = 5, 6
+
+            bytes_received = _safe_int(parts[recv_idx], 0) if recv_idx < len(parts) else 0
+            bytes_sent = _safe_int(parts[sent_idx], 0) if sent_idx < len(parts) else 0
+            connected_since = parts[7] if len(parts) > 7 else None
+            return common_name, bytes_received, bytes_sent, connected_since, real_address, virtual_address
+
         def _parse_status_log_sessions() -> List[Dict[str, Any]]:
             sessions: List[Dict[str, Any]] = []
             status_path = self.config.STATUS_LOG
@@ -304,8 +337,17 @@ class OpenVPNManager(BaseVPNService):
                 return sessions
 
             try:
+                client_header_map: Dict[str, int] = {}
                 for raw_line in status_path.read_text(errors="ignore").splitlines():
                     line = raw_line.strip()
+                    if line.startswith("HEADER,CLIENT_LIST,"):
+                        header_columns = [segment.strip() for segment in line.split(",")][2:]
+                        client_header_map = {
+                            _normalize_header_name(name): index + 1
+                            for index, name in enumerate(header_columns)
+                        }
+                        continue
+
                     if not line.startswith("CLIENT_LIST,"):
                         continue
 
@@ -313,18 +355,21 @@ class OpenVPNManager(BaseVPNService):
                     if len(parts) < 6:
                         continue
 
-                    common_name = parts[1]
+                    common_name, bytes_received, bytes_sent, connected_since, real_address, virtual_address = _extract_client_metrics(
+                        parts,
+                        client_header_map or None,
+                    )
                     if not common_name or common_name.upper() == "UNDEF":
                         continue
 
                     sessions.append(
                         {
                             "username": common_name,
-                            "real_address": parts[2] if len(parts) > 2 else None,
-                            "virtual_address": parts[3] if len(parts) > 3 else None,
-                            "bytes_received": _safe_int(parts[4], 0) if len(parts) > 4 else 0,
-                            "bytes_sent": _safe_int(parts[5], 0) if len(parts) > 5 else 0,
-                            "connected_since": parts[7] if len(parts) > 7 else None,
+                            "real_address": real_address,
+                            "virtual_address": virtual_address,
+                            "bytes_received": bytes_received,
+                            "bytes_sent": bytes_sent,
+                            "connected_since": connected_since,
                             "raw": line,
                         }
                     )
@@ -339,8 +384,17 @@ class OpenVPNManager(BaseVPNService):
             return _parse_status_log_sessions()
 
         sessions: List[Dict[str, Any]] = []
+        client_header_map: Dict[str, int] = {}
         for raw_line in response.splitlines():
             line = raw_line.strip()
+            if line.startswith("HEADER,CLIENT_LIST,"):
+                header_columns = [segment.strip() for segment in line.split(",")][2:]
+                client_header_map = {
+                    _normalize_header_name(name): index + 1
+                    for index, name in enumerate(header_columns)
+                }
+                continue
+
             if not line.startswith("CLIENT_LIST,"):
                 continue
 
@@ -348,18 +402,21 @@ class OpenVPNManager(BaseVPNService):
             if len(parts) < 6:
                 continue
 
-            common_name = parts[1]
+            common_name, bytes_received, bytes_sent, connected_since, real_address, virtual_address = _extract_client_metrics(
+                parts,
+                client_header_map or None,
+            )
             if not common_name or common_name.upper() == "UNDEF":
                 continue
 
             sessions.append(
                 {
                     "username": common_name,
-                    "real_address": parts[2] if len(parts) > 2 else None,
-                    "virtual_address": parts[3] if len(parts) > 3 else None,
-                    "bytes_received": _safe_int(parts[4], 0) if len(parts) > 4 else 0,
-                    "bytes_sent": _safe_int(parts[5], 0) if len(parts) > 5 else 0,
-                    "connected_since": parts[7] if len(parts) > 7 else None,
+                    "real_address": real_address,
+                    "virtual_address": virtual_address,
+                    "bytes_received": bytes_received,
+                    "bytes_sent": bytes_sent,
+                    "connected_since": connected_since,
                     "raw": line,
                 }
             )

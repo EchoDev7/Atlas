@@ -306,6 +306,7 @@ async def list_users_runtime(
     """Fast runtime snapshot for live users page refresh (online + traffic)."""
     users = db.query(VPNUser).all()
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, users)
 
     runtime_users: List[Dict[str, Any]] = []
     for user in users:

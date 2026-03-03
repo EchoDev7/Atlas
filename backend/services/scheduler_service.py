@@ -87,6 +87,25 @@ class LimitEnforcementScheduler:
         """
         Parse OpenVPN status-version 2 file and return runtime stats per common name.
         """
+        def _normalize_header_name(value: str) -> str:
+            return "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value or "").strip()).strip("_")
+
+        def _extract_bytes(parts, header_map=None):
+            if header_map:
+                recv_idx = header_map.get("bytes_received")
+                sent_idx = header_map.get("bytes_sent")
+                bytes_received = int(parts[recv_idx]) if recv_idx is not None and recv_idx < len(parts) and str(parts[recv_idx]).isdigit() else 0
+                bytes_sent = int(parts[sent_idx]) if sent_idx is not None and sent_idx < len(parts) and str(parts[sent_idx]).isdigit() else 0
+                return bytes_received, bytes_sent
+
+            recv_idx, sent_idx = 4, 5
+            if len(parts) > 6 and not str(parts[4]).isdigit() and str(parts[5]).isdigit():
+                recv_idx, sent_idx = 5, 6
+
+            bytes_received = int(parts[recv_idx]) if recv_idx < len(parts) and str(parts[recv_idx]).isdigit() else 0
+            bytes_sent = int(parts[sent_idx]) if sent_idx < len(parts) and str(parts[sent_idx]).isdigit() else 0
+            return bytes_received, bytes_sent
+
         status_path = OpenVPNConfig.STATUS_LOG
         runtime_stats: Dict[str, Dict[str, int]] = {}
 
@@ -95,8 +114,17 @@ class LimitEnforcementScheduler:
             return runtime_stats
 
         try:
+            client_header_map: Dict[str, int] = {}
             for raw_line in status_path.read_text(errors="ignore").splitlines():
                 line = raw_line.strip()
+                if line.startswith("HEADER,CLIENT_LIST,"):
+                    header_columns = [segment.strip() for segment in line.split(",")][2:]
+                    client_header_map = {
+                        _normalize_header_name(name): index + 1
+                        for index, name in enumerate(header_columns)
+                    }
+                    continue
+
                 if not line or not line.startswith("CLIENT_LIST,"):
                     continue
 
@@ -113,8 +141,9 @@ class LimitEnforcementScheduler:
                     {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
                 )
                 item["connections"] += 1
-                item["bytes_received"] += int(parts[4]) if len(parts) > 4 and str(parts[4]).isdigit() else 0
-                item["bytes_sent"] += int(parts[5]) if len(parts) > 5 and str(parts[5]).isdigit() else 0
+                bytes_received, bytes_sent = _extract_bytes(parts, client_header_map or None)
+                item["bytes_received"] += bytes_received
+                item["bytes_sent"] += bytes_sent
         except Exception as exc:
             logger.error("Failed to parse OpenVPN status log: %s", exc)
 
