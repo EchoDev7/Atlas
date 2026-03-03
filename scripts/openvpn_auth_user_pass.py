@@ -110,23 +110,30 @@ def log_auth_failure(username: str, reason: str) -> None:
 
 def verify_credentials(username: str, password: str) -> tuple[bool, str]:
     """
-    Verify username and password against database.
-    Returns (is_valid, reason).
+    Verify username and password against the database.
+    Returns (is_valid, reason) tuple.
     """
     conn = None
     try:
+        print(f"[DEBUG] CWD: {os.getcwd()}", file=sys.stderr)
+        print(f"[DEBUG] ATLAS_DB_PATH env: {os.environ.get('ATLAS_DB_PATH')}", file=sys.stderr)
+        print(f"[DEBUG] Resolved DB path: {ATLAS_DB_PATH}", file=sys.stderr)
+        print(f"[DEBUG] DB exists: {os.path.exists(ATLAS_DB_PATH)}", file=sys.stderr)
+        print(f"[DEBUG] DB readable: {os.access(ATLAS_DB_PATH, os.R_OK)}", file=sys.stderr)
+        
         conn = sqlite3.connect(ATLAS_DB_PATH, timeout=10)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout = 10000")
         
-        # Find user
+        # Query user from database
         user = conn.execute(
-            (
-                "SELECT username, password, is_enabled, is_expired, "
-                "is_data_limit_exceeded, is_connection_limit_exceeded, "
-                "access_start_at, access_expires_at, expiry_date "
-                "FROM vpn_users WHERE username = ?"
-            ),
+            """
+            SELECT username, password, is_enabled, is_expired, 
+                   is_data_limit_exceeded, is_connection_limit_exceeded,
+                   access_start_at, access_expires_at, expiry_date
+            FROM vpn_users
+            WHERE username = ?
+            """,
             (username,),
         ).fetchone()
         
@@ -145,6 +152,8 @@ def verify_credentials(username: str, password: str) -> tuple[bool, str]:
     
     except Exception as e:
         print(f"Authentication error: {e}", file=sys.stderr)
+        print(f"[DEBUG] Exception type: {type(e).__name__}", file=sys.stderr)
+        print(f"[DEBUG] Exception args: {e.args}", file=sys.stderr)
         return False, f"exception:{e}"
     finally:
         if conn is not None:
