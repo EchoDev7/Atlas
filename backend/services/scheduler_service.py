@@ -13,6 +13,7 @@ from backend.models.vpn_user import VPNUser, VPNConfig
 from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
 
 logger = logging.getLogger(__name__)
+BYTES_PER_GB = 1024 ** 3
 
 
 class LimitEnforcementScheduler:
@@ -35,27 +36,36 @@ class LimitEnforcementScheduler:
         
         self.scheduler = AsyncIOScheduler()
         
-        # Run enforcement check every 5 minutes
+        # Run persisted limit checks every minute.
         self.scheduler.add_job(
             self.enforce_limits,
-            trigger=IntervalTrigger(minutes=5),
+            trigger=IntervalTrigger(minutes=1),
             id='enforce_limits',
             name='Enforce user limits (data & expiry)',
             replace_existing=True
         )
 
-        # Reconcile active sessions every 2 minutes to fix stale counters.
+        # Reconcile active sessions frequently for near-live state.
         self.scheduler.add_job(
             self.reconcile_openvpn_sessions,
-            trigger=IntervalTrigger(minutes=2),
+            trigger=IntervalTrigger(seconds=30),
             id='reconcile_openvpn_sessions',
             name='Reconcile OpenVPN active sessions',
+            replace_existing=True
+        )
+
+        # Enforce traffic caps during active sessions by disconnecting over-quota users.
+        self.scheduler.add_job(
+            self.enforce_live_traffic_quotas,
+            trigger=IntervalTrigger(minutes=1),
+            id='enforce_live_traffic_quotas',
+            name='Disconnect over-quota active OpenVPN users',
             replace_existing=True
         )
         
         self.scheduler.start()
         self.is_running = True
-        logger.info("Limit enforcement scheduler started (runs every 5 minutes)")
+        logger.info("Limit enforcement scheduler started")
     
     def stop(self):
         """Stop the background scheduler"""
@@ -109,6 +119,14 @@ class LimitEnforcementScheduler:
             logger.error("Failed to parse OpenVPN status log: %s", exc)
 
         return runtime_stats
+
+    @staticmethod
+    def _effective_limit_bytes(user: VPNUser) -> Optional[int]:
+        if user.traffic_limit_bytes is not None:
+            return max(0, int(user.traffic_limit_bytes))
+        if user.data_limit_gb is None:
+            return None
+        return max(0, int(float(user.data_limit_gb) * BYTES_PER_GB))
 
     def _get_openvpn_runtime_stats(self) -> Dict[str, Dict[str, int]]:
         """
@@ -289,6 +307,80 @@ class LimitEnforcementScheduler:
             )
         except Exception as exc:
             logger.error("OpenVPN session reconciliation failed: %s", exc)
+            db.rollback()
+        finally:
+            db.close()
+
+    async def enforce_live_traffic_quotas(self):
+        """
+        Disconnect active sessions that exceed traffic quota using live runtime counters.
+
+        This protects quota enforcement during an ongoing session (before disconnect hooks run).
+        """
+        db: Session = SessionLocal()
+        try:
+            runtime_stats = self._get_openvpn_runtime_stats()
+            if not runtime_stats:
+                return
+
+            users = (
+                db.query(VPNUser)
+                .filter(VPNUser.username.in_(list(runtime_stats.keys())))
+                .all()
+            )
+
+            disconnected = 0
+            now = datetime.utcnow()
+
+            for user in users:
+                stats = runtime_stats.get(user.username) or {}
+                live_connections = max(0, int(stats.get("connections") or 0))
+                if live_connections <= 0:
+                    continue
+
+                limit_bytes = self._effective_limit_bytes(user)
+                if limit_bytes in {None, 0}:
+                    continue
+
+                live_sent = max(0, int(stats.get("bytes_sent") or 0))
+                live_received = max(0, int(stats.get("bytes_received") or 0))
+                db_sent = max(0, int(user.total_bytes_sent or 0))
+                db_received = max(0, int(user.total_bytes_received or 0))
+                effective_usage = max(
+                    max(0, int(user.traffic_used_bytes or 0)),
+                    db_sent + db_received + live_sent + live_received,
+                )
+
+                if effective_usage < limit_bytes:
+                    continue
+
+                kill_result = self.openvpn_manager.kill_user(user.username)
+                if not kill_result.get("success"):
+                    logger.warning(
+                        "Failed to disconnect over-quota user %s: %s",
+                        user.username,
+                        kill_result.get("message"),
+                    )
+                    continue
+
+                user.is_data_limit_exceeded = True
+                user.updated_at = now
+                disconnected += 1
+                logger.warning(
+                    "Disconnected over-quota user %s (%s / %s bytes)",
+                    user.username,
+                    effective_usage,
+                    limit_bytes,
+                )
+
+            if disconnected:
+                db.commit()
+                self._sync_openvpn_auth_db_snapshot()
+                logger.info("Live quota enforcement disconnected users=%s", disconnected)
+            else:
+                db.rollback()
+        except Exception as exc:
+            logger.error("Live quota enforcement failed: %s", exc)
             db.rollback()
         finally:
             db.close()

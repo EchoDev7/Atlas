@@ -298,6 +298,60 @@ async def list_users(
     )
 
 
+@router.get("/runtime")
+async def list_users_runtime(
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fast runtime snapshot for live users page refresh (online + traffic)."""
+    users = db.query(VPNUser).all()
+    runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+
+    runtime_users: List[Dict[str, Any]] = []
+    for user in users:
+        stats = runtime_stats.get(str(user.username), {})
+        live_connections = max(0, int(stats.get("connections") or 0))
+        live_sent = max(0, int(stats.get("bytes_sent") or 0))
+        live_received = max(0, int(stats.get("bytes_received") or 0))
+
+        db_sent = max(0, int(user.total_bytes_sent or 0))
+        db_received = max(0, int(user.total_bytes_received or 0))
+        total_sent = db_sent + live_sent
+        total_received = db_received + live_received
+        effective_total_bytes = max(
+            max(0, int(user.traffic_used_bytes or 0)),
+            total_sent + total_received,
+        )
+
+        limit_bytes = user.effective_traffic_limit_bytes
+        if limit_bytes in {None, 0}:
+            data_usage_percentage = 0.0
+        else:
+            data_usage_percentage = min(100.0, (effective_total_bytes / float(limit_bytes)) * 100)
+
+        runtime_users.append(
+            {
+                "id": user.id,
+                "username": user.username,
+                "current_connections": live_connections if runtime_available else int(user.current_connections or 0),
+                "is_online": bool(live_connections > 0) if runtime_available else bool(int(user.current_connections or 0) > 0),
+                "total_bytes_sent": total_sent,
+                "total_bytes_received": total_received,
+                "traffic_used_bytes": effective_total_bytes,
+                "total_gb_used": effective_total_bytes / float(1024 ** 3),
+                "data_usage_percentage": data_usage_percentage,
+                "is_data_limit_exceeded": bool(limit_bytes is not None and effective_total_bytes >= limit_bytes),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+        )
+
+    return {
+        "runtime_available": runtime_available,
+        "generated_at": datetime.utcnow().isoformat(),
+        "users": runtime_users,
+    }
+
+
 @router.get("/{user_id}", response_model=VPNUserDetailResponse)
 async def get_user(
     user_id: int,

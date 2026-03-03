@@ -1227,7 +1227,7 @@
                     is_mock: false
                 },
                 autoRefreshTimerId: null,
-                autoRefreshMs: 5000,
+                autoRefreshMs: 3000,
                 
                 // Create Modal
                 showCreateModal: false,
@@ -1303,7 +1303,7 @@
                         if (this.loading || this.creating || this.editing || this.deletingUser || this.revoking || this.showCreateModal || this.showEditModal || this.showDeleteModal || this.showRevokeModal || this.showQRModal) {
                             return;
                         }
-                        await this.loadClients({ preservePage: true, silent: true });
+                        await this.loadRuntimeSnapshot();
                     }, this.autoRefreshMs);
                 },
 
@@ -1343,6 +1343,7 @@
                         this.selectedUserIds = this.selectedUserIds.filter(id => this.clients.some(client => client.id === id));
                         const maxPage = Math.max(1, Math.ceil(this.clients.length / this.pageSize));
                         this.currentPage = preservePage ? Math.min(this.currentPage, maxPage) : 1;
+                        await this.loadRuntimeSnapshot();
                     } catch (err) {
                         if (!silent) {
                             this.error = err.message || 'Failed to load users';
@@ -1352,6 +1353,47 @@
                         if (!silent) {
                             this.loading = false;
                         }
+                    }
+                },
+
+                async loadRuntimeSnapshot() {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/users/runtime', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+
+                        if (!response.ok) {
+                            if (response.status === 401) {
+                                localStorage.removeItem('access_token');
+                                window.location.href = '/templates/login.html';
+                            }
+                            return;
+                        }
+
+                        const data = await response.json();
+                        const runtimeUsers = Array.isArray(data.users) ? data.users : [];
+                        const runtimeById = new Map(runtimeUsers.map(item => [item.id, item]));
+
+                        this.clients = this.clients.map(client => {
+                            const runtime = runtimeById.get(client.id);
+                            if (!runtime) return client;
+                            return {
+                                ...client,
+                                current_connections: runtime.current_connections,
+                                is_online: runtime.is_online,
+                                total_bytes_sent: runtime.total_bytes_sent,
+                                total_bytes_received: runtime.total_bytes_received,
+                                traffic_used_bytes: runtime.traffic_used_bytes,
+                                total_gb_used: runtime.total_gb_used,
+                                data_usage_percentage: runtime.data_usage_percentage,
+                                is_data_limit_exceeded: runtime.is_data_limit_exceeded,
+                            };
+                        });
+                    } catch (err) {
+                        console.error('Load runtime snapshot error:', err);
                     }
                 },
                 
