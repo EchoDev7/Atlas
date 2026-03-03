@@ -64,6 +64,15 @@ class LimitEnforcementScheduler:
             self.is_running = False
             logger.info("Limit enforcement scheduler stopped")
 
+    def _sync_openvpn_auth_db_snapshot(self) -> None:
+        """Best-effort sync of OpenVPN auth DB snapshot after scheduler writes."""
+        try:
+            sync_result = self.openvpn_manager.sync_auth_database_snapshot()
+            if not sync_result.get("success"):
+                logger.warning("Scheduler auth DB sync warning: %s", sync_result.get("message"))
+        except Exception as exc:
+            logger.warning("Scheduler failed to sync OpenVPN auth DB snapshot: %s", exc)
+
     def _parse_openvpn_status_runtime_stats(self) -> Dict[str, Dict[str, int]]:
         """
         Parse OpenVPN status-version 2 file and return runtime stats per common name.
@@ -270,6 +279,7 @@ class LimitEnforcementScheduler:
                 user.refresh_limit_flags(now)
 
             db.commit()
+            self._sync_openvpn_auth_db_snapshot()
             logger.info(
                 "OpenVPN reconcile complete: users=%s updated=%s stale_fixed=%s observed_online=%s",
                 len(users),
@@ -341,6 +351,7 @@ class LimitEnforcementScheduler:
             
             # Commit all changes
             db.commit()
+            self._sync_openvpn_auth_db_snapshot()
             
             if disabled_count > 0:
                 logger.info(f"Limit enforcement complete: {disabled_count} user(s) disabled")
