@@ -1,6 +1,8 @@
 from datetime import datetime
 import ipaddress
+import logging
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 
@@ -24,8 +26,13 @@ from backend.schemas.openvpn_settings import OpenVPNSettingsResponse, OpenVPNSet
 router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_manager = OpenVPNManager()
 obfuscation_manager = ObfuscationManager()
+logger = logging.getLogger(__name__)
 RESOLVED_DROPIN_DIR = Path("/etc/systemd/resolved.conf.d")
 ATLAS_DNS_DROPIN_FILE = RESOLVED_DROPIN_DIR / "atlas-dns.conf"
+
+
+def _command_exists(command: str) -> bool:
+    return shutil.which(command) is not None
 
 
 def _detect_global_ip_from_interface(wan_interface: str, family: int) -> str | None:
@@ -35,6 +42,10 @@ def _detect_global_ip_from_interface(wan_interface: str, family: int) -> str | N
 
     ip_flag = "-4" if family == 4 else "-6"
     token_prefix = "inet " if family == 4 else "inet6 "
+
+    if not _command_exists("ip"):
+        logger.warning("ip command is not available. Skipping interface IP detection.")
+        return None
 
     try:
         result = subprocess.run(
@@ -70,6 +81,11 @@ def _detect_global_ip_from_interface(wan_interface: str, family: int) -> str | N
                 continue
 
             return candidate
+    except subprocess.CalledProcessError:
+        return None
+    except FileNotFoundError:
+        logger.warning("ip command not found while detecting interface IP.")
+        return None
     except Exception:
         return None
 
@@ -99,6 +115,10 @@ def _detect_public_ipv6(wan_interface: str | None = None) -> str:
 
 
 def _detect_wan_interface() -> str:
+    if not _command_exists("ip"):
+        logger.warning("ip command is not available. Falling back to default WAN interface eth0.")
+        return "eth0"
+
     try:
         result = subprocess.run(
             ["ip", "route", "show", "default"],
@@ -113,6 +133,10 @@ def _detect_wan_interface() -> str:
                     idx = parts.index("dev")
                     if idx + 1 < len(parts):
                         return parts[idx + 1]
+    except subprocess.CalledProcessError:
+        pass
+    except FileNotFoundError:
+        logger.warning("ip command not found while detecting WAN interface. Using eth0.")
     except Exception:
         pass
     return "eth0"
@@ -143,6 +167,10 @@ def _extract_dns_ips(raw_text: str) -> list[str]:
 
 
 def _read_dns_from_resolvectl_dns(wan_interface: str) -> list[str]:
+    if not _command_exists("resolvectl"):
+        logger.warning("resolvectl is not available. Skipping resolvectl dns lookup.")
+        return []
+
     try:
         result = subprocess.run(
             ["resolvectl", "dns", wan_interface],
@@ -152,6 +180,10 @@ def _read_dns_from_resolvectl_dns(wan_interface: str) -> list[str]:
         )
         if result.returncode == 0:
             return _extract_dns_ips(result.stdout)
+    except subprocess.CalledProcessError:
+        pass
+    except FileNotFoundError:
+        logger.warning("resolvectl command not found during DNS lookup.")
     except Exception:
         pass
     return []
@@ -180,6 +212,10 @@ def _read_dns_from_atlas_dropin() -> list[str]:
 
 
 def _read_dns_from_resolvectl_status(wan_interface: str) -> list[str]:
+    if not _command_exists("resolvectl"):
+        logger.warning("resolvectl is not available. Skipping resolvectl status lookup.")
+        return []
+
     try:
         result = subprocess.run(
             ["resolvectl", "status", wan_interface],
@@ -211,6 +247,10 @@ def _read_dns_from_resolvectl_status(wan_interface: str) -> list[str]:
             capture_continuation = False
 
         return _extract_dns_ips("\n".join(dns_lines))
+    except subprocess.CalledProcessError:
+        pass
+    except FileNotFoundError:
+        logger.warning("resolvectl command not found during status lookup.")
     except Exception:
         pass
     return []
@@ -261,31 +301,42 @@ def _apply_system_dns_servers(wan_interface: str, primary_dns: str, secondary_dn
         )
         ATLAS_DNS_DROPIN_FILE.write_text(dropin_content, encoding="utf-8")
 
-        restart_result = subprocess.run(
-            ["systemctl", "restart", "systemd-resolved"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if restart_result.returncode != 0:
-            return {
-                "success": False,
-                "message": (restart_result.stderr or restart_result.stdout or "failed to restart systemd-resolved").strip(),
-            }
+        if _command_exists("systemctl"):
+            restart_result = subprocess.run(
+                ["systemctl", "restart", "systemd-resolved"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if restart_result.returncode != 0:
+                return {
+                    "success": False,
+                    "message": (restart_result.stderr or restart_result.stdout or "failed to restart systemd-resolved").strip(),
+                }
+        else:
+            logger.warning("systemctl is not available. Skipping systemd-resolved restart.")
 
-        flush_result = subprocess.run(
-            ["resolvectl", "flush-caches"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if flush_result.returncode != 0:
-            return {
-                "success": False,
-                "message": (flush_result.stderr or flush_result.stdout or "failed to flush resolvectl caches").strip(),
-            }
+        if _command_exists("resolvectl"):
+            flush_result = subprocess.run(
+                ["resolvectl", "flush-caches"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if flush_result.returncode != 0:
+                logger.warning(
+                    "resolvectl cache flush failed: %s",
+                    (flush_result.stderr or flush_result.stdout or "failed to flush resolvectl caches").strip(),
+                )
+        else:
+            logger.warning("resolvectl is not available. Skipping DNS cache flush.")
 
         return {"success": True, "method": "resolved-dropin"}
+    except subprocess.CalledProcessError as exc:
+        return {"success": False, "message": f"failed to apply system DNS: {exc}"}
+    except FileNotFoundError as exc:
+        logger.warning("System command missing while applying DNS settings: %s", exc)
+        return {"success": True, "method": "resolved-dropin", "message": "DNS applied; skipped missing system command"}
     except Exception as exc:
         return {"success": False, "message": f"failed to apply system DNS: {exc}"}
 

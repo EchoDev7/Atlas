@@ -43,6 +43,14 @@ class ObfuscationManager:
 
     def _run_command(self, cmd: List[str], check: bool = False) -> Dict[str, object]:
         try:
+            if not cmd:
+                return {
+                    "success": False,
+                    "stdout": "",
+                    "stderr": "No command provided",
+                    "is_mock": not self.is_production,
+                }
+
             if not self.is_production:
                 logger.info("[MOCK] Would execute: %s", " ".join(cmd))
                 return {
@@ -50,6 +58,16 @@ class ObfuscationManager:
                     "stdout": f"Mock command executed: {' '.join(cmd)}",
                     "stderr": "",
                     "is_mock": True,
+                }
+
+            if not self._command_exists(cmd[0]):
+                warning_message = f"System command not found: {cmd[0]}"
+                logger.warning(warning_message)
+                return {
+                    "success": False,
+                    "stdout": "",
+                    "stderr": warning_message,
+                    "is_mock": False,
                 }
 
             result = subprocess.run(
@@ -69,6 +87,13 @@ class ObfuscationManager:
                 "success": False,
                 "stdout": exc.stdout or "",
                 "stderr": exc.stderr or str(exc),
+                "is_mock": False,
+            }
+        except FileNotFoundError as exc:
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": str(exc),
                 "is_mock": False,
             }
         except Exception as exc:  # noqa: BLE001
@@ -186,9 +211,10 @@ class ObfuscationManager:
                 }
             return {"success": True, "message": "iptables allow applied"}
 
+        logger.warning("Neither ufw nor iptables is available. Skipping firewall allow for %s/%s", port, normalized_proto)
         return {
-            "success": False,
-            "message": "Neither ufw nor iptables is available to manage firewall",
+            "success": True,
+            "message": "No firewall backend found; skipped allow operation",
         }
 
     def _deny_port(self, port: int, proto: str, executed_commands: List[str]) -> Dict[str, object]:
@@ -216,9 +242,10 @@ class ObfuscationManager:
                 }
             return {"success": True, "message": "iptables allow removed"}
 
+        logger.warning("Neither ufw nor iptables is available. Skipping firewall deny for %s/%s", port, normalized_proto)
         return {
-            "success": False,
-            "message": "Neither ufw nor iptables is available to manage firewall",
+            "success": True,
+            "message": "No firewall backend found; skipped deny operation",
         }
 
     def _setup_http_proxy_mode(self, proxy_port: int, executed_commands: List[str]) -> Dict[str, object]:

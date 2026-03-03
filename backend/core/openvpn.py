@@ -7,6 +7,7 @@ import platform
 import logging
 import time
 import socket
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Iterator
 from fastapi import HTTPException
@@ -723,6 +724,9 @@ if __name__ == "__main__":
             Tuple of (success, stdout, stderr)
         """
         try:
+            if not cmd:
+                return False, "", "No command provided"
+
             if not self.is_production:
                 # Mock responses for development
                 logger.info(f"[MOCK] Would execute: {' '.join(cmd)}")
@@ -746,6 +750,11 @@ if __name__ == "__main__":
                 
                 return True, f"Mock command executed: {' '.join(cmd)}", ""
             
+            if not self._command_exists(cmd[0]):
+                warning_message = f"System command not found: {cmd[0]}"
+                logger.warning(warning_message)
+                return False, "", warning_message
+
             # Production: execute real command
             result = subprocess.run(
                 cmd,
@@ -757,20 +766,18 @@ if __name__ == "__main__":
             
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed: {' '.join(cmd)}\nError: {e.stderr}")
-            if check:
-                raise
             return False, e.stdout, e.stderr
         except FileNotFoundError as e:
-            logger.error(f"Command not found: {cmd[0]}")
-            if not self.is_production:
-                # In development, return mock success
-                return True, f"Mock: {cmd[0]} not found but continuing in dev mode", ""
-            raise
+            logger.warning(f"Command not found: {cmd[0]}")
+            return False, "", str(e)
         except Exception as e:
             logger.error(f"Unexpected error running command: {e}")
-            if check:
-                raise
             return False, "", str(e)
+
+    def _command_exists(self, command: str) -> bool:
+        if not self.is_production:
+            return True
+        return shutil.which(command) is not None
 
     @staticmethod
     def _normalize_transport_protocol(protocol: str) -> str:
@@ -795,6 +802,15 @@ if __name__ == "__main__":
                 "success": True,
                 "message": "Firewall rules unchanged",
                 "is_mock": not self.is_production,
+                "commands": [],
+            }
+
+        if self.is_production and not self._command_exists("ufw"):
+            logger.warning("ufw is not installed. Skipping OpenVPN transport firewall sync.")
+            return {
+                "success": True,
+                "message": "ufw not installed; skipped firewall sync",
+                "is_mock": False,
                 "commands": [],
             }
 
@@ -867,7 +883,10 @@ if __name__ == "__main__":
         normalized_old_timezone = (old_timezone or "").strip()
         normalized_new_timezone = (new_timezone or "").strip()
         if normalized_new_timezone and normalized_new_timezone != normalized_old_timezone:
-            commands.append(["timedatectl", "set-timezone", normalized_new_timezone])
+            if self._command_exists("timedatectl"):
+                commands.append(["timedatectl", "set-timezone", normalized_new_timezone])
+            else:
+                logger.warning("timedatectl is not installed. Skipping timezone sync.")
 
         port_sync_result = self.sync_https_firewall_ports(
             old_panel_port=old_panel_https_port,
@@ -935,6 +954,15 @@ if __name__ == "__main__":
                 "success": True,
                 "message": "HTTPS firewall rules unchanged",
                 "is_mock": not self.is_production,
+                "commands": [],
+            }
+
+        if self.is_production and not self._command_exists("ufw"):
+            logger.warning("ufw is not installed. Skipping HTTPS firewall port sync.")
+            return {
+                "success": True,
+                "message": "ufw not installed; skipped HTTPS firewall sync",
+                "is_mock": False,
                 "commands": [],
             }
 
