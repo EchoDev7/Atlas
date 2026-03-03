@@ -40,7 +40,7 @@ class OpenVPNConfig:
     # Server configuration
     SERVER_CONF = OPENVPN_SERVER_DIR / "server.conf"
     ENFORCEMENT_HOOK = OPENVPN_SERVER_DIR / "atlas_enforcement_hook.py"
-    AUTH_USER_PASS_SCRIPT = Path("/root/Atlas/scripts/openvpn_auth_user_pass.py")
+    AUTH_USER_PASS_SCRIPT = OPENVPN_SERVER_DIR / "atlas_auth_user_pass.py"
     STATUS_LOG = Path("/run/openvpn-server/status-server.log")
     
     # PKI paths (Easy-RSA 3 standard structure)
@@ -446,16 +446,197 @@ class OpenVPNManager(BaseVPNService):
             return "/root/Atlas/backend/atlas.db"
 
     def _ensure_auth_user_pass_script(self) -> Path:
-        """Ensure OpenVPN auth-user-pass verifier script path is usable."""
+        """Ensure OpenVPN auth-user-pass verifier script exists in server config dir."""
         auth_script_path = self.config.AUTH_USER_PASS_SCRIPT
-        if self.is_production:
-            if not auth_script_path.exists():
-                raise FileNotFoundError(f"OpenVPN auth verifier script not found: {auth_script_path}")
+        if not self.is_production:
+            return auth_script_path
+
+        script_candidates = [
+            Path("/root/Atlas/scripts/openvpn_auth_user_pass.py"),
+            Path(__file__).resolve().parents[2] / "scripts" / "openvpn_auth_user_pass.py",
+        ]
+
+        auth_script_content: Optional[str] = None
+        for script_source in script_candidates:
             try:
-                os.chmod(auth_script_path, 0o750)
+                if script_source.exists():
+                    auth_script_content = script_source.read_text()
+                    break
             except Exception as exc:
-                logger.warning("Failed to chmod auth verifier script %s: %s", auth_script_path, exc)
+                logger.warning("Failed to read auth verifier source %s: %s", script_source, exc)
+
+        if not auth_script_content:
+            auth_script_content = self._build_auth_user_pass_script_content()
+
+        auth_script_path.parent.mkdir(parents=True, exist_ok=True)
+        auth_script_path.write_text(auth_script_content)
+        try:
+            os.chmod(auth_script_path, 0o750)
+        except Exception as exc:
+            logger.warning("Failed to chmod auth verifier script %s: %s", auth_script_path, exc)
+
         return auth_script_path
+
+    @staticmethod
+    def _build_auth_user_pass_script_content() -> str:
+        """Build fallback auth-user-pass-verify script if repository script is unavailable."""
+        return '''#!/usr/bin/env python3
+import base64
+import hashlib
+import hmac
+import os
+import sqlite3
+import sys
+from datetime import datetime
+
+try:
+    import bcrypt
+except Exception:
+    bcrypt = None
+
+
+ATLAS_DB_PATH = (os.environ.get("ATLAS_DB_PATH") or "/root/Atlas/backend/atlas.db").strip()
+AUTH_LOG_PATH = "/var/log/atlas_auth.log"
+PBKDF2_SCHEME = "pbkdf2_sha256"
+
+
+def _parse_db_datetime(value):
+    if value in (None, ""):
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    normalized = text.replace("Z", "+00:00").replace(" ", "T")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+        return parsed.replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _is_user_active(user_row):
+    now = datetime.utcnow()
+    access_start_at = _parse_db_datetime(user_row["access_start_at"])
+    access_expires_at = _parse_db_datetime(user_row["access_expires_at"])
+    expiry_date = _parse_db_datetime(user_row["expiry_date"])
+    effective_expiry = access_expires_at or expiry_date
+
+    if access_start_at and now < access_start_at:
+        return False
+
+    return (
+        bool(user_row["is_enabled"])
+        and not bool(user_row["is_expired"])
+        and not bool(user_row["is_data_limit_exceeded"])
+        and not bool(user_row["is_connection_limit_exceeded"])
+        and not (effective_expiry and now >= effective_expiry)
+    )
+
+
+def _verify_password(plain_password, hashed_password):
+    if not hashed_password:
+        return False
+
+    if hashed_password.startswith(f"{PBKDF2_SCHEME}$"):
+        try:
+            _, iterations_raw, salt_b64, expected_b64 = hashed_password.split("$", 3)
+            iterations = int(iterations_raw)
+            salt = base64.b64decode(salt_b64.encode("ascii"))
+            digest = hashlib.pbkdf2_hmac("sha256", plain_password.encode("utf-8"), salt, iterations)
+            calculated_b64 = base64.b64encode(digest).decode("ascii")
+            return hmac.compare_digest(calculated_b64, expected_b64)
+        except Exception:
+            return False
+
+    if hashed_password.startswith("$2"):
+        if bcrypt is None:
+            return False
+        try:
+            return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+        except Exception:
+            return False
+
+    return False
+
+
+def _log_auth_failure(username, reason):
+    timestamp = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    safe_username = (username or "").strip() or "<unknown>"
+    message = f"{timestamp} auth_failed user={safe_username} reason={reason}\\n"
+    try:
+        with open(AUTH_LOG_PATH, "a", encoding="utf-8") as log_file:
+            log_file.write(message)
+    except Exception as exc:
+        print(f"Failed to write auth debug log: {exc}", file=sys.stderr)
+
+
+def _verify_credentials(username, password):
+    conn = None
+    try:
+        conn = sqlite3.connect(ATLAS_DB_PATH, timeout=10)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 10000")
+
+        user = conn.execute(
+            (
+                "SELECT username, password, is_enabled, is_expired, "
+                "is_data_limit_exceeded, is_connection_limit_exceeded, "
+                "access_start_at, access_expires_at, expiry_date "
+                "FROM vpn_users WHERE username = ?"
+            ),
+            (username,),
+        ).fetchone()
+
+        if not user:
+            return False, "user_not_found"
+
+        if not _is_user_active(user):
+            return False, "user_not_active"
+
+        if not _verify_password(password, str(user["password"] or "")):
+            return False, "password_mismatch"
+
+        return True, "ok"
+    except Exception as exc:
+        return False, f"exception:{exc}"
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def main():
+    if len(sys.argv) < 2:
+        _log_auth_failure("", "missing_credentials_file_argument")
+        raise SystemExit(1)
+
+    credentials_file = sys.argv[1]
+    try:
+        with open(credentials_file, "r", encoding="utf-8") as file_handle:
+            lines = file_handle.readlines()
+            if len(lines) < 2:
+                _log_auth_failure("", "invalid_credentials_file_format")
+                raise SystemExit(1)
+            username = lines[0].strip()
+            password = lines[1].strip()
+
+        is_valid, reason = _verify_credentials(username, password)
+        if is_valid:
+            raise SystemExit(0)
+
+        _log_auth_failure(username, reason)
+        raise SystemExit(1)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        _log_auth_failure("", f"main_exception:{exc}")
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
+'''
 
     def _build_realtime_enforcement_hook_content(self) -> str:
         """Build Python hook script used by OpenVPN client-connect/client-disconnect."""
