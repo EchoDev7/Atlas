@@ -21,12 +21,9 @@ sys.path.insert(0, str(backend_path))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from passlib.context import CryptContext
 from backend.models.vpn_user import VPNUser
+from backend.services.auth_service import verify_password
 from backend.config import settings
-
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def verify_credentials(username: str, password: str) -> bool:
@@ -53,7 +50,7 @@ def verify_credentials(username: str, password: str) -> bool:
             return False
         
         # Verify password
-        if not pwd_context.verify(password, user.password):
+        if not verify_password(password, user.password):
             db.close()
             return False
         

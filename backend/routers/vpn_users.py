@@ -7,7 +7,6 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 import logging
 import random
-from passlib.context import CryptContext
 
 from backend.database import get_db
 from backend.dependencies import get_current_user
@@ -31,9 +30,9 @@ from backend.services.scheduler_service import get_scheduler
 from backend.services.protocols.registry import protocol_registry
 from backend.models.general_settings import GeneralSettings
 from backend.models.openvpn_settings import OpenVPNSettings
+from backend.services.auth_service import get_password_hash
 
 logger = logging.getLogger(__name__)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(prefix="/users", tags=["VPN Users"])
 
@@ -205,7 +204,7 @@ async def create_user(
         plain_password = VPNUser.generate_secure_password()
     
     # Hash password
-    hashed_password = pwd_context.hash(plain_password)
+    hashed_password = get_password_hash(plain_password)
     
     # Create user
     new_user = VPNUser(
@@ -285,7 +284,7 @@ async def update_user(
     if user_data.notes is not None:
         user.notes = user_data.notes
     if user_data.new_password:
-        user.password = pwd_context.hash(user_data.new_password)
+        user.password = get_password_hash(user_data.new_password)
     if user_data.data_limit_gb is not None:
         user.data_limit_gb = user_data.data_limit_gb
         user.traffic_limit_bytes = int(float(user_data.data_limit_gb) * (1024 ** 3))
@@ -551,7 +550,7 @@ async def reset_password(
     
     # Generate new password
     new_password = VPNUser.generate_secure_password()
-    user.password = pwd_context.hash(new_password)
+    user.password = get_password_hash(new_password)
     user.updated_at = datetime.utcnow()
     
     db.commit()
@@ -576,7 +575,7 @@ async def change_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    user.password = pwd_context.hash(password_data.new_password)
+    user.password = get_password_hash(password_data.new_password)
     user.updated_at = datetime.utcnow()
     
     db.commit()

@@ -1,14 +1,15 @@
-from passlib.context import CryptContext
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
-from typing import Optional
 import base64
+from datetime import datetime, timedelta
 import hashlib
 import hmac
 import secrets
+from typing import Optional
+
+import bcrypt
+from jose import JWTError, jwt
+
 from backend.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto")
 PBKDF2_SCHEME = "pbkdf2_sha256"
 PBKDF2_ITERATIONS = 390000
 
@@ -29,7 +30,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
     # Backward compatibility for existing bcrypt hashes.
     try:
-        return pwd_context.verify(plain_password, hashed_password)
+        if not hashed_password.startswith("$2"):
+            return False
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
     except Exception:
         return False
 
