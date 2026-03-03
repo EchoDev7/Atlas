@@ -390,6 +390,8 @@ class OpenVPNManager(BaseVPNService):
         general_defaults: Dict[str, any] = {
             "server_address": "",
             "public_ipv4_address": None,
+            "public_ipv6_address": None,
+            "global_ipv6_support": False,
         }
 
         try:
@@ -408,12 +410,15 @@ class OpenVPNManager(BaseVPNService):
                 if general_settings:
                     persisted_server_address = (general_settings.server_address or "").strip()
                     persisted_ipv4 = (general_settings.public_ipv4_address or "").strip()
+                    persisted_ipv6 = (general_settings.public_ipv6_address or "").strip()
                     general_defaults["server_address"] = (
                         persisted_server_address
                         or persisted_ipv4
                         or general_defaults["server_address"]
                     )
                     general_defaults["public_ipv4_address"] = persisted_ipv4 or None
+                    general_defaults["public_ipv6_address"] = persisted_ipv6 or None
+                    general_defaults["global_ipv6_support"] = bool(getattr(general_settings, "global_ipv6_support", False))
             finally:
                 db.close()
         except Exception as exc:
@@ -1294,6 +1299,34 @@ if __name__ == "__main__":
 
         return lines
 
+    @staticmethod
+    def _resolve_client_ipv6_context(general_settings: Dict[str, any]) -> Tuple[bool, str]:
+        ipv6_enabled = bool(general_settings.get("global_ipv6_support", False))
+        server_ipv6 = (general_settings.get("public_ipv6_address") or "").strip()
+        if not ipv6_enabled or not server_ipv6:
+            return False, ""
+        return True, server_ipv6
+
+    @staticmethod
+    def _inject_ipv6_client_directives(
+        lines: List[str],
+        *,
+        server_ipv6: str,
+        server_port: int,
+        redirect_gateway: bool,
+    ) -> None:
+        ipv6_remote = f"remote {server_ipv6} {int(server_port)}"
+        if ipv6_remote not in lines:
+            insert_index = 0
+            for idx, line in enumerate(lines):
+                if line.strip().startswith("remote "):
+                    insert_index = idx + 1
+                    break
+            lines.insert(insert_index, ipv6_remote)
+
+        if redirect_gateway and "route-ipv6 2000::/3" not in lines:
+            lines.append("route-ipv6 2000::/3")
+
     def _append_certificate_blocks(
         self,
         lines: List[str],
@@ -1515,9 +1548,7 @@ if __name__ == "__main__":
         keepalive_timeout = _safe_int(openvpn_settings.get("keepalive_timeout"))
         tcp_nodelay = bool(openvpn_settings.get("tcp_nodelay", False))
         redirect_gateway = bool(openvpn_settings.get("redirect_gateway", False))
-        ipv6_network = (openvpn_settings.get("ipv6_network") or "").strip()
-        ipv6_prefix = openvpn_settings.get("ipv6_prefix")
-        ipv6_enabled = bool(ipv6_network and ipv6_prefix is not None)
+        ipv6_enabled, server_ipv6 = self._resolve_client_ipv6_context(general_settings)
         primary_dns = (openvpn_settings.get("primary_dns") or "").strip()
         secondary_dns = (openvpn_settings.get("secondary_dns") or "").strip()
         push_custom_routes = (openvpn_settings.get("push_custom_routes") or "").strip()
@@ -1549,6 +1580,14 @@ if __name__ == "__main__":
 
         if tcp_nodelay and is_tcp:
             lines.append("tcp-nodelay")
+
+        if ipv6_enabled:
+            self._inject_ipv6_client_directives(
+                lines,
+                server_ipv6=server_ipv6,
+                server_port=resolved_port,
+                redirect_gateway=redirect_gateway,
+            )
 
         self._apply_obfuscation(
             lines,
@@ -1584,7 +1623,9 @@ if __name__ == "__main__":
         # AUTHENTICATION: auth-user-pass and conditional auth-nocache (BEFORE certificates)
         lines.append("")
         lines.append("auth-user-pass")
-        lines.append("auth-nocache")
+        enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
+        if enable_auth_nocache:
+            lines.append("auth-nocache")
         
         ca_cert, client_cert, client_key, ta_key = self._get_client_materials(client_name)
         self._append_certificate_blocks(
@@ -1676,9 +1717,7 @@ if __name__ == "__main__":
         persist_key = bool(openvpn_settings.get("persist_key", True))
         persist_tun = bool(openvpn_settings.get("persist_tun", True))
 
-        ipv6_network = (openvpn_settings.get("ipv6_network") or "").strip()
-        ipv6_prefix = openvpn_settings.get("ipv6_prefix")
-        ipv6_enabled = bool(ipv6_network and ipv6_prefix is not None)
+        ipv6_enabled, server_ipv6 = self._resolve_client_ipv6_context(general_settings)
 
         lines = self._get_base_config(
             os_label="ANDROID",
@@ -1707,6 +1746,14 @@ if __name__ == "__main__":
 
         if tcp_nodelay and "tcp" in client_protocol.lower():
             lines.append("tcp-nodelay")
+
+        if ipv6_enabled:
+            self._inject_ipv6_client_directives(
+                lines,
+                server_ipv6=server_ipv6,
+                server_port=resolved_port,
+                redirect_gateway=redirect_gateway,
+            )
 
         self._apply_android_optimizations(
             lines,
@@ -1739,7 +1786,9 @@ if __name__ == "__main__":
 
         lines.append("")
         lines.append("auth-user-pass")
-        lines.append("auth-nocache")
+        enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
+        if enable_auth_nocache:
+            lines.append("auth-nocache")
 
         ca_cert, client_cert, client_key, ta_key = self._get_client_materials(client_name)
         self._append_certificate_blocks(
@@ -1827,9 +1876,7 @@ if __name__ == "__main__":
         persist_key = bool(openvpn_settings.get("persist_key", True))
         persist_tun = bool(openvpn_settings.get("persist_tun", True))
 
-        ipv6_network = (openvpn_settings.get("ipv6_network") or "").strip()
-        ipv6_prefix = openvpn_settings.get("ipv6_prefix")
-        ipv6_enabled = bool(ipv6_network and ipv6_prefix is not None)
+        ipv6_enabled, server_ipv6 = self._resolve_client_ipv6_context(general_settings)
 
         lines = self._get_base_config(
             os_label="WINDOWS",
@@ -1859,6 +1906,14 @@ if __name__ == "__main__":
         explicit_exit_notify = _safe_int(openvpn_settings.get("explicit_exit_notify"))
         if explicit_exit_notify and is_udp:
             lines.append(f"explicit-exit-notify {int(explicit_exit_notify)}")
+
+        if ipv6_enabled:
+            self._inject_ipv6_client_directives(
+                lines,
+                server_ipv6=server_ipv6,
+                server_port=resolved_port,
+                redirect_gateway=redirect_gateway,
+            )
 
         self._apply_windows_optimizations(
             lines,
@@ -1983,9 +2038,7 @@ if __name__ == "__main__":
         persist_key = bool(openvpn_settings.get("persist_key", True))
         persist_tun = bool(openvpn_settings.get("persist_tun", True))
 
-        ipv6_network = (openvpn_settings.get("ipv6_network") or "").strip()
-        ipv6_prefix = openvpn_settings.get("ipv6_prefix")
-        ipv6_enabled = bool(ipv6_network and ipv6_prefix is not None)
+        ipv6_enabled, server_ipv6 = self._resolve_client_ipv6_context(general_settings)
 
         lines = self._get_base_config(
             os_label=os_label,
@@ -2035,6 +2088,14 @@ if __name__ == "__main__":
         explicit_exit_notify = _safe_int(openvpn_settings.get("explicit_exit_notify"))
         if explicit_exit_notify and is_udp:
             lines.append(f"explicit-exit-notify {int(explicit_exit_notify)}")
+
+        if ipv6_enabled:
+            self._inject_ipv6_client_directives(
+                lines,
+                server_ipv6=server_ipv6,
+                server_port=resolved_port,
+                redirect_gateway=redirect_gateway,
+            )
 
         self._apply_obfuscation(
             lines,
