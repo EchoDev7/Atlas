@@ -16,6 +16,7 @@ import qrcode
 import io
 import base64
 from urllib.parse import urlparse
+from sqlalchemy import text
 
 from backend.core.pki import PKIManager
 from backend.services.protocols.base_vpn_service import BaseVPNService
@@ -473,21 +474,51 @@ class OpenVPNManager(BaseVPNService):
 
         try:
             from backend.database import SessionLocal
-            from backend.models.general_settings import GeneralSettings
-            from backend.models.openvpn_settings import OpenVPNSettings
+
+            def _load_first_row_values(db, table_name: str, candidate_columns: List[str]) -> Dict[str, Any]:
+                table_exists = db.execute(
+                    text(
+                        "SELECT name FROM sqlite_master "
+                        "WHERE type='table' AND name=:table_name"
+                    ),
+                    {"table_name": table_name},
+                ).fetchone()
+                if not table_exists:
+                    return {}
+
+                table_info = db.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+                existing_columns = {row[1] for row in table_info}
+                selected_columns = [column for column in candidate_columns if column in existing_columns]
+                if not selected_columns:
+                    return {}
+
+                select_sql = (
+                    f"SELECT {', '.join(selected_columns)} "
+                    f"FROM {table_name} ORDER BY id ASC LIMIT 1"
+                )
+                row = db.execute(text(select_sql)).mappings().first()
+                return dict(row) if row else {}
 
             db = SessionLocal()
             try:
-                openvpn_settings = db.query(OpenVPNSettings).order_by(OpenVPNSettings.id.asc()).first()
-                if openvpn_settings:
-                    for key in openvpn_defaults:
-                        openvpn_defaults[key] = getattr(openvpn_settings, key, openvpn_defaults[key])
+                openvpn_values = _load_first_row_values(
+                    db,
+                    "openvpn_settings",
+                    list(openvpn_defaults.keys()),
+                )
+                for key, value in openvpn_values.items():
+                    if key in openvpn_defaults and value is not None:
+                        openvpn_defaults[key] = value
 
-                general_settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
-                if general_settings:
-                    persisted_server_address = (general_settings.server_address or "").strip()
-                    persisted_ipv4 = (general_settings.public_ipv4_address or "").strip()
-                    persisted_ipv6 = (general_settings.public_ipv6_address or "").strip()
+                general_values = _load_first_row_values(
+                    db,
+                    "general_settings",
+                    ["server_address", "public_ipv4_address", "public_ipv6_address", "global_ipv6_support"],
+                )
+                if general_values:
+                    persisted_server_address = str(general_values.get("server_address") or "").strip()
+                    persisted_ipv4 = str(general_values.get("public_ipv4_address") or "").strip()
+                    persisted_ipv6 = str(general_values.get("public_ipv6_address") or "").strip()
                     general_defaults["server_address"] = (
                         persisted_server_address
                         or persisted_ipv4
@@ -495,7 +526,7 @@ class OpenVPNManager(BaseVPNService):
                     )
                     general_defaults["public_ipv4_address"] = persisted_ipv4 or None
                     general_defaults["public_ipv6_address"] = persisted_ipv6 or None
-                    general_defaults["global_ipv6_support"] = bool(getattr(general_settings, "global_ipv6_support", False))
+                    general_defaults["global_ipv6_support"] = bool(general_values.get("global_ipv6_support", False))
             finally:
                 db.close()
         except Exception as exc:
@@ -2607,9 +2638,12 @@ if __name__ == "__main__":
         try:
             openvpn_settings, general_settings = self._load_runtime_settings()
 
+            explicit_server_address = (server_address or "").strip()
             db_server_address = (general_settings.get("server_address") or "").strip()
             db_public_ipv4 = (general_settings.get("public_ipv4_address") or "").strip()
             resolved_server_address = (
+                explicit_server_address
+                or
                 db_server_address
                 or db_public_ipv4
             )
@@ -2618,8 +2652,8 @@ if __name__ == "__main__":
                 logger.error("Client config generation failed: missing server address in GeneralSettings")
                 return None
 
-            resolved_server_port = int(openvpn_settings.get("port") or 1194)
-            resolved_protocol = str(openvpn_settings.get("protocol") or "udp").strip().lower()
+            resolved_server_port = int(server_port if server_port is not None else (openvpn_settings.get("port") or 1194))
+            resolved_protocol = str(protocol or openvpn_settings.get("protocol") or "udp").strip().lower()
 
             builder = builder_registry.get(normalized_os)
             if builder:
