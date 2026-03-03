@@ -428,22 +428,46 @@ class OpenVPNManager(BaseVPNService):
         return openvpn_defaults, general_defaults
 
     def _resolve_sqlite_db_path(self) -> str:
-        """Resolve SQLite database file path for OpenVPN hook scripts."""
+        """
+        Resolve SQLite database file path for OpenVPN hook scripts.
+        Returns path accessible to OpenVPN subprocess (not under /root due to ProtectHome=true).
+        """
+        openvpn_accessible_db = self.config.OPENVPN_SERVER_DIR / "atlas.db"
+        
+        if not self.is_production:
+            return str(openvpn_accessible_db)
+        
         try:
-            deployed_backend_db = Path("/root/Atlas/backend/atlas.db")
-            if deployed_backend_db.exists():
-                return str(deployed_backend_db)
-
             from backend.config import settings
-
+            
+            source_db_candidates = [
+                Path("/root/Atlas/data/atlas.db"),
+                Path("/root/Atlas/backend/atlas.db"),
+            ]
+            
             db_url = str(getattr(settings, "DATABASE_URL", "") or "")
             if db_url.startswith("sqlite:///"):
-                return db_url.replace("sqlite:///", "", 1)
-
-            return str(settings.DATA_DIR / "atlas.db")
+                source_db_candidates.insert(0, Path(db_url.replace("sqlite:///", "", 1)))
+            
+            source_db_path = None
+            for candidate in source_db_candidates:
+                if candidate.exists():
+                    source_db_path = candidate
+                    break
+            
+            if source_db_path:
+                import shutil
+                openvpn_accessible_db.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_db_path, openvpn_accessible_db)
+                openvpn_accessible_db.chmod(0o640)
+                logger.info(f"Synced DB from {source_db_path} to {openvpn_accessible_db}")
+            else:
+                logger.warning("No source DB found to sync to OpenVPN-accessible location")
+            
+            return str(openvpn_accessible_db)
         except Exception as exc:
-            logger.warning("Failed to resolve SQLite database path for enforcement hook: %s", exc)
-            return "/root/Atlas/backend/atlas.db"
+            logger.warning("Failed to sync DB to OpenVPN-accessible location: %s", exc)
+            return str(openvpn_accessible_db)
 
     def _ensure_auth_user_pass_script(self) -> Path:
         """Ensure OpenVPN auth-user-pass verifier script exists in server config dir."""
@@ -495,7 +519,7 @@ except Exception:
     bcrypt = None
 
 
-ATLAS_DB_PATH = (os.environ.get("ATLAS_DB_PATH") or "/root/Atlas/data/atlas.db").strip()
+ATLAS_DB_PATH = (os.environ.get("ATLAS_DB_PATH") or "/etc/openvpn/server/atlas.db").strip()
 AUTH_LOG_PATH = "/var/log/atlas_auth.log"
 PBKDF2_SCHEME = "pbkdf2_sha256"
 
