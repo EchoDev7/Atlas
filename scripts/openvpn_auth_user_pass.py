@@ -28,6 +28,49 @@ except Exception:
 ATLAS_DB_PATH = (os.environ.get("ATLAS_DB_PATH") or "/etc/openvpn/server/atlas.db").strip()
 AUTH_LOG_PATH = "/var/log/atlas_auth.log"
 PBKDF2_SCHEME = "pbkdf2_sha256"
+BYTES_PER_GB = 1024 ** 3
+
+
+def _safe_int(value: object, default: int = 0) -> int:
+    try:
+        if value in (None, ""):
+            return default
+        return int(float(str(value)))
+    except Exception:
+        return default
+
+
+def _safe_float(value: object, default: float | None = None) -> float | None:
+    try:
+        if value in (None, ""):
+            return default
+        return float(str(value))
+    except Exception:
+        return default
+
+
+def _effective_traffic_limit_bytes(user_row: sqlite3.Row) -> int | None:
+    explicit_limit = user_row["traffic_limit_bytes"]
+    if explicit_limit not in (None, ""):
+        return max(0, _safe_int(explicit_limit, 0))
+    data_limit_gb = _safe_float(user_row["data_limit_gb"], None)
+    if data_limit_gb is None:
+        return None
+    return max(0, int(data_limit_gb * BYTES_PER_GB))
+
+
+def _effective_usage_bytes(user_row: sqlite3.Row) -> int:
+    traffic_used = max(0, _safe_int(user_row["traffic_used_bytes"], 0))
+    transport_total = max(0, _safe_int(user_row["total_bytes_sent"], 0)) + max(
+        0, _safe_int(user_row["total_bytes_received"], 0)
+    )
+    return max(traffic_used, transport_total)
+
+
+def _effective_max_connections(user_row: sqlite3.Row) -> int:
+    canonical = _safe_int(user_row["max_concurrent_connections"], 0)
+    legacy = _safe_int(user_row["max_devices"], 1)
+    return max(1, canonical or legacy or 1)
 
 
 def _parse_db_datetime(value: object) -> datetime | None:
@@ -56,13 +99,21 @@ def _is_user_active(user_row: sqlite3.Row) -> bool:
     if access_start_at and now < access_start_at:
         return False
 
-    return (
-        bool(user_row["is_enabled"])
-        and not bool(user_row["is_expired"])
-        and not bool(user_row["is_data_limit_exceeded"])
-        and not bool(user_row["is_connection_limit_exceeded"])
-        and not (effective_expiry and now >= effective_expiry)
-    )
+    if not bool(user_row["is_enabled"]):
+        return False
+
+    if effective_expiry and now >= effective_expiry:
+        return False
+
+    limit_bytes = _effective_traffic_limit_bytes(user_row)
+    if limit_bytes is not None and _effective_usage_bytes(user_row) >= limit_bytes:
+        return False
+
+    current_connections = max(0, _safe_int(user_row["current_connections"], 0))
+    if current_connections >= _effective_max_connections(user_row):
+        return False
+
+    return True
 
 
 def _verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -122,9 +173,11 @@ def verify_credentials(username: str, password: str) -> tuple[bool, str]:
         # Query user from database
         user = conn.execute(
             """
-            SELECT username, password, is_enabled, is_expired, 
-                   is_data_limit_exceeded, is_connection_limit_exceeded,
-                   access_start_at, access_expires_at, expiry_date
+            SELECT username, password, is_enabled,
+                   access_start_at, access_expires_at, expiry_date,
+                   data_limit_gb, traffic_limit_bytes, traffic_used_bytes,
+                   total_bytes_sent, total_bytes_received,
+                   current_connections, max_concurrent_connections, max_devices
             FROM vpn_users
             WHERE username = ?
             """,
