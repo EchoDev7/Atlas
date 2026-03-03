@@ -157,6 +157,36 @@
                     <div x-show="activeGeneralSection === 'network'" class="space-y-4">
                         <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Network</h2>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="rounded-xl border p-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide font-semibold" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Server IPv4</p>
+                                        <p class="mt-1 text-sm font-mono break-all" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'" x-text="serverIps.public_ipv4"></p>
+                                    </div>
+                                    <button type="button"
+                                            @click="copyToClipboard(serverIps.public_ipv4, 'Server IPv4')"
+                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                            :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
+                                        Copy
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="rounded-xl border p-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide font-semibold" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Server IPv6</p>
+                                        <p class="mt-1 text-sm font-mono break-all" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'" x-text="serverIps.public_ipv6"></p>
+                                    </div>
+                                    <button type="button"
+                                            @click="copyToClipboard(serverIps.public_ipv6, 'Server IPv6')"
+                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                            :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
+                                        Copy
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                                     <span>Server Address (IP or Domain)</span>
@@ -1016,6 +1046,10 @@
                     system_timezone: 'UTC',
                     ntp_server: 'pool.ntp.org',
                 },
+                serverIps: {
+                    public_ipv4: 'Loading...',
+                    public_ipv6: 'Loading...',
+                },
                 sslIssuing: false,
                 terminalModalOpen: false,
                 terminalLogs: [],
@@ -1133,7 +1167,62 @@
                         }
                     });
 
+                    this.$watch('activeGeneralSection', async (section) => {
+                        if (section === 'network') {
+                            await this.loadServerIps();
+                        }
+                    });
+
                     await this.loadSettings();
+                    await this.loadServerIps();
+                },
+
+                async loadServerIps() {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/settings/server-ips', {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            this.serverIps = {
+                                public_ipv4: 'N/A',
+                                public_ipv6: 'Not Configured',
+                            };
+                            return;
+                        }
+
+                        const data = await response.json();
+                        this.serverIps = {
+                            public_ipv4: data.public_ipv4 || 'N/A',
+                            public_ipv6: data.public_ipv6 || 'Not Configured',
+                        };
+                    } catch (_) {
+                        this.serverIps = {
+                            public_ipv4: 'N/A',
+                            public_ipv6: 'Not Configured',
+                        };
+                    }
+                },
+
+                async copyToClipboard(value, label) {
+                    if (!value || value === 'N/A' || value === 'Not Configured' || value === 'Loading...') {
+                        this.showToast(`${label} is not available`, 'error');
+                        return;
+                    }
+
+                    try {
+                        await navigator.clipboard.writeText(value);
+                        this.showToast(`${label} copied`, 'success');
+                    } catch (_) {
+                        this.showToast(`Failed to copy ${label}`, 'error');
+                    }
                 },
 
                 toggleCipher(cipher) {

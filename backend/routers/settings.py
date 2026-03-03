@@ -1,4 +1,7 @@
 from datetime import datetime
+import ipaddress
+import socket
+import urllib.request
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -20,6 +23,41 @@ from backend.schemas.openvpn_settings import OpenVPNSettingsResponse, OpenVPNSet
 router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_manager = OpenVPNManager()
 obfuscation_manager = ObfuscationManager()
+
+
+def _fetch_public_ip(url: str, expected_version: int, timeout: float = 3.0) -> str | None:
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Atlas/1.0"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            ip_text = response.read().decode("utf-8").strip()
+
+        ip_obj = ipaddress.ip_address(ip_text)
+        if ip_obj.version != expected_version:
+            return None
+        return ip_text
+    except Exception:
+        return None
+
+
+def _detect_public_ipv4() -> str:
+    providers = ("https://api.ipify.org", "https://ifconfig.me/ip")
+    for provider in providers:
+        value = _fetch_public_ip(provider, expected_version=4)
+        if value:
+            return value
+    return "N/A"
+
+
+def _detect_public_ipv6() -> str:
+    if not socket.has_ipv6:
+        return "Not Configured"
+
+    providers = ("https://api6.ipify.org", "https://ifconfig.me/ip")
+    for provider in providers:
+        value = _fetch_public_ip(provider, expected_version=6)
+        if value:
+            return value
+    return "Not Configured"
 
 
 def _get_or_create_openvpn_settings(db: Session) -> OpenVPNSettings:
@@ -144,6 +182,15 @@ def get_general_settings(
     _ = current_user
     settings = _get_or_create_general_settings(db)
     return _to_general_response(settings)
+
+
+@router.get("/server-ips")
+def get_server_public_ips(current_user: Admin = Depends(get_current_user)):
+    _ = current_user
+    return {
+        "public_ipv4": _detect_public_ipv4(),
+        "public_ipv6": _detect_public_ipv6(),
+    }
 
 
 @router.patch("/general", response_model=GeneralSettingsResponse)
