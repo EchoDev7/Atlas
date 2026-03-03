@@ -440,8 +440,8 @@
                                         </div>
                                         <div class="text-xs theme-transition"
                                              :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
-                                            ↑ <span x-text="formatBytes(client.total_bytes_sent)"></span>
-                                            ↓ <span x-text="formatBytes(client.total_bytes_received)"></span>
+                                            <span title="Total uploaded traffic">Up ↑ <span x-text="formatBytes(client.total_bytes_sent)"></span></span>
+                                            <span class="ml-2" title="Total downloaded traffic">Down ↓ <span x-text="formatBytes(client.total_bytes_received)"></span></span>
                                         </div>
                                     </div>
                                 </td>

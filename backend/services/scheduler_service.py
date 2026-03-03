@@ -5,7 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
 import logging
 
 from backend.database import SessionLocal
@@ -25,6 +25,7 @@ class LimitEnforcementScheduler:
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.is_running = False
         self.openvpn_manager = OpenVPNManager()
+        self._runtime_usage_cache: Dict[str, Dict[str, int]] = {}
     
     def start(self):
         """Start the background scheduler"""
@@ -63,16 +64,16 @@ class LimitEnforcementScheduler:
             self.is_running = False
             logger.info("Limit enforcement scheduler stopped")
 
-    def _parse_openvpn_status_online_counts(self) -> dict:
+    def _parse_openvpn_status_runtime_stats(self) -> Dict[str, Dict[str, int]]:
         """
-        Parse OpenVPN status-version 2 file and return online connection counts per common name.
+        Parse OpenVPN status-version 2 file and return runtime stats per common name.
         """
         status_path = OpenVPNConfig.STATUS_LOG
-        online_counts = {}
+        runtime_stats: Dict[str, Dict[str, int]] = {}
 
         if not status_path.exists():
             logger.warning("OpenVPN status log not found for reconciliation: %s", status_path)
-            return online_counts
+            return runtime_stats
 
         try:
             for raw_line in status_path.read_text(errors="ignore").splitlines():
@@ -88,18 +89,24 @@ class LimitEnforcementScheduler:
                 if not common_name or common_name.upper() == "UNDEF":
                     continue
 
-                online_counts[common_name] = int(online_counts.get(common_name, 0)) + 1
+                item = runtime_stats.setdefault(
+                    common_name,
+                    {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+                )
+                item["connections"] += 1
+                item["bytes_received"] += int(parts[4]) if len(parts) > 4 and str(parts[4]).isdigit() else 0
+                item["bytes_sent"] += int(parts[5]) if len(parts) > 5 and str(parts[5]).isdigit() else 0
         except Exception as exc:
             logger.error("Failed to parse OpenVPN status log: %s", exc)
 
-        return online_counts
+        return runtime_stats
 
-    def _get_openvpn_online_counts(self) -> dict:
+    def _get_openvpn_runtime_stats(self) -> Dict[str, Dict[str, int]]:
         """
         Prefer OpenVPN management interface for live sessions.
         Fallback to status.log when management interface is unavailable/empty.
         """
-        online_counts = {}
+        runtime_stats: Dict[str, Dict[str, int]] = {}
 
         try:
             sessions = self.openvpn_manager.get_active_sessions()
@@ -108,26 +115,120 @@ class LimitEnforcementScheduler:
                     username = (session.get("username") or "").strip()
                     if not username:
                         continue
-                    online_counts[username] = int(online_counts.get(username, 0)) + 1
+                    item = runtime_stats.setdefault(
+                        username,
+                        {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+                    )
+                    item["connections"] += 1
+                    item["bytes_sent"] += max(0, int(session.get("bytes_sent") or 0))
+                    item["bytes_received"] += max(0, int(session.get("bytes_received") or 0))
 
                 logger.info(
                     "Reconcile source=management_interface users=%s online=%s",
-                    len(online_counts),
-                    sum(online_counts.values()),
+                    len(runtime_stats),
+                    sum(int(item.get("connections") or 0) for item in runtime_stats.values()),
                 )
-                return online_counts
+                return runtime_stats
 
             logger.warning("Management interface returned no sessions; falling back to status.log")
         except Exception as exc:
             logger.warning("Management interface read failed; falling back to status.log: %s", exc)
 
-        online_counts = self._parse_openvpn_status_online_counts()
+        runtime_stats = self._parse_openvpn_status_runtime_stats()
         logger.info(
             "Reconcile source=status_log users=%s online=%s",
-            len(online_counts),
-            sum(online_counts.values()),
+            len(runtime_stats),
+            sum(int(item.get("connections") or 0) for item in runtime_stats.values()),
         )
-        return online_counts
+        return runtime_stats
+
+    def _apply_runtime_disconnect_fallback_accounting(
+        self,
+        db: Session,
+        runtime_stats: Dict[str, Dict[str, int]],
+        users_by_username: Dict[str, VPNUser],
+    ) -> None:
+        """
+        Persist previous live session counters when reconnect/disconnect is detected.
+
+        This keeps accounting independent from UI/API reads when disconnect hooks are missed.
+        """
+        known_usernames = set(runtime_stats.keys()) | set(self._runtime_usage_cache.keys())
+
+        for username in known_usernames:
+            live = runtime_stats.get(username, {})
+            live_connections = max(0, int(live.get("connections") or 0))
+            live_sent = max(0, int(live.get("bytes_sent") or 0))
+            live_received = max(0, int(live.get("bytes_received") or 0))
+
+            previous = self._runtime_usage_cache.get(username)
+            should_finalize_previous = False
+            if previous and int(previous.get("connections") or 0) > 0:
+                prev_sent = max(0, int(previous.get("bytes_sent") or 0))
+                prev_received = max(0, int(previous.get("bytes_received") or 0))
+                prev_connections = max(0, int(previous.get("connections") or 0))
+
+                if live_connections == 0:
+                    should_finalize_previous = True
+                elif (
+                    live_connections < prev_connections
+                    or live_sent < prev_sent
+                    or live_received < prev_received
+                ):
+                    should_finalize_previous = True
+
+            if should_finalize_previous and previous:
+                user = users_by_username.get(username)
+                if user is None:
+                    user = db.query(VPNUser).filter(VPNUser.username == username).first()
+
+                if user is not None:
+                    prev_sent = max(0, int(previous.get("bytes_sent") or 0))
+                    prev_received = max(0, int(previous.get("bytes_received") or 0))
+                    base_sent = max(0, int(previous.get("base_sent") or 0))
+                    base_received = max(0, int(previous.get("base_received") or 0))
+
+                    expected_sent = base_sent + prev_sent
+                    expected_received = base_received + prev_received
+                    current_sent = max(0, int(user.total_bytes_sent or 0))
+                    current_received = max(0, int(user.total_bytes_received or 0))
+
+                    missing_sent = max(0, expected_sent - current_sent)
+                    missing_received = max(0, expected_received - current_received)
+
+                    if missing_sent or missing_received:
+                        user.total_bytes_sent = current_sent + missing_sent
+                        user.total_bytes_received = current_received + missing_received
+                        accumulated_total = max(0, int(user.traffic_used_bytes or 0)) + missing_sent + missing_received
+                        user.traffic_used_bytes = max(
+                            accumulated_total,
+                            int(user.total_bytes_sent or 0) + int(user.total_bytes_received or 0),
+                        )
+                        user.updated_at = datetime.utcnow()
+
+            if live_connections > 0:
+                user_for_baseline = users_by_username.get(username)
+                if user_for_baseline is None:
+                    user_for_baseline = db.query(VPNUser).filter(VPNUser.username == username).first()
+
+                if previous is None or should_finalize_previous:
+                    base_sent = max(0, int(getattr(user_for_baseline, "total_bytes_sent", 0) or 0))
+                    base_received = max(0, int(getattr(user_for_baseline, "total_bytes_received", 0) or 0))
+                else:
+                    base_sent = max(0, int(previous.get("base_sent") or 0))
+                    base_received = max(0, int(previous.get("base_received") or 0))
+
+                self._runtime_usage_cache[username] = {
+                    "connections": live_connections,
+                    "bytes_sent": live_sent,
+                    "bytes_received": live_received,
+                    "base_sent": base_sent,
+                    "base_received": base_received,
+                }
+            else:
+                self._runtime_usage_cache.pop(username, None)
+
+        db.flush()
 
     async def reconcile_openvpn_sessions(self):
         """
@@ -139,10 +240,16 @@ class LimitEnforcementScheduler:
         """
         db: Session = SessionLocal()
         try:
-            online_counts = self._get_openvpn_online_counts()
+            runtime_stats = self._get_openvpn_runtime_stats()
+            online_counts = {
+                username: max(0, int(item.get("connections") or 0))
+                for username, item in runtime_stats.items()
+            }
             now = datetime.utcnow()
 
             users = db.query(VPNUser).all()
+            users_by_username = {str(user.username): user for user in users}
+            self._apply_runtime_disconnect_fallback_accounting(db, runtime_stats, users_by_username)
             updated_users = 0
             stale_fixed = 0
 

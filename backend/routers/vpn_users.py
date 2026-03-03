@@ -38,6 +38,11 @@ router = APIRouter(prefix="/users", tags=["VPN Users"])
 # Initialize OpenVPN manager
 openvpn_manager = OpenVPNManager()
 
+# Fallback runtime accounting cache keyed by username.
+# It captures the latest active-session counters to preserve traffic totals
+# across reconnects if OpenVPN disconnect hooks fail to write usage.
+_runtime_usage_cache: Dict[str, Dict[str, int]] = {}
+
 
 def _get_or_create_general_settings(db: Session) -> GeneralSettings:
     settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
@@ -125,6 +130,102 @@ def _get_openvpn_runtime_stats() -> Tuple[Dict[str, Dict[str, int]], bool]:
     return stats, True
 
 
+def _apply_runtime_disconnect_fallback_accounting(
+    db: Session,
+    runtime_stats: Dict[str, Dict[str, int]],
+    runtime_available: bool,
+    current_page_users: List[VPNUser],
+) -> None:
+    """
+    Persist previous live session counters when a reconnect/disconnect is observed.
+
+    This is a defensive fallback for environments where client-disconnect hook
+    accounting is not consistently written into SQLite.
+    """
+    if not runtime_available:
+        return
+
+    users_by_username: Dict[str, VPNUser] = {str(user.username): user for user in current_page_users}
+    known_usernames = set(runtime_stats.keys()) | set(_runtime_usage_cache.keys())
+
+    for username in known_usernames:
+        live = runtime_stats.get(username, {})
+        live_connections = max(0, int(live.get("connections") or 0))
+        live_sent = max(0, int(live.get("bytes_sent") or 0))
+        live_received = max(0, int(live.get("bytes_received") or 0))
+
+        previous = _runtime_usage_cache.get(username)
+        should_finalize_previous = False
+        if previous and int(previous.get("connections") or 0) > 0:
+            prev_sent = max(0, int(previous.get("bytes_sent") or 0))
+            prev_received = max(0, int(previous.get("bytes_received") or 0))
+            prev_connections = max(0, int(previous.get("connections") or 0))
+
+            if live_connections == 0:
+                should_finalize_previous = True
+            elif (
+                live_connections < prev_connections
+                or live_sent < prev_sent
+                or live_received < prev_received
+            ):
+                # Session counters dropped while user is still online: treat as reconnect.
+                should_finalize_previous = True
+
+        if should_finalize_previous and previous:
+            user = users_by_username.get(username)
+            if user is None:
+                user = db.query(VPNUser).filter(VPNUser.username == username).first()
+
+            if user is not None:
+                prev_sent = max(0, int(previous.get("bytes_sent") or 0))
+                prev_received = max(0, int(previous.get("bytes_received") or 0))
+                base_sent = max(0, int(previous.get("base_sent") or 0))
+                base_received = max(0, int(previous.get("base_received") or 0))
+
+                expected_sent = base_sent + prev_sent
+                expected_received = base_received + prev_received
+                current_sent = max(0, int(user.total_bytes_sent or 0))
+                current_received = max(0, int(user.total_bytes_received or 0))
+
+                # If hook accounting already applied, these deltas will be zero.
+                missing_sent = max(0, expected_sent - current_sent)
+                missing_received = max(0, expected_received - current_received)
+
+                if missing_sent or missing_received:
+                    user.total_bytes_sent = current_sent + missing_sent
+                    user.total_bytes_received = current_received + missing_received
+                    accumulated_total = max(0, int(user.traffic_used_bytes or 0)) + missing_sent + missing_received
+                    user.traffic_used_bytes = max(
+                        accumulated_total,
+                        int(user.total_bytes_sent or 0) + int(user.total_bytes_received or 0),
+                    )
+                    user.updated_at = datetime.utcnow()
+
+        if live_connections > 0:
+            user_for_baseline = users_by_username.get(username)
+            if user_for_baseline is None:
+                user_for_baseline = db.query(VPNUser).filter(VPNUser.username == username).first()
+
+            if previous is None or should_finalize_previous:
+                base_sent = max(0, int(getattr(user_for_baseline, "total_bytes_sent", 0) or 0))
+                base_received = max(0, int(getattr(user_for_baseline, "total_bytes_received", 0) or 0))
+            else:
+                base_sent = max(0, int(previous.get("base_sent") or 0))
+                base_received = max(0, int(previous.get("base_received") or 0))
+
+            _runtime_usage_cache[username] = {
+                "connections": live_connections,
+                "bytes_sent": live_sent,
+                "bytes_received": live_received,
+                "base_sent": base_sent,
+                "base_received": base_received,
+            }
+        else:
+            _runtime_usage_cache.pop(username, None)
+
+    db.flush()
+
+
 def _apply_runtime_metrics_to_user_dict(
     user_dict: Dict[str, Any],
     runtime_stats: Dict[str, Dict[str, int]],
@@ -181,6 +282,7 @@ async def list_users(
     users = db.query(VPNUser).offset(skip).limit(limit).all()
     total = db.query(VPNUser).count()
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, users)
     
     user_responses = []
     for user in users:
@@ -208,6 +310,7 @@ async def get_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, [user])
     user_dict = VPNUserDetailResponse.from_orm(user).dict()
     user_dict = _apply_runtime_metrics_to_user_dict(user_dict, runtime_stats, runtime_available)
     return VPNUserDetailResponse(**user_dict)
