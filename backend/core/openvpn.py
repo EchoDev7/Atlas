@@ -860,15 +860,6 @@ if __name__ == "__main__":
         """Apply OS-level sync for General settings changes."""
         commands: List[List[str]] = []
 
-        if old_global_ipv6_support != new_global_ipv6_support:
-            disable_value = "0" if new_global_ipv6_support else "1"
-            commands.extend(
-                [
-                    ["sysctl", "-w", f"net.ipv6.conf.all.disable_ipv6={disable_value}"],
-                    ["sysctl", "-w", f"net.ipv6.conf.default.disable_ipv6={disable_value}"],
-                ]
-            )
-
         normalized_old_timezone = (old_timezone or "").strip()
         normalized_new_timezone = (new_timezone or "").strip()
         if normalized_new_timezone and normalized_new_timezone != normalized_old_timezone:

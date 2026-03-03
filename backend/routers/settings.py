@@ -116,33 +116,71 @@ def _detect_wan_interface() -> str:
     return "eth0"
 
 
+def _is_loopback_stub_dns(value: str) -> bool:
+    candidate = (value or "").strip()
+    if not candidate:
+        return True
+    return candidate.startswith("127.0.0.")
+
+
+def _extract_dns_ips(raw_text: str) -> list[str]:
+    results: list[str] = []
+    for line in (raw_text or "").splitlines():
+        normalized_line = line.strip()
+        if not normalized_line:
+            continue
+
+        tokens = normalized_line.split()
+        for token in tokens:
+            candidate = token.strip().strip(",;[]()")
+            if not candidate:
+                continue
+            try:
+                parsed_ip = ipaddress.ip_address(candidate)
+            except ValueError:
+                continue
+
+            if parsed_ip.version not in (4, 6):
+                continue
+            if _is_loopback_stub_dns(candidate):
+                continue
+            if candidate not in results:
+                results.append(candidate)
+    return results
+
+
 def _read_system_dns_servers() -> tuple[str, str]:
     primary = "1.1.1.1"
     secondary = "8.8.8.8"
+    detected_dns: list[str] = []
 
+    wan_interface = _detect_wan_interface()
     try:
-        resolv_path = Path("/etc/resolv.conf")
-        if resolv_path.exists():
-            nameservers: list[str] = []
-            for raw_line in resolv_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                line = raw_line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if line.lower().startswith("nameserver"):
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        candidate = parts[1].strip()
-                        try:
-                            ipaddress.ip_address(candidate)
-                        except ValueError:
-                            continue
-                        nameservers.append(candidate)
-            if nameservers:
-                primary = nameservers[0]
-            if len(nameservers) > 1:
-                secondary = nameservers[1]
+        result = subprocess.run(
+            ["resolvectl", "dns", wan_interface],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            detected_dns = _extract_dns_ips(result.stdout)
     except Exception:
         pass
+
+    if not detected_dns:
+        try:
+            resolv_path = Path("/etc/resolv.conf")
+            if resolv_path.exists():
+                detected_dns = _extract_dns_ips(
+                    resolv_path.read_text(encoding="utf-8", errors="ignore")
+                )
+        except Exception:
+            pass
+
+    if detected_dns:
+        primary = detected_dns[0]
+    if len(detected_dns) > 1:
+        secondary = detected_dns[1]
 
     return primary, secondary
 
