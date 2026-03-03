@@ -1226,6 +1226,8 @@
                     is_enabled: false,
                     is_mock: false
                 },
+                autoRefreshTimerId: null,
+                autoRefreshMs: 5000,
                 
                 // Create Modal
                 showCreateModal: false,
@@ -1282,12 +1284,41 @@
                     }
                     
                     // Load data
-                    await this.loadClients();
+                    await this.loadClients({ preservePage: false });
                     await this.loadServiceStatus();
+                    this.startAutoRefresh();
+
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.hidden) {
+                            this.stopAutoRefresh();
+                            return;
+                        }
+                        this.startAutoRefresh();
+                    });
+                },
+
+                startAutoRefresh() {
+                    this.stopAutoRefresh();
+                    this.autoRefreshTimerId = window.setInterval(async () => {
+                        if (this.loading || this.creating || this.editing || this.deletingUser || this.revoking || this.showCreateModal || this.showEditModal || this.showDeleteModal || this.showRevokeModal || this.showQRModal) {
+                            return;
+                        }
+                        await this.loadClients({ preservePage: true, silent: true });
+                    }, this.autoRefreshMs);
+                },
+
+                stopAutoRefresh() {
+                    if (!this.autoRefreshTimerId) return;
+                    window.clearInterval(this.autoRefreshTimerId);
+                    this.autoRefreshTimerId = null;
                 },
                 
-                async loadClients() {
-                    this.loading = true;
+                async loadClients(options = {}) {
+                    const preservePage = options.preservePage !== false;
+                    const silent = options.silent === true;
+                    if (!silent) {
+                        this.loading = true;
+                    }
                     this.error = '';
                     
                     try {
@@ -1310,12 +1341,17 @@
                         const data = await response.json();
                         this.clients = data.users || [];
                         this.selectedUserIds = this.selectedUserIds.filter(id => this.clients.some(client => client.id === id));
-                        this.currentPage = 1;
+                        const maxPage = Math.max(1, Math.ceil(this.clients.length / this.pageSize));
+                        this.currentPage = preservePage ? Math.min(this.currentPage, maxPage) : 1;
                     } catch (err) {
-                        this.error = err.message || 'Failed to load users';
+                        if (!silent) {
+                            this.error = err.message || 'Failed to load users';
+                        }
                         console.error('Load users error:', err);
                     } finally {
-                        this.loading = false;
+                        if (!silent) {
+                            this.loading = false;
+                        }
                     }
                 },
                 
