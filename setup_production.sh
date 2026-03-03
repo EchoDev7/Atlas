@@ -57,12 +57,21 @@ else
 fi
 
 
-echo "[4/11] Enabling IPv4 forwarding (runtime + persistent)..."
+echo "[4/11] Enabling IPv4/IPv6 forwarding and IPv6 kernel support (runtime + persistent)..."
 sysctl -w net.ipv4.ip_forward=1
+sysctl -w net.ipv6.conf.all.disable_ipv6=0
+sysctl -w net.ipv6.conf.default.disable_ipv6=0
+sysctl -w net.ipv6.conf.all.forwarding=1
 cat > "${SYSCTL_FILE}" <<'EOF'
 net.ipv4.ip_forward=1
+net.ipv6.conf.all.disable_ipv6 = 0
+net.ipv6.conf.default.disable_ipv6 = 0
+net.ipv6.conf.all.forwarding = 1
 EOF
 sysctl --system >/dev/null
+if command -v netplan >/dev/null 2>&1; then
+  netplan apply || true
+fi
 
 
 echo "[5/11] Configuring NAT MASQUERADE for OpenVPN subnet..."
