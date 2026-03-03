@@ -39,6 +39,7 @@ class OpenVPNConfig:
     
     # Server configuration
     SERVER_CONF = OPENVPN_SERVER_DIR / "server.conf"
+    LEGACY_SERVER_CONF = OPENVPN_DIR / "server.conf"
     ENFORCEMENT_HOOK = OPENVPN_SERVER_DIR / "atlas_enforcement_hook.py"
     AUTH_USER_PASS_SCRIPT = OPENVPN_SERVER_DIR / "atlas_auth_user_pass.py"
     STATUS_LOG = Path("/run/openvpn-server/status-server.log")
@@ -61,6 +62,7 @@ class OpenVPNConfig:
     
     # Service name
     SERVICE_NAME = "openvpn-server@server"
+    SERVICE_CANDIDATES = ("openvpn-server@server", "openvpn@server")
 
 
 class MockOpenVPNResponse:
@@ -180,6 +182,7 @@ class OpenVPNManager(BaseVPNService):
         self.config = OpenVPNConfig()
         self.is_production = IS_LINUX
         self.protocol_name = "openvpn"
+        self.service_name = self.config.SERVICE_NAME
         self.pki_manager = PKIManager(
             easyrsa_dir=self.config.EASYRSA_DIR,
             pki_dir=self.config.PKI_DIR,
@@ -191,9 +194,43 @@ class OpenVPNManager(BaseVPNService):
             client_keys_dir=self.config.CLIENT_KEYS_DIR,
             is_production=self.is_production,
         )
+
+        if self.is_production:
+            self.service_name = self._resolve_service_name()
         
         if not self.is_production:
             logger.warning("Running in DEVELOPMENT mode - subprocess calls will be mocked")
+
+    def _resolve_service_name(self) -> str:
+        """Detect installed OpenVPN systemd unit name across distro variants."""
+        # Prefer the actively running service first.
+        for candidate in self.config.SERVICE_CANDIDATES:
+            success, _, _ = self._run_command(["systemctl", "is-active", "--quiet", candidate], check=False)
+            if success:
+                return candidate
+
+        # Then prefer enabled units.
+        for candidate in self.config.SERVICE_CANDIDATES:
+            success, _, _ = self._run_command(["systemctl", "is-enabled", "--quiet", candidate], check=False)
+            if success:
+                return candidate
+
+        # Finally, fall back to whichever unit exists on disk.
+        for candidate in self.config.SERVICE_CANDIDATES:
+            success, _, _ = self._run_command(["systemctl", "cat", candidate], check=False)
+            if success:
+                return candidate
+        logger.warning(
+            "OpenVPN service unit auto-detection failed; using default %s",
+            self.config.SERVICE_NAME,
+        )
+        return self.config.SERVICE_NAME
+
+    def _get_server_conf_paths(self) -> Tuple[Path, Path]:
+        """Return (primary, compatibility_copy) server.conf paths."""
+        if self.service_name == "openvpn@server":
+            return self.config.LEGACY_SERVER_CONF, self.config.SERVER_CONF
+        return self.config.SERVER_CONF, self.config.LEGACY_SERVER_CONF
 
     def _get_management_socket_target(self) -> Tuple[str, int]:
         """Resolve OpenVPN management interface host/port from runtime settings."""
@@ -1116,7 +1153,7 @@ if __name__ == "__main__":
                 text=True,
                 check=check
             )
-            return True, result.stdout, result.stderr
+            return result.returncode == 0, result.stdout, result.stderr
             
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed: {' '.join(cmd)}\nError: {e.stderr}")
@@ -3034,18 +3071,36 @@ if __name__ == "__main__":
             server_lines.append("")
             server_conf = "\n".join(server_lines)
 
+            primary_conf_path, compatibility_conf_path = self._get_server_conf_paths()
+
             if self.is_production:
-                self.config.SERVER_CONF.parent.mkdir(parents=True, exist_ok=True)
-                self.config.SERVER_CONF.write_text(server_conf)
+                primary_conf_path.parent.mkdir(parents=True, exist_ok=True)
+                primary_conf_path.write_text(server_conf)
+
+                try:
+                    compatibility_conf_path.parent.mkdir(parents=True, exist_ok=True)
+                    compatibility_conf_path.write_text(server_conf)
+                except Exception as compat_exc:
+                    logger.warning(
+                        "Failed to write compatibility OpenVPN server config at %s: %s",
+                        compatibility_conf_path,
+                        compat_exc,
+                    )
+
                 self._harden_sensitive_file_permissions()
-                logger.info(f"OpenVPN server configuration written to {self.config.SERVER_CONF}")
+                logger.info(
+                    "OpenVPN server configuration written to %s (compatibility copy: %s)",
+                    primary_conf_path,
+                    compatibility_conf_path,
+                )
             else:
                 logger.info("[MOCK] OpenVPN server configuration generated (not written in development mode)")
 
             return {
                 "success": True,
                 "message": "OpenVPN server configuration generated successfully",
-                "config_path": str(self.config.SERVER_CONF),
+                "config_path": str(primary_conf_path),
+                "compatibility_config_path": str(compatibility_conf_path),
                 "content": server_conf,
                 "is_mock": not self.is_production,
             }
@@ -3115,7 +3170,7 @@ if __name__ == "__main__":
             success, stdout, stderr = self._run_command([
                 "systemctl",
                 "status",
-                self.config.SERVICE_NAME
+                self.service_name
             ], check=False)
             
             # Parse systemctl output
@@ -3124,7 +3179,7 @@ if __name__ == "__main__":
             
             return {
                 "success": True,
-                "service_name": self.config.SERVICE_NAME,
+                "service_name": self.service_name,
                 "is_active": is_active,
                 "is_enabled": is_enabled,
                 "status_output": stdout,
@@ -3159,13 +3214,13 @@ if __name__ == "__main__":
             success, stdout, stderr = self._run_command([
                 "systemctl",
                 action,
-                self.config.SERVICE_NAME
+                self.service_name
             ])
             
             return {
                 "success": success,
                 "action": action,
-                "service_name": self.config.SERVICE_NAME,
+                "service_name": self.service_name,
                 "message": f"Service {action} completed",
                 "is_mock": not self.is_production
             }
