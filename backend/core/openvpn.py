@@ -495,7 +495,7 @@ except Exception:
     bcrypt = None
 
 
-ATLAS_DB_PATH = (os.environ.get("ATLAS_DB_PATH") or "/root/Atlas/backend/atlas.db").strip()
+ATLAS_DB_PATH = (os.environ.get("ATLAS_DB_PATH") or "/root/Atlas/data/atlas.db").strip()
 AUTH_LOG_PATH = "/var/log/atlas_auth.log"
 PBKDF2_SCHEME = "pbkdf2_sha256"
 
