@@ -2109,6 +2109,9 @@ if __name__ == "__main__":
                 line
                 for line in sanitized_lines
                 if line.strip().lower() not in {"persist-key", "persist-tun", "resolv-retry infinite"}
+                and not line.strip().lower().startswith("tun-mtu ")
+                and not line.strip().lower().startswith("mssfix ")
+                and not line.strip().lower().startswith("keepalive ")
             ]
         sanitized_lines.append("")
         return "\n".join(sanitized_lines)
