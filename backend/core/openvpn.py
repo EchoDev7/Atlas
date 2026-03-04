@@ -2568,17 +2568,26 @@ if __name__ == "__main__":
         if os_name == "linux":
             lines.extend(
                 [
-                    "script-security 2",
-                    "setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                    "up /etc/openvpn/update-resolv-conf",
-                    "down /etc/openvpn/update-resolv-conf",
-                    "down-pre",
+                    "setenv opt script-security 2",
+                    "setenv opt setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    "setenv opt up /etc/openvpn/update-resolv-conf",
+                    "setenv opt down /etc/openvpn/update-resolv-conf",
+                    "setenv opt down-pre",
                 ]
             )
+            lines = [
+                line
+                for line in lines
+                if not line.strip().lower().startswith("tun-mtu ")
+                and not line.strip().lower().startswith("mssfix ")
+                and not line.strip().lower().startswith("keepalive ")
+                and not line.strip().lower().startswith("sndbuf ")
+                and not line.strip().lower().startswith("rcvbuf ")
+            ]
 
-        if sndbuf:
+        if os_name != "linux" and sndbuf:
             lines.append(f"sndbuf {int(sndbuf)}")
-        if rcvbuf:
+        if os_name != "linux" and rcvbuf:
             lines.append(f"rcvbuf {int(rcvbuf)}")
 
         tcp_nodelay = bool(openvpn_settings.get("tcp_nodelay", False))
