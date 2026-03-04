@@ -2263,6 +2263,17 @@ if __name__ == "__main__":
                         continue
                     lines.append(custom_clean)
 
+        lines = [
+            line
+            for line in lines
+            if line.strip().lower() not in {"resolv-retry infinite", "persist-key", "persist-tun"}
+            and not line.strip().lower().startswith("tun-mtu ")
+            and not line.strip().lower().startswith("mssfix ")
+            and not line.strip().lower().startswith("keepalive ")
+            and not line.strip().lower().startswith("sndbuf ")
+            and not line.strip().lower().startswith("rcvbuf ")
+        ]
+
         lines.append("")
         lines.append("auth-user-pass")
         enable_auth_nocache = str(openvpn_settings.get("enable_auth_nocache", True)).strip().lower() not in {"0", "false", "no", "off"}
