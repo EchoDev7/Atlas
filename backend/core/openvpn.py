@@ -1754,17 +1754,6 @@ if __name__ == "__main__":
         if keepalive_ping and keepalive_timeout:
             lines.append(f"keepalive {int(keepalive_ping)} {int(keepalive_timeout)}")
 
-        if redirect_gateway:
-            if ipv6_enabled:
-                lines.append("redirect-gateway def1 ipv6 bypass-dhcp")
-            else:
-                lines.append("redirect-gateway def1 bypass-dhcp")
-
-        if primary_dns:
-            lines.append(f"dhcp-option DNS {primary_dns}")
-        if secondary_dns:
-            lines.append(f"dhcp-option DNS {secondary_dns}")
-
         if push_custom_routes:
             for route_line in push_custom_routes.splitlines():
                 route_clean = route_line.strip()
