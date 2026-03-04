@@ -2089,7 +2089,7 @@ if __name__ == "__main__":
         # AUTHENTICATION: auth-user-pass and conditional auth-nocache (BEFORE certificates)
         lines.append("")
         lines.append("auth-user-pass")
-        enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
+        enable_auth_nocache = str(openvpn_settings.get("enable_auth_nocache", True)).strip().lower() not in {"0", "false", "no", "off"}
         if enable_auth_nocache:
             lines.append("auth-nocache")
         
@@ -2104,14 +2104,18 @@ if __name__ == "__main__":
         )
 
         sanitized_lines = self._apply_apple_restrictions(lines, ensure_persistence=is_macos)
+        sanitized_lines = [
+            line
+            for line in sanitized_lines
+            if not line.strip().lower().startswith("tun-mtu ")
+            and not line.strip().lower().startswith("mssfix ")
+            and not line.strip().lower().startswith("keepalive ")
+        ]
         if not is_macos:
             sanitized_lines = [
                 line
                 for line in sanitized_lines
                 if line.strip().lower() not in {"persist-key", "persist-tun", "resolv-retry infinite"}
-                and not line.strip().lower().startswith("tun-mtu ")
-                and not line.strip().lower().startswith("mssfix ")
-                and not line.strip().lower().startswith("keepalive ")
             ]
         sanitized_lines.append("")
         return "\n".join(sanitized_lines)
@@ -2261,7 +2265,7 @@ if __name__ == "__main__":
 
         lines.append("")
         lines.append("auth-user-pass")
-        enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
+        enable_auth_nocache = str(openvpn_settings.get("enable_auth_nocache", True)).strip().lower() not in {"0", "false", "no", "off"}
         if enable_auth_nocache:
             lines.append("auth-nocache")
 
@@ -2419,7 +2423,7 @@ if __name__ == "__main__":
 
         lines.append("")
         lines.append("auth-user-pass")
-        enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
+        enable_auth_nocache = str(openvpn_settings.get("enable_auth_nocache", True)).strip().lower() not in {"0", "false", "no", "off"}
         if enable_auth_nocache:
             lines.append("auth-nocache")
 
@@ -2600,7 +2604,7 @@ if __name__ == "__main__":
 
         lines.append("")
         lines.append("auth-user-pass")
-        enable_auth_nocache = bool(openvpn_settings.get("enable_auth_nocache", True))
+        enable_auth_nocache = str(openvpn_settings.get("enable_auth_nocache", True)).strip().lower() not in {"0", "false", "no", "off"}
         if enable_auth_nocache:
             lines.append("auth-nocache")
 
