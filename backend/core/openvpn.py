@@ -2926,6 +2926,25 @@ if __name__ == "__main__":
     def generate_server_config(self, settings: Optional[Dict[str, any]] = None) -> Dict[str, any]:
         """Generate OpenVPN 2.6 server.conf content from persisted settings."""
         try:
+            dco_data_ciphers = "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
+
+            def _is_dco_incompatible_directive(directive: str) -> bool:
+                normalized = str(directive or "").strip().lower()
+                if not normalized:
+                    return False
+
+                normalized = normalized.strip('"\'')
+                return (
+                    normalized == "comp-lzo"
+                    or normalized.startswith("comp-lzo ")
+                    or normalized == "compress"
+                    or normalized.startswith("compress ")
+                    or normalized == "disable-dco"
+                    or normalized.startswith("disable-dco ")
+                    or normalized == "packet-filter"
+                    or normalized.startswith("packet-filter ")
+                )
+
             runtime_openvpn_settings, _ = self._load_runtime_settings()
             effective_settings: Dict[str, any] = dict(runtime_openvpn_settings)
             if settings:
@@ -2975,11 +2994,7 @@ if __name__ == "__main__":
             block_outside_dns = bool(settings.get("block_outside_dns", False))
             push_custom_routes = (settings.get("push_custom_routes") or "").strip()
 
-            raw_data_ciphers = settings.get("data_ciphers", "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305")
-            if isinstance(raw_data_ciphers, list):
-                data_ciphers = ":".join([cipher.strip() for cipher in raw_data_ciphers if cipher and cipher.strip()])
-            else:
-                data_ciphers = str(raw_data_ciphers).strip() or "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
+            data_ciphers = dco_data_ciphers
 
             tls_version_min = str(settings.get("tls_version_min", "1.2")).strip()
             tls_mode = str(settings.get("tls_mode", "tls-crypt")).lower().strip()
@@ -3048,8 +3063,15 @@ if __name__ == "__main__":
             if advanced_client_push:
                 for directive in [line.strip() for line in advanced_client_push.splitlines() if line.strip()]:
                     if directive.startswith("push "):
+                        directive_body = directive[5:].strip().strip('"').strip("'")
+                        if _is_dco_incompatible_directive(directive_body):
+                            logger.warning("Skipping DCO-incompatible advanced push directive: %s", directive)
+                            continue
                         push_lines.append(directive)
                     else:
+                        if _is_dco_incompatible_directive(directive):
+                            logger.warning("Skipping DCO-incompatible advanced push directive: %s", directive)
+                            continue
                         push_lines.append(f'push "{directive}"')
 
             if tls_mode == "tls-crypt":
@@ -3062,6 +3084,7 @@ if __name__ == "__main__":
             server_lines: List[str] = [
                 "# Atlas VPN - OpenVPN Server Configuration",
                 f"# Generated: {datetime.utcnow().isoformat()}",
+                "# Optimized for Data Channel Offload (DCO) - OpenVPN 2.6+.",
                 "",
                 f"port {port}",
                 f"proto {protocol}",
@@ -3155,7 +3178,11 @@ if __name__ == "__main__":
 
             if custom_directives:
                 server_lines.append("")
-                server_lines.extend([line.strip() for line in custom_directives.splitlines() if line.strip()])
+                for directive in [line.strip() for line in custom_directives.splitlines() if line.strip()]:
+                    if _is_dco_incompatible_directive(directive):
+                        logger.warning("Skipping DCO-incompatible server custom directive: %s", directive)
+                        continue
+                    server_lines.append(directive)
 
             server_lines.append("")
             server_conf = "\n".join(server_lines)
