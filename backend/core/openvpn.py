@@ -1912,7 +1912,7 @@ if __name__ == "__main__":
         if is_tcp:
             lines.append("socket-flags TCP_NODELAY")
 
-    def _apply_apple_restrictions(self, lines: List[str]) -> List[str]:
+    def _apply_apple_restrictions(self, lines: List[str], ensure_persistence: bool = True) -> List[str]:
         blocked_directives = (
             "sndbuf",
             "rcvbuf",
@@ -1931,11 +1931,12 @@ if __name__ == "__main__":
                     continue
             sanitized_lines.append(line)
 
-        # Ensure Apple persistence directives are present.
-        if "persist-key" not in sanitized_lines:
-            sanitized_lines.insert(10, "persist-key")
-        if "persist-tun" not in sanitized_lines:
-            sanitized_lines.insert(11, "persist-tun")
+        if ensure_persistence:
+            # Ensure Apple persistence directives are present.
+            if "persist-key" not in sanitized_lines:
+                sanitized_lines.insert(10, "persist-key")
+            if "persist-tun" not in sanitized_lines:
+                sanitized_lines.insert(11, "persist-tun")
 
         return sanitized_lines
 
@@ -2016,8 +2017,11 @@ if __name__ == "__main__":
         secondary_dns = (openvpn_settings.get("secondary_dns") or "").strip()
         push_custom_routes = (openvpn_settings.get("push_custom_routes") or "").strip()
 
+        os_name = (os_type or "").strip().lower()
+        is_macos = os_name in {"mac", "macos"}
+
         lines = self._get_base_config(
-            os_label="iOS/macOS",
+            os_label="macOS" if is_macos else "iOS",
             client_name=client_name,
             device_type=device_type,
             client_protocol=client_protocol,
@@ -2036,8 +2040,8 @@ if __name__ == "__main__":
             primary_dns=primary_dns,
             secondary_dns=secondary_dns,
             push_custom_routes=push_custom_routes,
-            persist_key=True,
-            persist_tun=True,
+            persist_key=is_macos,
+            persist_tun=is_macos,
             verbosity=verbosity if verbosity is not None else 3,
         )
 
@@ -2061,7 +2065,6 @@ if __name__ == "__main__":
         )
         
         # CONDITIONAL: Custom Apple-specific directives from DB
-        os_name = (os_type or "").strip().lower()
         custom_apple = (openvpn_settings.get("custom_mac") if os_name in {"mac", "macos"} else openvpn_settings.get("custom_ios"))
         custom_apple = (custom_apple or "").strip()
         blocked_directives = (
@@ -2100,7 +2103,13 @@ if __name__ == "__main__":
             tls_mode=tls_mode,
         )
 
-        sanitized_lines = self._apply_apple_restrictions(lines)
+        sanitized_lines = self._apply_apple_restrictions(lines, ensure_persistence=is_macos)
+        if not is_macos:
+            sanitized_lines = [
+                line
+                for line in sanitized_lines
+                if line.strip().lower() not in {"persist-key", "persist-tun", "resolv-retry infinite"}
+            ]
         sanitized_lines.append("")
         return "\n".join(sanitized_lines)
 
