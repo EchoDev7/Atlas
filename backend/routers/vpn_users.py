@@ -1,8 +1,9 @@
 # Atlas — VPN Users router (Phase 2 Enhancements)
 # Multi-protocol user management with limits enforcement
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, asc, desc, func, or_
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
@@ -274,14 +275,81 @@ def _apply_runtime_metrics_to_user_dict(
 
 @router.get("", response_model=VPNUserListResponse)
 async def list_users(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    search: str = Query("", max_length=100),
+    status_filter: str = Query("all", pattern="^(all|active|expired|data_limited|disabled)$"),
+    sort_by: str = Query("created_at", pattern="^(created_at|username|expiry_date|traffic_used)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get list of all VPN users with pagination"""
-    users = db.query(VPNUser).offset(skip).limit(limit).all()
-    total = db.query(VPNUser).count()
+    """Get list of VPN users with pagination, search, filters, and sorting."""
+    _ = current_user
+    now = datetime.utcnow()
+
+    query = db.query(VPNUser)
+
+    search_term = search.strip()
+    if search_term:
+        query = query.filter(VPNUser.username.ilike(f"%{search_term}%"))
+
+    expiry_expr = func.coalesce(VPNUser.access_expires_at, VPNUser.expiry_date)
+    traffic_limit_expr = func.coalesce(
+        VPNUser.traffic_limit_bytes,
+        VPNUser.data_limit_gb * float(1024 ** 3),
+    )
+    traffic_used_expr = func.coalesce(
+        VPNUser.traffic_used_bytes,
+        VPNUser.total_bytes_sent + VPNUser.total_bytes_received,
+        0,
+    )
+
+    expired_condition = or_(
+        VPNUser.is_expired.is_(True),
+        and_(expiry_expr.isnot(None), expiry_expr < now),
+    )
+    data_limited_condition = or_(
+        VPNUser.is_data_limit_exceeded.is_(True),
+        and_(
+            traffic_limit_expr.isnot(None),
+            traffic_limit_expr > 0,
+            traffic_used_expr >= traffic_limit_expr,
+        ),
+    )
+
+    if status_filter == "active":
+        query = query.filter(
+            VPNUser.is_enabled.is_(True),
+            ~expired_condition,
+            ~data_limited_condition,
+        )
+    elif status_filter == "expired":
+        query = query.filter(expired_condition)
+    elif status_filter == "data_limited":
+        query = query.filter(data_limited_condition)
+    elif status_filter == "disabled":
+        query = query.filter(VPNUser.is_enabled.is_(False))
+
+    sort_ascending = sort_order == "asc"
+    if sort_by == "expiry_date":
+        query = query.order_by(
+            asc(expiry_expr.is_(None)),
+            asc(expiry_expr) if sort_ascending else desc(expiry_expr),
+            asc(VPNUser.username),
+        )
+    elif sort_by == "traffic_used":
+        query = query.order_by(
+            asc(traffic_used_expr) if sort_ascending else desc(traffic_used_expr),
+            asc(VPNUser.username),
+        )
+    elif sort_by == "username":
+        query = query.order_by(asc(VPNUser.username) if sort_ascending else desc(VPNUser.username))
+    else:
+        query = query.order_by(asc(VPNUser.created_at) if sort_ascending else desc(VPNUser.created_at))
+
+    total = query.count()
+    users = query.offset(skip).limit(limit).all()
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
     _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, users)
     
