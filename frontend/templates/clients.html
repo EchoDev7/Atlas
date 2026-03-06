@@ -1228,6 +1228,13 @@
                 },
                 autoRefreshTimerId: null,
                 autoRefreshMs: 3000,
+                runtimeStreamGeneration: 0,
+                runtimeStreamActive: false,
+                runtimeStreamConnected: false,
+                runtimeStreamReconnectAttempt: 0,
+                runtimeStreamMinBackoffMs: 1000,
+                runtimeStreamMaxBackoffMs: 30000,
+                runtimeStreamLastTickAt: null,
                 
                 // Create Modal
                 showCreateModal: false,
@@ -1288,6 +1295,10 @@
                     await this.loadServiceStatus();
                     this.startAutoRefresh();
 
+                    window.addEventListener('beforeunload', () => {
+                        this.stopAutoRefresh();
+                    });
+
                     document.addEventListener('visibilitychange', () => {
                         if (document.hidden) {
                             this.stopAutoRefresh();
@@ -1298,19 +1309,83 @@
                 },
 
                 startAutoRefresh() {
+                    if (this.runtimeStreamActive) {
+                        console.log('[runtime-stream] singleton-guard active=true; skip start');
+                        return;
+                    }
                     this.stopAutoRefresh();
-                    this.autoRefreshTimerId = window.setInterval(async () => {
-                        if (this.loading || this.creating || this.editing || this.deletingUser || this.revoking || this.showCreateModal || this.showEditModal || this.showDeleteModal || this.showRevokeModal || this.showQRModal) {
-                            return;
-                        }
-                        await this.loadRuntimeSnapshot();
-                    }, this.autoRefreshMs);
+
+                    this.runtimeStreamActive = true;
+                    this.runtimeStreamConnected = false;
+                    this.runtimeStreamReconnectAttempt = 0;
+                    this.runtimeStreamGeneration += 1;
+
+                    const generation = this.runtimeStreamGeneration;
+                    console.log(`[runtime-stream] start generation=${generation}`);
+                    this.scheduleRuntimeStreamTick(0, generation);
                 },
 
                 stopAutoRefresh() {
+                    this.runtimeStreamActive = false;
+                    this.runtimeStreamConnected = false;
+                    this.runtimeStreamGeneration += 1;
+
                     if (!this.autoRefreshTimerId) return;
-                    window.clearInterval(this.autoRefreshTimerId);
+                    window.clearTimeout(this.autoRefreshTimerId);
                     this.autoRefreshTimerId = null;
+                },
+
+                scheduleRuntimeStreamTick(delayMs, generation) {
+                    if (!this.runtimeStreamActive) return;
+                    if (generation !== this.runtimeStreamGeneration) return;
+
+                    if (this.autoRefreshTimerId) {
+                        window.clearTimeout(this.autoRefreshTimerId);
+                        this.autoRefreshTimerId = null;
+                    }
+
+                    this.autoRefreshTimerId = window.setTimeout(async () => {
+                        await this.runRuntimeStreamCycle(generation);
+                    }, Math.max(0, delayMs));
+                },
+
+                async runRuntimeStreamCycle(generation) {
+                    if (!this.runtimeStreamActive || generation !== this.runtimeStreamGeneration) return;
+
+                    const busy = this.loading || this.creating || this.editing || this.deletingUser || this.revoking || this.showCreateModal || this.showEditModal || this.showDeleteModal || this.showRevokeModal || this.showQRModal;
+                    if (document.hidden || busy) {
+                        this.scheduleRuntimeStreamTick(this.autoRefreshMs, generation);
+                        return;
+                    }
+
+                    const ok = await this.loadRuntimeSnapshot();
+                    this.runtimeStreamLastTickAt = new Date().toISOString();
+
+                    if (!this.runtimeStreamActive || generation !== this.runtimeStreamGeneration) return;
+
+                    if (ok) {
+                        if (!this.runtimeStreamConnected) {
+                            console.log(`[runtime-stream] connected generation=${generation}`);
+                        }
+                        this.runtimeStreamConnected = true;
+                        this.runtimeStreamReconnectAttempt = 0;
+                        this.scheduleRuntimeStreamTick(this.autoRefreshMs, generation);
+                        return;
+                    }
+
+                    this.runtimeStreamConnected = false;
+                    this.runtimeStreamReconnectAttempt += 1;
+                    const exp = Math.max(0, this.runtimeStreamReconnectAttempt - 1);
+                    const baseDelay = Math.min(
+                        this.runtimeStreamMaxBackoffMs,
+                        this.runtimeStreamMinBackoffMs * (2 ** exp),
+                    );
+                    const jitter = Math.floor(Math.random() * 250);
+                    const nextDelay = Math.min(this.runtimeStreamMaxBackoffMs, baseDelay + jitter);
+                    console.warn(
+                        `[runtime-stream] reconnect-backoff attempt=${this.runtimeStreamReconnectAttempt} delay_ms=${nextDelay} generation=${generation}`,
+                    );
+                    this.scheduleRuntimeStreamTick(nextDelay, generation);
                 },
                 
                 async loadClients(options = {}) {
@@ -1359,6 +1434,9 @@
                 async loadRuntimeSnapshot() {
                     try {
                         const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            return false;
+                        }
                         const response = await fetch('/api/users/runtime', {
                             headers: {
                                 'Authorization': `Bearer ${token}`
@@ -1370,7 +1448,7 @@
                                 localStorage.removeItem('access_token');
                                 window.location.href = '/templates/login.html';
                             }
-                            return;
+                            return false;
                         }
 
                         const data = await response.json();
@@ -1392,8 +1470,10 @@
                                 is_data_limit_exceeded: runtime.is_data_limit_exceeded,
                             };
                         });
+                        return true;
                     } catch (err) {
                         console.error('Load runtime snapshot error:', err);
+                        return false;
                     }
                 },
                 
