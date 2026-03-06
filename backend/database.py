@@ -292,6 +292,8 @@ def init_db():
                 "server_system_dns_primary": "ALTER TABLE general_settings ADD COLUMN server_system_dns_primary VARCHAR(64) NOT NULL DEFAULT '1.1.1.1'",
                 "server_system_dns_secondary": "ALTER TABLE general_settings ADD COLUMN server_system_dns_secondary VARCHAR(64) NOT NULL DEFAULT '8.8.8.8'",
                 "admin_allowed_ips": "ALTER TABLE general_settings ADD COLUMN admin_allowed_ips TEXT NOT NULL DEFAULT '0.0.0.0/0'",
+                "login_max_failed_attempts": "ALTER TABLE general_settings ADD COLUMN login_max_failed_attempts INTEGER NOT NULL DEFAULT 5",
+                "login_block_duration_minutes": "ALTER TABLE general_settings ADD COLUMN login_block_duration_minutes INTEGER NOT NULL DEFAULT 15",
                 "panel_domain": "ALTER TABLE general_settings ADD COLUMN panel_domain VARCHAR(255) NOT NULL DEFAULT ''",
                 "panel_https_port": "ALTER TABLE general_settings ADD COLUMN panel_https_port INTEGER NOT NULL DEFAULT 2053",
                 "subscription_domain": "ALTER TABLE general_settings ADD COLUMN subscription_domain VARCHAR(255) NOT NULL DEFAULT ''",
@@ -345,6 +347,23 @@ def init_db():
                     )
                 )
 
+            if {"login_max_failed_attempts", "login_block_duration_minutes"}.issubset(general_column_names):
+                connection.execute(
+                    text(
+                        """
+                        UPDATE general_settings
+                        SET login_max_failed_attempts = CASE
+                                WHEN login_max_failed_attempts BETWEEN 1 AND 20 THEN login_max_failed_attempts
+                                ELSE 5
+                            END,
+                            login_block_duration_minutes = CASE
+                                WHEN login_block_duration_minutes BETWEEN 1 AND 1440 THEN login_block_duration_minutes
+                                ELSE 15
+                            END
+                        """
+                    )
+                )
+
             general_settings_row_count = connection.execute(
                 text("SELECT COUNT(*) FROM general_settings")
             ).scalar_one()
@@ -362,6 +381,8 @@ def init_db():
                             server_system_dns_primary,
                             server_system_dns_secondary,
                             admin_allowed_ips,
+                            login_max_failed_attempts,
+                            login_block_duration_minutes,
                             panel_domain,
                             panel_https_port,
                             subscription_domain,
@@ -386,6 +407,8 @@ def init_db():
                             '1.1.1.1',
                             '8.8.8.8',
                             '0.0.0.0/0',
+                            5,
+                            15,
                             '',
                             2053,
                             '',

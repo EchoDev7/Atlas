@@ -249,6 +249,36 @@
                             <textarea x-model="generalForm.admin_allowed_ips" rows="4" placeholder="0.0.0.0/0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
                         </label>
 
+                        <div class="rounded-xl border p-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                            <h3 class="text-sm font-bold theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-900'">Login Brute-Force Protection</h3>
+                            <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Configure lockout policy for failed admin login attempts.</p>
+
+                            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Max Failed Attempts</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="20"
+                                        x-model.number="generalForm.login_max_failed_attempts"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Block Duration (Minutes)</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="1440"
+                                        x-model.number="generalForm.login_block_duration_minutes"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                </label>
+                            </div>
+                        </div>
+
                         <div class="rounded-xl border p-4 space-y-3" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
                             <div>
                                 <h3 class="text-sm font-bold theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-900'">Change Admin Password</h3>
@@ -1082,6 +1112,8 @@
                     server_system_dns_primary: '1.1.1.1',
                     server_system_dns_secondary: '8.8.8.8',
                     admin_allowed_ips: '0.0.0.0/0',
+                    login_max_failed_attempts: 5,
+                    login_block_duration_minutes: 15,
                     panel_domain: '',
                     panel_https_port: 2053,
                     subscription_domain: '',
@@ -1310,6 +1342,22 @@
                     }
                 },
 
+                normalizeLoginMaxFailedAttempts(value) {
+                    const parsed = Number(value);
+                    if (!Number.isFinite(parsed)) {
+                        return 5;
+                    }
+                    return Math.min(20, Math.max(1, Math.round(parsed)));
+                },
+
+                normalizeLoginBlockDurationMinutes(value) {
+                    const parsed = Number(value);
+                    if (!Number.isFinite(parsed)) {
+                        return 15;
+                    }
+                    return Math.min(1440, Math.max(1, Math.round(parsed)));
+                },
+
                 async loadSettings() {
                     this.loading = true;
                     try {
@@ -1344,6 +1392,8 @@
                             public_ipv4_address: generalData.public_ipv4_address || '',
                             public_ipv6_address: generalData.public_ipv6_address || '',
                             admin_allowed_ips: generalData.admin_allowed_ips || '0.0.0.0/0',
+                            login_max_failed_attempts: this.normalizeLoginMaxFailedAttempts(generalData.login_max_failed_attempts),
+                            login_block_duration_minutes: this.normalizeLoginBlockDurationMinutes(generalData.login_block_duration_minutes),
                             wan_interface: generalData.wan_interface || 'eth0',
                             server_system_dns_primary: generalData.server_system_dns_primary || '1.1.1.1',
                             server_system_dns_secondary: generalData.server_system_dns_secondary || '8.8.8.8',
@@ -1720,6 +1770,12 @@
                     this.saving = true;
                     try {
                         const token = localStorage.getItem('access_token');
+                        const loginMaxFailedAttempts = this.normalizeLoginMaxFailedAttempts(this.generalForm.login_max_failed_attempts);
+                        const loginBlockDurationMinutes = this.normalizeLoginBlockDurationMinutes(this.generalForm.login_block_duration_minutes);
+
+                        this.generalForm.login_max_failed_attempts = loginMaxFailedAttempts;
+                        this.generalForm.login_block_duration_minutes = loginBlockDurationMinutes;
+
                         const payload = {
                             server_address: (this.generalForm.server_address || '').trim() || null,
                             public_ipv4_address: (this.generalForm.public_ipv4_address || '').trim() || null,
@@ -1729,6 +1785,8 @@
                             server_system_dns_primary: (this.generalForm.server_system_dns_primary || '').trim(),
                             server_system_dns_secondary: (this.generalForm.server_system_dns_secondary || '').trim(),
                             admin_allowed_ips: (this.generalForm.admin_allowed_ips || '').trim(),
+                            login_max_failed_attempts: loginMaxFailedAttempts,
+                            login_block_duration_minutes: loginBlockDurationMinutes,
                             panel_domain: (this.generalForm.panel_domain || '').trim(),
                             panel_https_port: Number(this.generalForm.panel_https_port),
                             subscription_domain: (this.generalForm.subscription_domain || '').trim(),
@@ -1775,6 +1833,8 @@
                             public_ipv4_address: updated.public_ipv4_address || '',
                             public_ipv6_address: updated.public_ipv6_address || '',
                             admin_allowed_ips: updated.admin_allowed_ips || '0.0.0.0/0',
+                            login_max_failed_attempts: this.normalizeLoginMaxFailedAttempts(updated.login_max_failed_attempts),
+                            login_block_duration_minutes: this.normalizeLoginBlockDurationMinutes(updated.login_block_duration_minutes),
                             wan_interface: updated.wan_interface || 'eth0',
                             server_system_dns_primary: updated.server_system_dns_primary || '1.1.1.1',
                             server_system_dns_secondary: updated.server_system_dns_secondary || '8.8.8.8',

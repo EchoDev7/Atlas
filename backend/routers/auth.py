@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from threading import Lock
 from typing import Any, Dict, List
-from backend.database import get_db
+from backend.database import SessionLocal, get_db
+from backend.models.general_settings import GeneralSettings
 from backend.models.user import Admin
 from backend.schemas.user import (
     LoginRequest,
@@ -21,8 +22,36 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 _LOGIN_RATE_LIMIT_WINDOW = timedelta(minutes=15)
 _LOGIN_RATE_LIMIT_BLOCK = timedelta(minutes=15)
 _LOGIN_RATE_LIMIT_MAX_FAILURES = 5
+_LOGIN_RATE_LIMIT_MIN_FAILURES = 1
+_LOGIN_RATE_LIMIT_MAX_FAILURES_BOUND = 20
+_LOGIN_RATE_LIMIT_MIN_BLOCK_MINUTES = 1
+_LOGIN_RATE_LIMIT_MAX_BLOCK_MINUTES = 1440
 _login_attempts_by_ip: Dict[str, Dict[str, Any]] = {}
 _login_attempts_lock = Lock()
+
+
+def _safe_rate_limit_config_from_db() -> tuple[int, timedelta]:
+    max_failures = _LOGIN_RATE_LIMIT_MAX_FAILURES
+    block_duration = _LOGIN_RATE_LIMIT_BLOCK
+
+    db = SessionLocal()
+    try:
+        general = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+        if not general:
+            return max_failures, block_duration
+
+        configured_failures = int(general.login_max_failed_attempts or _LOGIN_RATE_LIMIT_MAX_FAILURES)
+        configured_block_minutes = int(general.login_block_duration_minutes or int(_LOGIN_RATE_LIMIT_BLOCK.total_seconds() // 60))
+
+        max_failures = min(_LOGIN_RATE_LIMIT_MAX_FAILURES_BOUND, max(_LOGIN_RATE_LIMIT_MIN_FAILURES, configured_failures))
+        configured_block_minutes = min(_LOGIN_RATE_LIMIT_MAX_BLOCK_MINUTES, max(_LOGIN_RATE_LIMIT_MIN_BLOCK_MINUTES, configured_block_minutes))
+        block_duration = timedelta(minutes=configured_block_minutes)
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+    return max_failures, block_duration
 
 
 def _get_client_ip(request: Request) -> str:
@@ -55,15 +84,15 @@ def _enforce_login_rate_limit(ip: str, now: datetime) -> None:
         data["failures"] = _prune_failures(list(data.get("failures") or []), now)
 
 
-def _record_login_failure(ip: str, now: datetime) -> None:
+def _record_login_failure(ip: str, now: datetime, max_failures: int, block_duration: timedelta) -> None:
     with _login_attempts_lock:
         data = _login_attempts_by_ip.setdefault(ip, {"failures": [], "blocked_until": None})
         failures = _prune_failures(list(data.get("failures") or []), now)
         failures.append(now)
         data["failures"] = failures
 
-        if len(failures) >= _LOGIN_RATE_LIMIT_MAX_FAILURES:
-            data["blocked_until"] = now + _LOGIN_RATE_LIMIT_BLOCK
+        if len(failures) >= max_failures:
+            data["blocked_until"] = now + block_duration
             data["failures"] = []
 
 
@@ -116,13 +145,14 @@ def _authenticate_and_issue_token(login_data: LoginRequest, db: Session) -> Dict
 def _login_with_rate_limit(login_data: LoginRequest, request: Request, db: Session) -> Dict[str, str]:
     client_ip = _get_client_ip(request)
     now = datetime.utcnow()
+    max_failures, block_duration = _safe_rate_limit_config_from_db()
     _enforce_login_rate_limit(client_ip, now)
 
     try:
         token_payload = _authenticate_and_issue_token(login_data, db)
     except HTTPException as exc:
         if exc.status_code == status.HTTP_401_UNAUTHORIZED:
-            _record_login_failure(client_ip, now)
+            _record_login_failure(client_ip, now, max_failures=max_failures, block_duration=block_duration)
         raise
 
     _clear_login_failures(client_ip)

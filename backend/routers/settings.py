@@ -456,6 +456,8 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         server_system_dns_primary=settings.server_system_dns_primary,
         server_system_dns_secondary=settings.server_system_dns_secondary,
         admin_allowed_ips=settings.admin_allowed_ips,
+        login_max_failed_attempts=settings.login_max_failed_attempts,
+        login_block_duration_minutes=settings.login_block_duration_minutes,
         panel_domain=settings.panel_domain,
         panel_https_port=settings.panel_https_port,
         subscription_domain=settings.subscription_domain,
@@ -557,6 +559,8 @@ def update_general_settings(
     settings.server_system_dns_primary = payload.server_system_dns_primary
     settings.server_system_dns_secondary = payload.server_system_dns_secondary
     settings.admin_allowed_ips = payload.admin_allowed_ips
+    settings.login_max_failed_attempts = payload.login_max_failed_attempts
+    settings.login_block_duration_minutes = payload.login_block_duration_minutes
     settings.panel_domain = payload.panel_domain or ""
     settings.panel_https_port = payload.panel_https_port
     settings.subscription_domain = payload.subscription_domain or ""

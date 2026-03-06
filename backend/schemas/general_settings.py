@@ -15,6 +15,8 @@ class GeneralSettingsBase(BaseModel):
     server_system_dns_secondary: str = Field("8.8.8.8", min_length=3, max_length=64)
 
     admin_allowed_ips: str = Field("0.0.0.0/0", min_length=1)
+    login_max_failed_attempts: int = Field(5, ge=1, le=20)
+    login_block_duration_minutes: int = Field(15, ge=1, le=1440)
 
     panel_domain: Optional[str] = Field(default=None, max_length=255)
     panel_https_port: int = Field(2053)
