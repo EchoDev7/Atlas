@@ -759,6 +759,54 @@ class OpenVPNManager(BaseVPNService):
             "protocol": self.protocol_name,
         }
 
+    def get_auth_assets_health(self) -> Dict[str, Any]:
+        """Return lightweight health status for auth snapshot DB and hook scripts."""
+        db_path = self.config.OPENVPN_SERVER_DIR / "atlas.db"
+        auth_script = self.config.AUTH_USER_PASS_SCRIPT
+        enforcement_hook = self.config.ENFORCEMENT_HOOK
+
+        db_exists = db_path.exists()
+        auth_script_exists = auth_script.exists()
+        enforcement_hook_exists = enforcement_hook.exists()
+
+        if self.is_production:
+            auth_script_executable = auth_script_exists and os.access(auth_script, os.X_OK)
+            enforcement_hook_executable = enforcement_hook_exists and os.access(enforcement_hook, os.X_OK)
+        else:
+            auth_script_executable = auth_script_exists
+            enforcement_hook_executable = enforcement_hook_exists
+
+        healthy = all(
+            [
+                db_exists,
+                auth_script_exists,
+                enforcement_hook_exists,
+                auth_script_executable,
+                enforcement_hook_executable,
+            ]
+        )
+
+        return {
+            "success": healthy,
+            "healthy": healthy,
+            "protocol": self.protocol_name,
+            "db_snapshot": {
+                "path": str(db_path),
+                "exists": db_exists,
+            },
+            "auth_script": {
+                "path": str(auth_script),
+                "exists": auth_script_exists,
+                "executable": auth_script_executable,
+            },
+            "enforcement_hook": {
+                "path": str(enforcement_hook),
+                "exists": enforcement_hook_exists,
+                "executable": enforcement_hook_executable,
+            },
+            "message": "OpenVPN auth assets are healthy" if healthy else "OpenVPN auth assets require attention",
+        }
+
     def _ensure_auth_user_pass_script(self) -> Path:
         """Ensure OpenVPN auth-user-pass verifier script exists in server config dir."""
         auth_script_path = self.config.AUTH_USER_PASS_SCRIPT

@@ -676,6 +676,14 @@ def get_openvpn_settings(
     return _to_response(settings)
 
 
+@router.get("/openvpn/auth-assets/health")
+def get_openvpn_auth_assets_health(
+    current_user: Admin = Depends(get_current_user),
+):
+    _ = current_user
+    return openvpn_manager.get_auth_assets_health()
+
+
 @router.patch("/openvpn", response_model=OpenVPNSettingsResponse)
 def update_openvpn_settings(
     payload: OpenVPNSettingsUpdate,

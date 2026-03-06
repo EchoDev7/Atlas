@@ -676,6 +676,7 @@ async def download_config(
                 )
                 db.add(config)
                 db.commit()
+                _sync_openvpn_auth_db_snapshot()
                 db.refresh(user)
             
             return Response(
@@ -772,6 +773,7 @@ async def revoke_config(
     config.revoked_reason = revoke_data.reason or "Revoked by admin"
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(user)
     
     logger.info(f"{protocol} config revoked for user {user.username}")
