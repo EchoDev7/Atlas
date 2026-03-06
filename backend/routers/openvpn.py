@@ -461,6 +461,25 @@ def get_service_status(
         )
 
 
+@router.get("/runtime/health")
+def get_runtime_health(
+    current_user: Admin = Depends(get_current_user)
+):
+    """
+    Return OpenVPN runtime health snapshot for admin observability.
+    Requires authentication.
+    """
+    _ = current_user
+    try:
+        return openvpn_manager.get_runtime_health()
+    except Exception as e:
+        logger.error(f"Failed to get OpenVPN runtime health: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get OpenVPN runtime health: {str(e)}"
+        )
+
+
 @router.post("/service/control")
 def control_service(
     control_data: VPNServiceControlRequest,

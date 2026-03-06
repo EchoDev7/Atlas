@@ -515,6 +515,107 @@ class OpenVPNManager(BaseVPNService):
         print("ATLAS-DEBUG: OpenVPN active sessions source=status_log reason=management_empty_or_unparsed")
         return _parse_status_log_sessions()
 
+    def get_runtime_health(self) -> Dict[str, Any]:
+        """Return operational health snapshot for OpenVPN runtime telemetry."""
+        checked_at = datetime.utcnow()
+        host, port = self._get_management_socket_target()
+
+        socket_probe_success, socket_probe_response = self._send_management_command("state", timeout=1.5)
+        status_success, status_response = self._send_management_command("status 3", timeout=2.5)
+        status_payload = (status_response or "").strip()
+
+        management_payload_markers = (
+            "CLIENT_LIST",
+            "HEADER,CLIENT_LIST",
+            "HEADER\tCLIENT_LIST",
+            "GLOBAL_STATS",
+            "OpenVPN CLIENT LIST",
+            "END",
+        )
+        looks_like_management_payload = bool(
+            status_success and any(marker in status_payload for marker in management_payload_markers)
+        )
+
+        fallback_reason: Optional[str] = None
+        if not status_success:
+            active_source = "status_log"
+            fallback_reason = "management_query_failed"
+        elif not status_payload:
+            active_source = "status_log"
+            fallback_reason = "management_empty_response"
+        elif looks_like_management_payload:
+            active_source = "management"
+        else:
+            active_source = "status_log"
+            fallback_reason = "management_unparsed_response"
+
+        sessions = self.get_active_sessions()
+        usernames = {
+            str(session.get("username") or "").strip()
+            for session in sessions
+            if str(session.get("username") or "").strip()
+        }
+        total_bytes_sent = sum(max(0, int(session.get("bytes_sent") or 0)) for session in sessions)
+        total_bytes_received = sum(max(0, int(session.get("bytes_received") or 0)) for session in sessions)
+
+        status_log_path = self.config.STATUS_LOG
+        status_log_exists = status_log_path.exists()
+        try:
+            status_log_size = status_log_path.stat().st_size if status_log_exists else 0
+        except Exception:
+            status_log_size = 0
+
+        auth_assets = self.get_auth_assets_health()
+        service_status = self.get_service_status()
+        service_active = bool(service_status.get("is_active")) if service_status.get("success") else False
+
+        healthy = bool(socket_probe_success and status_success and auth_assets.get("healthy") and service_active)
+
+        return {
+            "success": True,
+            "healthy": healthy,
+            "protocol": self.protocol_name,
+            "checked_at": checked_at.isoformat() + "Z",
+            "management": {
+                "target": {"host": host, "port": port},
+                "socket": {
+                    "reachable": bool(socket_probe_success),
+                    "probe_command": "state",
+                    "message": socket_probe_response,
+                },
+                "status_query": {
+                    "success": bool(status_success),
+                    "command": "status 3",
+                    "response_length": len(status_payload),
+                    "message": status_response,
+                },
+            },
+            "runtime_summary": {
+                "online_users": len(usernames),
+                "active_sessions": len(sessions),
+                "total_bytes_sent": total_bytes_sent,
+                "total_bytes_received": total_bytes_received,
+                "total_bytes": total_bytes_sent + total_bytes_received,
+            },
+            "data_source": {
+                "active": active_source,
+                "fallback_reason": fallback_reason,
+                "status_log": {
+                    "path": str(status_log_path),
+                    "exists": status_log_exists,
+                    "size_bytes": status_log_size,
+                },
+            },
+            "auth_assets": auth_assets,
+            "service": {
+                "success": bool(service_status.get("success")),
+                "service_name": service_status.get("service_name"),
+                "is_active": bool(service_status.get("is_active")),
+                "is_enabled": bool(service_status.get("is_enabled")),
+                "message": service_status.get("message"),
+            },
+        }
+
     def kill_user(self, username: str) -> Dict[str, Any]:
         """Disconnect a user immediately via management `kill <common_name>` command."""
         username = (username or "").strip()
