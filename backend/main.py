@@ -134,6 +134,22 @@ def _build_allowed_cors_origins() -> list[str]:
     return sorted(origins)
 
 
+def _build_content_security_policy() -> str:
+    directives = {
+        "default-src": "'self'",
+        "base-uri": "'self'",
+        "frame-ancestors": "'none'",
+        "object-src": "'none'",
+        "form-action": "'self'",
+        "img-src": "'self' data:",
+        "font-src": "'self' https://fonts.gstatic.com data:",
+        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "script-src": "'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net",
+        "connect-src": "'self' ws: wss:",
+    }
+    return "; ".join(f"{key} {value}" for key, value in directives.items())
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
@@ -169,6 +185,24 @@ async def force_https_middleware(request: Request, call_next):
             db.close()
 
     return await call_next(request)
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = _build_content_security_policy()
+
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").lower()
+    request_scheme = (forwarded_proto or request.url.scheme).lower()
+    if request_scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    return response
 
 # Register routers
 app.include_router(auth.router, prefix=settings.API_PREFIX)

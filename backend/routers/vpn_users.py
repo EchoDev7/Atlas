@@ -1,7 +1,7 @@
 # Atlas — VPN Users router (Phase 2 Enhancements)
 # Multi-protocol user management with limits enforcement
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.orm import Session
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
@@ -30,6 +30,7 @@ from backend.services.protocols.registry import protocol_registry
 from backend.models.general_settings import GeneralSettings
 from backend.models.openvpn_settings import OpenVPNSettings
 from backend.services.auth_service import get_password_hash
+from backend.services.audit_service import extract_client_ip, record_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -417,6 +418,7 @@ async def disconnect_user_sessions(
 @router.post("", response_model=VPNUserCredentials, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_data: VPNUserCreate,
+    request: Request,
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -495,6 +497,16 @@ async def create_user(
     db.commit()
     _sync_openvpn_auth_db_snapshot()
     db.refresh(new_user)
+
+    record_audit_event(
+        action="vpn_user_created",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="vpn_user",
+        resource_id=str(new_user.id),
+        ip_address=extract_client_ip(request),
+        details={"username": new_user.username},
+    )
     
     logger.info(f"User {username} created by admin {current_user.username}")
     
@@ -597,6 +609,7 @@ async def update_user(
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: int,
+    request: Request,
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -619,6 +632,16 @@ async def delete_user(
     db.delete(user)
     db.commit()
     _sync_openvpn_auth_db_snapshot()
+
+    record_audit_event(
+        action="vpn_user_deleted",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="vpn_user",
+        resource_id=str(user_id),
+        ip_address=extract_client_ip(request),
+        details={"username": username},
+    )
     
     logger.info(f"User {username} deleted by admin {current_user.username}")
     

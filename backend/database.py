@@ -427,3 +427,29 @@ def init_db():
                         """
                     )
                 )
+
+        audit_logs_table_exists = connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_logs'")
+        ).fetchone()
+        if not audit_logs_table_exists:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE audit_logs (
+                        id INTEGER PRIMARY KEY,
+                        admin_username VARCHAR(64),
+                        action VARCHAR(128) NOT NULL,
+                        resource_type VARCHAR(64),
+                        resource_id VARCHAR(128),
+                        ip_address VARCHAR(64),
+                        success BOOLEAN NOT NULL DEFAULT 1,
+                        details TEXT,
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_admin_username ON audit_logs (admin_username)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs (action)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_resource_type ON audit_logs (resource_type)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs (created_at)"))

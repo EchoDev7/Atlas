@@ -6,7 +6,7 @@ import shutil
 import socket
 import subprocess
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from backend.schemas.general_settings import (
     GeneralSettingsUpdate,
 )
 from backend.schemas.openvpn_settings import OpenVPNSettingsResponse, OpenVPNSettingsUpdate
+from backend.services.audit_service import extract_client_ip, record_audit_event
 
 router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_manager = OpenVPNManager()
@@ -530,6 +531,7 @@ def get_server_public_ips(current_user: Admin = Depends(get_current_user)):
 @router.patch("/general", response_model=GeneralSettingsResponse)
 def update_general_settings(
     payload: GeneralSettingsUpdate,
+    request: Request,
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -541,6 +543,9 @@ def update_general_settings(
     previous_timezone = settings.system_timezone
     previous_panel_port = settings.panel_https_port
     previous_subscription_port = settings.subscription_https_port
+    previous_admin_allowed_ips = settings.admin_allowed_ips or ""
+    previous_login_max_failed_attempts = settings.login_max_failed_attempts
+    previous_login_block_duration_minutes = settings.login_block_duration_minutes
 
     if payload.panel_https_port == payload.subscription_https_port:
         raise HTTPException(
@@ -607,6 +612,29 @@ def update_general_settings(
     db.commit()
     _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
+
+    changed_fields: list[str] = []
+    if previous_admin_allowed_ips != settings.admin_allowed_ips:
+        changed_fields.append("admin_allowed_ips")
+    if previous_login_max_failed_attempts != settings.login_max_failed_attempts:
+        changed_fields.append("login_max_failed_attempts")
+    if previous_login_block_duration_minutes != settings.login_block_duration_minutes:
+        changed_fields.append("login_block_duration_minutes")
+    if previous_panel_port != settings.panel_https_port:
+        changed_fields.append("panel_https_port")
+    if previous_subscription_port != settings.subscription_https_port:
+        changed_fields.append("subscription_https_port")
+
+    record_audit_event(
+        action="general_settings_updated",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="general_settings",
+        resource_id=str(settings.id),
+        ip_address=extract_client_ip(request),
+        details={"changed_fields": changed_fields},
+    )
+
     return _to_general_response(settings)
 
 

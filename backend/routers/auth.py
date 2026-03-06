@@ -14,6 +14,7 @@ from backend.schemas.user import (
     AdminPasswordChangeResponse,
 )
 from backend.services.auth_service import verify_password, create_access_token, get_password_hash
+from backend.services.audit_service import extract_client_ip, record_audit_event
 from backend.dependencies import get_current_user
 from backend.config import settings
 
@@ -52,15 +53,6 @@ def _safe_rate_limit_config_from_db() -> tuple[int, timedelta]:
         db.close()
 
     return max_failures, block_duration
-
-
-def _get_client_ip(request: Request) -> str:
-    forwarded_for = (request.headers.get("x-forwarded-for") or "").strip()
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip() or "unknown"
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
 
 
 def _prune_failures(failures: List[datetime], now: datetime) -> List[datetime]:
@@ -143,19 +135,46 @@ def _authenticate_and_issue_token(login_data: LoginRequest, db: Session) -> Dict
 
 
 def _login_with_rate_limit(login_data: LoginRequest, request: Request, db: Session) -> Dict[str, str]:
-    client_ip = _get_client_ip(request)
+    client_ip = extract_client_ip(request)
     now = datetime.utcnow()
     max_failures, block_duration = _safe_rate_limit_config_from_db()
-    _enforce_login_rate_limit(client_ip, now)
+    try:
+        _enforce_login_rate_limit(client_ip, now)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+            record_audit_event(
+                action="admin_login_blocked_rate_limit",
+                success=False,
+                admin_username=login_data.username,
+                resource_type="auth",
+                ip_address=client_ip,
+                details={"reason": "rate_limited", "message": exc.detail},
+            )
+        raise
 
     try:
         token_payload = _authenticate_and_issue_token(login_data, db)
     except HTTPException as exc:
         if exc.status_code == status.HTTP_401_UNAUTHORIZED:
             _record_login_failure(client_ip, now, max_failures=max_failures, block_duration=block_duration)
+            record_audit_event(
+                action="admin_login_failed",
+                success=False,
+                admin_username=login_data.username,
+                resource_type="auth",
+                ip_address=client_ip,
+                details={"reason": "invalid_credentials"},
+            )
         raise
 
     _clear_login_failures(client_ip)
+    record_audit_event(
+        action="admin_login_success",
+        success=True,
+        admin_username=login_data.username,
+        resource_type="auth",
+        ip_address=client_ip,
+    )
     return token_payload
 
 
@@ -177,16 +196,34 @@ def get_current_admin(current_user: Admin = Depends(get_current_user)):
 @router.post("/change-password", response_model=AdminPasswordChangeResponse)
 def change_admin_password(
     payload: AdminPasswordChangeRequest,
+    request: Request,
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    client_ip = extract_client_ip(request)
     if not verify_password(payload.current_password, current_user.hashed_password):
+        record_audit_event(
+            action="admin_password_change_failed",
+            success=False,
+            admin_username=current_user.username,
+            resource_type="auth",
+            ip_address=client_ip,
+            details={"reason": "invalid_current_password"},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect",
         )
 
     if payload.current_password == payload.new_password:
+        record_audit_event(
+            action="admin_password_change_failed",
+            success=False,
+            admin_username=current_user.username,
+            resource_type="auth",
+            ip_address=client_ip,
+            details={"reason": "new_password_same_as_current"},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="New password must be different from current password",
@@ -194,6 +231,14 @@ def change_admin_password(
 
     current_user.hashed_password = get_password_hash(payload.new_password)
     db.commit()
+
+    record_audit_event(
+        action="admin_password_changed",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="auth",
+        ip_address=client_ip,
+    )
 
     return {
         "success": True,
