@@ -6,8 +6,10 @@ import os
 import platform
 import logging
 import time
-import socket
 import shutil
+import asyncio
+import threading
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Iterator
 from fastapi import HTTPException
@@ -235,10 +237,9 @@ class OpenVPNManager(BaseVPNService):
 
     def _get_management_socket_target(self) -> Tuple[str, int]:
         """Resolve OpenVPN management interface host/port from runtime settings."""
-        settings, _ = self._load_runtime_settings()
         host = "127.0.0.1"
-        port = _safe_int(settings.get("management_port"), 5555)
-        return host, max(1, port)
+        # Operational constraint: production OpenVPN management interface is pinned to 5555.
+        return host, 5555
 
     def _send_management_command(self, command: str, timeout: float = 3.0) -> Tuple[bool, str]:
         """Send a command to OpenVPN management interface and return raw response."""
@@ -247,44 +248,42 @@ class OpenVPNManager(BaseVPNService):
         if not command:
             return False, "Missing management command"
 
-        started_at = time.monotonic()
-        logger.debug(
-            "OpenVPN management command start command=%s target=%s:%s timeout=%.2fs",
-            command,
-            host,
-            port,
-            timeout,
-        )
+        def _is_completion_marker(payload: str) -> bool:
+            return (
+                "\nEND" in payload
+                or "END\n" in payload
+                or payload.endswith("END")
+                or "SUCCESS:" in payload
+                or "ERROR:" in payload
+                or "OpenVPN Version" in payload
+            )
 
-        try:
-            with socket.create_connection((host, port), timeout=timeout) as sock:
-                sock.settimeout(timeout)
+        async def _send_with_asyncio() -> Tuple[bool, str]:
+            started_at = time.monotonic()
+            logger.info(
+                "OpenVPN management command start command=%s target=%s:%s timeout=%.2fs",
+                command,
+                host,
+                port,
+                timeout,
+            )
 
-                # Read greeting/banner if present.
-                greeting_chunks: List[str] = []
-                greeting_termination = "loop_exhausted"
-                for _ in range(2):
-                    try:
-                        chunk = sock.recv(4096)
-                    except socket.timeout:
-                        greeting_termination = "socket_timeout"
-                        break
-                    if not chunk:
-                        greeting_termination = "socket_closed"
-                        break
-                    greeting_chunks.append(chunk.decode(errors="ignore"))
-                    if ">" in greeting_chunks[-1] or "END" in greeting_chunks[-1]:
-                        greeting_termination = "prompt_or_end"
-                        break
+            writer: Optional[asyncio.StreamWriter] = None
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port),
+                    timeout=timeout,
+                )
 
-                sock.sendall(f"{command}\n".encode())
+                writer.write(f"{command}\n".encode())
+                await asyncio.wait_for(writer.drain(), timeout=timeout)
 
                 response_chunks: List[str] = []
                 response_termination = "loop_exhausted"
                 while True:
                     try:
-                        data = sock.recv(8192)
-                    except socket.timeout:
+                        data = await asyncio.wait_for(reader.read(8192), timeout=timeout)
+                    except asyncio.TimeoutError:
                         response_termination = "socket_timeout"
                         break
 
@@ -295,61 +294,109 @@ class OpenVPNManager(BaseVPNService):
                     text = data.decode(errors="ignore")
                     response_chunks.append(text)
                     merged = "".join(response_chunks)
-                    if (
-                        "\nEND" in merged
-                        or "END\n" in merged
-                        or "SUCCESS:" in merged
-                        or "ERROR:" in merged
-                        or "OpenVPN Version" in merged
-                    ):
+                    if _is_completion_marker(merged):
                         response_termination = "completion_marker"
                         break
 
                 response_text = "".join(response_chunks).strip()
                 duration_ms = int((time.monotonic() - started_at) * 1000)
-                logger.debug(
+                logger.info(
                     (
                         "OpenVPN management command done command=%s target=%s:%s duration_ms=%s "
-                        "greeting_chunks=%s greeting_termination=%s response_chunks=%s "
-                        "response_termination=%s response_len=%s"
+                        "response_chunks=%s response_termination=%s response_len=%s"
                     ),
                     command,
                     host,
                     port,
                     duration_ms,
-                    len(greeting_chunks),
-                    greeting_termination,
                     len(response_chunks),
                     response_termination,
                     len(response_text),
                 )
-
                 return True, response_text
 
-        except (socket.timeout, TimeoutError):
-            duration_ms = int((time.monotonic() - started_at) * 1000)
-            logger.warning(
-                "OpenVPN management command timeout command=%s target=%s:%s duration_ms=%s",
-                command,
-                host,
-                port,
-                duration_ms,
-            )
-            return False, f"Management interface timeout on {host}:{port}"
-        except OSError as exc:
-            duration_ms = int((time.monotonic() - started_at) * 1000)
-            logger.warning(
-                "OpenVPN management command os_error command=%s target=%s:%s duration_ms=%s error=%s",
-                command,
-                host,
-                port,
-                duration_ms,
-                exc,
-            )
-            return False, f"Management interface unavailable on {host}:{port}: {exc}"
+            except asyncio.TimeoutError:
+                duration_ms = int((time.monotonic() - started_at) * 1000)
+                logger.warning(
+                    "OpenVPN management command timeout command=%s target=%s:%s duration_ms=%s",
+                    command,
+                    host,
+                    port,
+                    duration_ms,
+                )
+                return False, f"Management interface timeout on {host}:{port}"
+            except OSError as exc:
+                duration_ms = int((time.monotonic() - started_at) * 1000)
+                logger.warning(
+                    "OpenVPN management command os_error command=%s target=%s:%s duration_ms=%s error=%s",
+                    command,
+                    host,
+                    port,
+                    duration_ms,
+                    exc,
+                )
+                return False, f"Management interface unavailable on {host}:{port}: {exc}"
+            finally:
+                if writer is not None:
+                    writer.close()
+                    try:
+                        await asyncio.wait_for(writer.wait_closed(), timeout=1.0)
+                    except Exception:
+                        pass
+
+        def _run_in_thread() -> Tuple[bool, str]:
+            result: Dict[str, Tuple[bool, str]] = {}
+            error: Dict[str, Exception] = {}
+
+            def _thread_runner() -> None:
+                try:
+                    result["value"] = asyncio.run(_send_with_asyncio())
+                except Exception as exc:  # pragma: no cover - defensive thread boundary
+                    error["value"] = exc
+
+            worker = threading.Thread(target=_thread_runner, daemon=True, name="atlas-openvpn-mgmt")
+            worker.start()
+            worker.join(timeout + 1.5)
+            if worker.is_alive():
+                logger.warning(
+                    "OpenVPN management command thread_timeout command=%s target=%s:%s timeout=%.2fs",
+                    command,
+                    host,
+                    port,
+                    timeout,
+                )
+                return False, f"Management interface timeout on {host}:{port}"
+            if "value" in error:
+                logger.warning(
+                    "OpenVPN management command thread_error command=%s target=%s:%s error=%s",
+                    command,
+                    host,
+                    port,
+                    error["value"],
+                )
+                return False, f"Management interface unavailable on {host}:{port}: {error['value']}"
+            return result.get("value", (False, f"Management interface timeout on {host}:{port}"))
+
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+
+        if running_loop and running_loop.is_running():
+            return _run_in_thread()
+        return asyncio.run(_send_with_asyncio())
 
     def get_active_sessions(self) -> List[Dict[str, Any]]:
         """Return active OpenVPN sessions from management interface (status 3)."""
+        def _split_status_fields(line: str) -> List[str]:
+            return [segment.strip() for segment in re.split(r"[\t,]", line)]
+
+        def _is_header_client_list(parts: List[str]) -> bool:
+            return len(parts) >= 2 and parts[0] == "HEADER" and parts[1] == "CLIENT_LIST"
+
+        def _is_client_list(parts: List[str]) -> bool:
+            return len(parts) >= 1 and parts[0] == "CLIENT_LIST"
+
         def _normalize_header_name(value: str) -> str:
             return "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value or "").strip()).strip("_")
 
@@ -387,26 +434,26 @@ class OpenVPNManager(BaseVPNService):
             sessions: List[Dict[str, Any]] = []
             status_path = self.config.STATUS_LOG
             if not status_path.exists():
-                logger.debug("OpenVPN status log fallback path missing status_path=%s", status_path)
+                logger.info("OpenVPN status log fallback path missing status_path=%s", status_path)
                 return sessions
 
             try:
-                logger.debug("OpenVPN status log fallback parse start status_path=%s", status_path)
+                logger.info("OpenVPN status log fallback parse start status_path=%s", status_path)
                 client_header_map: Dict[str, int] = {}
                 for raw_line in status_path.read_text(errors="ignore").splitlines():
                     line = raw_line.strip()
-                    if line.startswith("HEADER,CLIENT_LIST,"):
-                        header_columns = [segment.strip() for segment in line.split(",")][2:]
+                    parts = _split_status_fields(line)
+                    if _is_header_client_list(parts):
+                        header_columns = parts[2:]
                         client_header_map = {
                             _normalize_header_name(name): index + 1
                             for index, name in enumerate(header_columns)
                         }
                         continue
 
-                    if not line.startswith("CLIENT_LIST,"):
+                    if not _is_client_list(parts):
                         continue
 
-                    parts = [segment.strip() for segment in line.split(",")]
                     if len(parts) < 6:
                         continue
 
@@ -431,7 +478,7 @@ class OpenVPNManager(BaseVPNService):
             except Exception as exc:
                 logger.warning("Failed to parse OpenVPN status log sessions: %s", exc)
 
-            logger.debug(
+            logger.info(
                 "OpenVPN status log fallback parse done status_path=%s sessions=%s",
                 status_path,
                 len(sessions),
@@ -442,25 +489,25 @@ class OpenVPNManager(BaseVPNService):
         success, response = self._send_management_command("status 3")
         if not success:
             logger.warning("OpenVPN management status query failed: %s", response)
-            logger.debug("OpenVPN active sessions source=status_log reason=management_query_failed")
+            logger.info("OpenVPN active sessions source=status_log reason=management_query_failed")
             return _parse_status_log_sessions()
 
         sessions: List[Dict[str, Any]] = []
         client_header_map: Dict[str, int] = {}
         for raw_line in response.splitlines():
             line = raw_line.strip()
-            if line.startswith("HEADER,CLIENT_LIST,"):
-                header_columns = [segment.strip() for segment in line.split(",")][2:]
+            parts = _split_status_fields(line)
+            if _is_header_client_list(parts):
+                header_columns = parts[2:]
                 client_header_map = {
                     _normalize_header_name(name): index + 1
                     for index, name in enumerate(header_columns)
                 }
                 continue
 
-            if not line.startswith("CLIENT_LIST,"):
+            if not _is_client_list(parts):
                 continue
 
-            parts = [segment.strip() for segment in line.split(",")]
             if len(parts) < 6:
                 continue
 
@@ -484,13 +531,13 @@ class OpenVPNManager(BaseVPNService):
             )
 
         if sessions:
-            logger.debug(
+            logger.info(
                 "OpenVPN active sessions source=management status_format=status_3 sessions=%s",
                 len(sessions),
             )
             return sessions
 
-        logger.debug("OpenVPN active sessions source=status_log reason=management_empty_or_unparsed")
+        logger.info("OpenVPN active sessions source=status_log reason=management_empty_or_unparsed")
         return _parse_status_log_sessions()
 
     def kill_user(self, username: str) -> Dict[str, Any]:
