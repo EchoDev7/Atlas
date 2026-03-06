@@ -141,11 +141,11 @@ def _build_content_security_policy() -> str:
         "frame-ancestors": "'none'",
         "object-src": "'none'",
         "form-action": "'self'",
-        "img-src": "'self' data:",
-        "font-src": "'self' https://fonts.gstatic.com data:",
-        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "script-src": "'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net",
-        "connect-src": "'self' ws: wss:",
+        "img-src": "'self' data: blob: https:",
+        "font-src": "'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://*.cloudflare.com",
+        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://*.cloudflare.com",
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://*.cloudflare.com",
+        "connect-src": "'self' ws: wss: https:",
     }
     return "; ".join(f"{key} {value}" for key, value in directives.items())
 
@@ -195,9 +195,7 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    # Hotfix: temporarily disable CSP header because current frontend relies on
-    # inline/CDN resources that are blocked by strict policies.
-    # response.headers["Content-Security-Policy"] = _build_content_security_policy()
+    response.headers["Content-Security-Policy"] = _build_content_security_policy()
 
     forwarded_proto = (request.headers.get("x-forwarded-proto") or "").lower()
     request_scheme = (forwarded_proto or request.url.scheme).lower()
