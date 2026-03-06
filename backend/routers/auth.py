@@ -3,7 +3,13 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from backend.database import get_db
 from backend.models.user import Admin
-from backend.schemas.user import LoginRequest, Token, AdminResponse
+from backend.schemas.user import (
+    LoginRequest,
+    Token,
+    AdminResponse,
+    AdminPasswordChangeRequest,
+    AdminPasswordChangeResponse,
+)
 from backend.services.auth_service import verify_password, create_access_token, get_password_hash
 from backend.dependencies import get_current_user
 from backend.config import settings
@@ -56,3 +62,30 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 @router.get("/me", response_model=AdminResponse)
 def get_current_admin(current_user: Admin = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/change-password", response_model=AdminPasswordChangeResponse)
+def change_admin_password(
+    payload: AdminPasswordChangeRequest,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    if payload.current_password == payload.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password",
+        )
+
+    current_user.hashed_password = get_password_hash(payload.new_password)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Admin password updated successfully",
+    }

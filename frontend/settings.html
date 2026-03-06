@@ -248,6 +248,48 @@
                             </span>
                             <textarea x-model="generalForm.admin_allowed_ips" rows="4" placeholder="0.0.0.0/0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
                         </label>
+
+                        <div class="rounded-xl border p-4 space-y-3" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                            <div>
+                                <h3 class="text-sm font-bold theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-900'">Change Admin Password</h3>
+                                <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Update your admin password using your current credentials.</p>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Current Password</span>
+                                    <input
+                                        type="password"
+                                        x-model="adminPasswordForm.current_password"
+                                        autocomplete="current-password"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">New Password</span>
+                                    <input
+                                        type="password"
+                                        x-model="adminPasswordForm.new_password"
+                                        autocomplete="new-password"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                </label>
+                            </div>
+
+                            <div class="flex justify-end">
+                                <button
+                                    type="button"
+                                    @click="changeAdminPassword()"
+                                    :disabled="changingAdminPassword || loading || saving"
+                                    class="px-4 py-2 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-amber-500 hover:bg-amber-400' : 'bg-amber-600 hover:bg-amber-700'"
+                                >
+                                    <span x-text="changingAdminPassword ? 'Updating...' : 'Update Password'"></span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <div x-show="activeGeneralSection === 'domain_ssl'" class="space-y-4">
@@ -1053,6 +1095,11 @@
                     system_timezone: 'UTC',
                     ntp_server: 'pool.ntp.org',
                 },
+                adminPasswordForm: {
+                    current_password: '',
+                    new_password: '',
+                },
+                changingAdminPassword: false,
                 serverIps: {
                     public_ipv4: 'Loading...',
                     public_ipv6: 'Loading...',
@@ -1525,6 +1572,66 @@
                         this.showToast(error.message || 'Failed to save settings', 'error');
                     } finally {
                         this.saving = false;
+                    }
+                },
+
+                async changeAdminPassword() {
+                    const currentPassword = (this.adminPasswordForm.current_password || '').trim();
+                    const newPassword = (this.adminPasswordForm.new_password || '').trim();
+
+                    if (!currentPassword || !newPassword) {
+                        this.showToast('Both current and new password are required', 'error');
+                        return;
+                    }
+
+                    if (newPassword.length < 8) {
+                        this.showToast('New password must be at least 8 characters', 'error');
+                        return;
+                    }
+
+                    this.changingAdminPassword = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/auth/change-password', {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                current_password: currentPassword,
+                                new_password: newPassword,
+                            }),
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Failed to update admin password';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                } else if (Array.isArray(error.detail) && error.detail.length > 0) {
+                                    message = error.detail.map(item => `${item.loc.join('.')}: ${item.msg}`).join(', ');
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        this.adminPasswordForm.current_password = '';
+                        this.adminPasswordForm.new_password = '';
+                        this.showToast('Admin password updated successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to update admin password', 'error');
+                    } finally {
+                        this.changingAdminPassword = false;
                     }
                 },
 
