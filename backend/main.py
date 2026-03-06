@@ -195,7 +195,9 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    response.headers["Content-Security-Policy"] = _build_content_security_policy()
+    # Hotfix: temporarily disable CSP header because current frontend relies on
+    # inline/CDN resources that are blocked by strict policies.
+    # response.headers["Content-Security-Policy"] = _build_content_security_policy()
 
     forwarded_proto = (request.headers.get("x-forwarded-proto") or "").lower()
     request_scheme = (forwarded_proto or request.url.scheme).lower()
