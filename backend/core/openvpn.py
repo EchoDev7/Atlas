@@ -247,33 +247,49 @@ class OpenVPNManager(BaseVPNService):
         if not command:
             return False, "Missing management command"
 
+        started_at = time.monotonic()
+        logger.debug(
+            "OpenVPN management command start command=%s target=%s:%s timeout=%.2fs",
+            command,
+            host,
+            port,
+            timeout,
+        )
+
         try:
             with socket.create_connection((host, port), timeout=timeout) as sock:
                 sock.settimeout(timeout)
 
                 # Read greeting/banner if present.
                 greeting_chunks: List[str] = []
+                greeting_termination = "loop_exhausted"
                 for _ in range(2):
                     try:
                         chunk = sock.recv(4096)
                     except socket.timeout:
+                        greeting_termination = "socket_timeout"
                         break
                     if not chunk:
+                        greeting_termination = "socket_closed"
                         break
                     greeting_chunks.append(chunk.decode(errors="ignore"))
                     if ">" in greeting_chunks[-1] or "END" in greeting_chunks[-1]:
+                        greeting_termination = "prompt_or_end"
                         break
 
                 sock.sendall(f"{command}\n".encode())
 
                 response_chunks: List[str] = []
+                response_termination = "loop_exhausted"
                 while True:
                     try:
                         data = sock.recv(8192)
                     except socket.timeout:
+                        response_termination = "socket_timeout"
                         break
 
                     if not data:
+                        response_termination = "socket_closed"
                         break
 
                     text = data.decode(errors="ignore")
@@ -286,13 +302,50 @@ class OpenVPNManager(BaseVPNService):
                         or "ERROR:" in merged
                         or "OpenVPN Version" in merged
                     ):
+                        response_termination = "completion_marker"
                         break
 
-                return True, "".join(response_chunks).strip()
+                response_text = "".join(response_chunks).strip()
+                duration_ms = int((time.monotonic() - started_at) * 1000)
+                logger.debug(
+                    (
+                        "OpenVPN management command done command=%s target=%s:%s duration_ms=%s "
+                        "greeting_chunks=%s greeting_termination=%s response_chunks=%s "
+                        "response_termination=%s response_len=%s"
+                    ),
+                    command,
+                    host,
+                    port,
+                    duration_ms,
+                    len(greeting_chunks),
+                    greeting_termination,
+                    len(response_chunks),
+                    response_termination,
+                    len(response_text),
+                )
+
+                return True, response_text
 
         except (socket.timeout, TimeoutError):
+            duration_ms = int((time.monotonic() - started_at) * 1000)
+            logger.warning(
+                "OpenVPN management command timeout command=%s target=%s:%s duration_ms=%s",
+                command,
+                host,
+                port,
+                duration_ms,
+            )
             return False, f"Management interface timeout on {host}:{port}"
         except OSError as exc:
+            duration_ms = int((time.monotonic() - started_at) * 1000)
+            logger.warning(
+                "OpenVPN management command os_error command=%s target=%s:%s duration_ms=%s error=%s",
+                command,
+                host,
+                port,
+                duration_ms,
+                exc,
+            )
             return False, f"Management interface unavailable on {host}:{port}: {exc}"
 
     def get_active_sessions(self) -> List[Dict[str, Any]]:
@@ -334,9 +387,11 @@ class OpenVPNManager(BaseVPNService):
             sessions: List[Dict[str, Any]] = []
             status_path = self.config.STATUS_LOG
             if not status_path.exists():
+                logger.debug("OpenVPN status log fallback path missing status_path=%s", status_path)
                 return sessions
 
             try:
+                logger.debug("OpenVPN status log fallback parse start status_path=%s", status_path)
                 client_header_map: Dict[str, int] = {}
                 for raw_line in status_path.read_text(errors="ignore").splitlines():
                     line = raw_line.strip()
@@ -376,11 +431,18 @@ class OpenVPNManager(BaseVPNService):
             except Exception as exc:
                 logger.warning("Failed to parse OpenVPN status log sessions: %s", exc)
 
+            logger.debug(
+                "OpenVPN status log fallback parse done status_path=%s sessions=%s",
+                status_path,
+                len(sessions),
+            )
+
             return sessions
 
         success, response = self._send_management_command("status 3")
         if not success:
             logger.warning("OpenVPN management status query failed: %s", response)
+            logger.debug("OpenVPN active sessions source=status_log reason=management_query_failed")
             return _parse_status_log_sessions()
 
         sessions: List[Dict[str, Any]] = []
@@ -422,8 +484,13 @@ class OpenVPNManager(BaseVPNService):
             )
 
         if sessions:
+            logger.debug(
+                "OpenVPN active sessions source=management status_format=status_3 sessions=%s",
+                len(sessions),
+            )
             return sessions
 
+        logger.debug("OpenVPN active sessions source=status_log reason=management_empty_or_unparsed")
         return _parse_status_log_sessions()
 
     def kill_user(self, username: str) -> Dict[str, Any]:
