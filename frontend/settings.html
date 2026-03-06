@@ -489,9 +489,93 @@
                             </label>
                         </div>
                     </div>
+
+                    <div x-show="activeGeneralSection === 'audit_logs'" class="space-y-4">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Audit Logs</h2>
+                                <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Sensitive admin events (latest first)</p>
+                            </div>
+                            <button
+                                type="button"
+                                @click="loadAuditLogs(auditLogsPage)"
+                                :disabled="auditLogsLoading"
+                                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30' : 'bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100'"
+                            >
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                                <span x-text="auditLogsLoading ? 'Refreshing...' : 'Refresh Logs'"></span>
+                            </button>
+                        </div>
+
+                        <div class="rounded-2xl border overflow-hidden" :class="darkMode ? 'border-slate-700 bg-slate-900/20' : 'border-slate-300 bg-white'">
+                            <div x-show="auditLogsLoading" class="py-10 flex justify-center">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2" :class="darkMode ? 'border-cyan-400' : 'border-cyan-600'"></div>
+                            </div>
+
+                            <div x-show="!auditLogsLoading" class="overflow-x-auto">
+                                <table class="w-full min-w-[760px]">
+                                    <thead>
+                                        <tr class="border-b" :class="darkMode ? 'border-slate-700 bg-slate-900/40' : 'border-slate-200 bg-slate-50'">
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Date/Time</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">IP Address</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Action</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Target</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y" :class="darkMode ? 'divide-slate-700/60' : 'divide-slate-200'">
+                                        <template x-if="auditLogs.length === 0">
+                                            <tr>
+                                                <td colspan="5" class="px-4 py-8 text-center text-sm" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">No audit logs found.</td>
+                                            </tr>
+                                        </template>
+                                        <template x-for="item in auditLogs" :key="item.id">
+                                            <tr class="transition" :class="darkMode ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'">
+                                                <td class="px-4 py-3 text-sm" :class="darkMode ? 'text-slate-200' : 'text-slate-800'" x-text="formatAuditTimestamp(item.created_at)"></td>
+                                                <td class="px-4 py-3 text-sm font-mono" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'" x-text="item.ip_address || 'N/A'"></td>
+                                                <td class="px-4 py-3 text-sm" :class="darkMode ? 'text-slate-200' : 'text-slate-800'" x-text="item.action"></td>
+                                                <td class="px-4 py-3 text-sm" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="auditTargetLabel(item)"></td>
+                                                <td class="px-4 py-3 text-sm">
+                                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold"
+                                                          :class="item.success ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'"
+                                                          x-text="item.success ? 'Success' : 'Failed'"></span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="border-t px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                                 :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
+                                <p class="text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    <span x-text="auditLogsTotal"></span> total logs • page <span x-text="auditLogsPage"></span> of <span x-text="auditLogsTotalPages"></span>
+                                </p>
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        @click="loadAuditLogs(auditLogsPage - 1)"
+                                        :disabled="auditLogsLoading || auditLogsPage <= 1"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'"
+                                    >Prev</button>
+                                    <button
+                                        type="button"
+                                        @click="loadAuditLogs(auditLogsPage + 1)"
+                                        :disabled="auditLogsLoading || auditLogsPage >= auditLogsTotalPages"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'"
+                                    >Next</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="mt-8 sticky bottom-0 pt-4 flex justify-end border-t backdrop-blur-sm"
+                <div x-show="activeGeneralSection !== 'audit_logs'" class="mt-8 sticky bottom-0 pt-4 flex justify-end border-t backdrop-blur-sm"
                      :class="darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white/80'">
                     <button @click="saveChanges()" :disabled="saving || loading"
                             class="px-6 py-3 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1039,6 +1123,7 @@
                     { key: 'security', label: 'Security' },
                     { key: 'domain_ssl', label: 'Domain & SSL' },
                     { key: 'system', label: 'System' },
+                    { key: 'audit_logs', label: 'Audit Logs' },
                 ],
                 sectionTabs: [
                     { key: 'network', label: 'Network & Core' },
@@ -1139,6 +1224,11 @@
                 sslIssuing: false,
                 terminalModalOpen: false,
                 terminalLogs: [],
+                auditLogs: [],
+                auditLogsLoading: false,
+                auditLogsPage: 1,
+                auditLogsPageSize: 25,
+                auditLogsTotal: 0,
                 toast: {
                     visible: false,
                     message: '',
@@ -1163,6 +1253,79 @@
                         this.form.explicit_exit_notify = 0;
                     } else {
                         this.form.tcp_nodelay = false;
+                    }
+                },
+
+                formatAuditTimestamp(value) {
+                    if (!value) {
+                        return 'N/A';
+                    }
+                    const date = new Date(value);
+                    if (Number.isNaN(date.getTime())) {
+                        return String(value);
+                    }
+                    return date.toLocaleString();
+                },
+
+                auditTargetLabel(item) {
+                    const resourceType = (item.resource_type || '').trim();
+                    const resourceId = (item.resource_id || '').trim();
+                    if (resourceType && resourceId) {
+                        return `${resourceType}:${resourceId}`;
+                    }
+                    if (resourceType) {
+                        return resourceType;
+                    }
+                    if (resourceId) {
+                        return resourceId;
+                    }
+                    return '—';
+                },
+
+                get auditLogsTotalPages() {
+                    return Math.max(1, Math.ceil(Number(this.auditLogsTotal || 0) / Number(this.auditLogsPageSize || 25)));
+                },
+
+                async loadAuditLogs(page = 1) {
+                    this.auditLogsLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const safePage = Math.max(1, Number(page) || 1);
+                        const safePageSize = Math.max(1, Number(this.auditLogsPageSize) || 25);
+                        const response = await fetch(`/api/logs/audit?page=${safePage}&page_size=${safePageSize}`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Failed to load audit logs';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const data = await response.json();
+                        this.auditLogs = Array.isArray(data.logs) ? data.logs : [];
+                        this.auditLogsTotal = Number(data.total) || 0;
+                        this.auditLogsPage = Number(data.page) || safePage;
+                        this.auditLogsPageSize = Number(data.page_size) || safePageSize;
+                    } catch (error) {
+                        this.auditLogs = [];
+                        this.auditLogsTotal = 0;
+                        this.showToast(error.message || 'Failed to load audit logs', 'error');
+                    } finally {
+                        this.auditLogsLoading = false;
                     }
                 },
 
@@ -1256,6 +1419,11 @@
                     this.$watch('activeGeneralSection', async (section) => {
                         if (section === 'network') {
                             await this.loadServerIps();
+                            return;
+                        }
+                        if (section === 'audit_logs') {
+                            this.auditLogsPage = 1;
+                            await this.loadAuditLogs(1);
                         }
                     });
 
@@ -1464,6 +1632,10 @@
 
                 async saveChanges() {
                     if (this.activeProtocolTab === 'general') {
+                        if (this.activeGeneralSection === 'audit_logs') {
+                            this.showToast('Audit Logs are read-only', 'success');
+                            return;
+                        }
                         await this.saveGeneralSettings();
                         return;
                     }

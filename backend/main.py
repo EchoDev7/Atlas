@@ -12,7 +12,7 @@ from backend.config import settings
 from backend.database import SessionLocal, init_db
 from backend.models.user import Admin
 from backend.models.general_settings import GeneralSettings
-from backend.routers import auth, openvpn, settings as server_settings, vpn_users
+from backend.routers import auth, openvpn, settings as server_settings, vpn_users, audit_logs
 from backend.services.scheduler_service import get_scheduler
 
 
@@ -134,22 +134,6 @@ def _build_allowed_cors_origins() -> list[str]:
     return sorted(origins)
 
 
-def _build_content_security_policy() -> str:
-    directives = {
-        "default-src": "'self'",
-        "base-uri": "'self'",
-        "frame-ancestors": "'none'",
-        "object-src": "'none'",
-        "form-action": "'self'",
-        "img-src": "'self' data: blob: https:",
-        "font-src": "'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://*.cloudflare.com",
-        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://*.cloudflare.com",
-        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://*.cloudflare.com",
-        "connect-src": "'self' ws: wss: https:",
-    }
-    return "; ".join(f"{key} {value}" for key, value in directives.items())
-
-
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
@@ -195,7 +179,6 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    response.headers["Content-Security-Policy"] = _build_content_security_policy()
 
     forwarded_proto = (request.headers.get("x-forwarded-proto") or "").lower()
     request_scheme = (forwarded_proto or request.url.scheme).lower()
@@ -209,6 +192,7 @@ app.include_router(auth.router, prefix=settings.API_PREFIX)
 app.include_router(openvpn.router, prefix=settings.API_PREFIX)
 app.include_router(vpn_users.router, prefix=settings.API_PREFIX)
 app.include_router(server_settings.router, prefix=settings.API_PREFIX)
+app.include_router(audit_logs.router, prefix=settings.API_PREFIX)
 
 frontend_path = Path(__file__).parent.parent / "frontend"
 app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
