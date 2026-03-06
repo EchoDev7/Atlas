@@ -1,3 +1,5 @@
+from typing import Literal, Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -15,6 +17,9 @@ router = APIRouter(prefix="/logs", tags=["Audit Logs"])
 def list_audit_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
+    status: Literal["all", "success", "failed"] = Query("all"),
+    action: Optional[str] = Query(None, max_length=128),
+    ip_address: Optional[str] = Query(None, max_length=64),
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -22,6 +27,20 @@ def list_audit_logs(
     offset = (page - 1) * page_size
 
     query = db.query(AuditLog)
+
+    if status == "success":
+        query = query.filter(AuditLog.success.is_(True))
+    elif status == "failed":
+        query = query.filter(AuditLog.success.is_(False))
+
+    normalized_action = (action or "").strip()
+    if normalized_action:
+        query = query.filter(AuditLog.action.ilike(f"%{normalized_action}%"))
+
+    normalized_ip = (ip_address or "").strip()
+    if normalized_ip:
+        query = query.filter(AuditLog.ip_address.ilike(f"%{normalized_ip}%"))
+
     total = query.count()
     records = (
         query.order_by(desc(AuditLog.created_at), desc(AuditLog.id))

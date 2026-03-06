@@ -496,18 +496,86 @@
                                 <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Audit Logs</h2>
                                 <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Sensitive admin events (latest first)</p>
                             </div>
-                            <button
-                                type="button"
-                                @click="loadAuditLogs(auditLogsPage)"
-                                :disabled="auditLogsLoading"
-                                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30' : 'bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100'"
-                            >
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                                </svg>
-                                <span x-text="auditLogsLoading ? 'Refreshing...' : 'Refresh Logs'"></span>
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    <span class="mr-1">Rows</span>
+                                    <select
+                                        x-model.number="auditLogsPageSize"
+                                        @change="applyAuditLogFilters()"
+                                        class="rounded-lg border px-2 py-1 text-xs theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                        <option :value="10">10</option>
+                                        <option :value="25">25</option>
+                                        <option :value="50">50</option>
+                                        <option :value="100">100</option>
+                                    </select>
+                                </label>
+                                <button
+                                    type="button"
+                                    @click="loadAuditLogs(auditLogsPage)"
+                                    :disabled="auditLogsLoading"
+                                    class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30' : 'bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100'"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                    </svg>
+                                    <span x-text="auditLogsLoading ? 'Refreshing...' : 'Refresh Logs'"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 rounded-xl border p-3"
+                             :class="darkMode ? 'border-slate-700 bg-slate-900/20' : 'border-slate-300 bg-slate-50'">
+                            <label class="block">
+                                <span class="text-xs font-semibold uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Status</span>
+                                <select
+                                    x-model="auditLogsFilters.status"
+                                    class="mt-1 w-full rounded-lg border px-3 py-2 text-sm theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                >
+                                    <option value="all">All</option>
+                                    <option value="success">Success</option>
+                                    <option value="failed">Failed</option>
+                                </select>
+                            </label>
+                            <label class="block">
+                                <span class="text-xs font-semibold uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Action</span>
+                                <input
+                                    type="text"
+                                    x-model="auditLogsFilters.action"
+                                    placeholder="login, settings, user..."
+                                    class="mt-1 w-full rounded-lg border px-3 py-2 text-sm theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                >
+                            </label>
+                            <label class="block">
+                                <span class="text-xs font-semibold uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">IP Address</span>
+                                <input
+                                    type="text"
+                                    x-model="auditLogsFilters.ip_address"
+                                    placeholder="192.168.1.10"
+                                    class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                >
+                            </label>
+                            <div class="flex items-end gap-2">
+                                <button
+                                    type="button"
+                                    @click="applyAuditLogFilters()"
+                                    :disabled="auditLogsLoading"
+                                    class="w-full px-3 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'"
+                                >Apply</button>
+                                <button
+                                    type="button"
+                                    @click="resetAuditLogFilters()"
+                                    :disabled="auditLogsLoading"
+                                    class="w-full px-3 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'"
+                                >Reset</button>
+                            </div>
                         </div>
 
                         <div class="rounded-2xl border overflow-hidden" :class="darkMode ? 'border-slate-700 bg-slate-900/20' : 'border-slate-300 bg-white'">
@@ -1229,6 +1297,11 @@
                 auditLogsPage: 1,
                 auditLogsPageSize: 25,
                 auditLogsTotal: 0,
+                auditLogsFilters: {
+                    status: 'all',
+                    action: '',
+                    ip_address: '',
+                },
                 toast: {
                     visible: false,
                     message: '',
@@ -1292,7 +1365,21 @@
                         const token = localStorage.getItem('access_token');
                         const safePage = Math.max(1, Number(page) || 1);
                         const safePageSize = Math.max(1, Number(this.auditLogsPageSize) || 25);
-                        const response = await fetch(`/api/logs/audit?page=${safePage}&page_size=${safePageSize}`, {
+                        const params = new URLSearchParams({
+                            page: String(safePage),
+                            page_size: String(safePageSize),
+                            status: this.auditLogsFilters.status || 'all',
+                        });
+                        const actionFilter = (this.auditLogsFilters.action || '').trim();
+                        const ipFilter = (this.auditLogsFilters.ip_address || '').trim();
+                        if (actionFilter) {
+                            params.set('action', actionFilter);
+                        }
+                        if (ipFilter) {
+                            params.set('ip_address', ipFilter);
+                        }
+
+                        const response = await fetch(`/api/logs/audit?${params.toString()}`, {
                             headers: { Authorization: `Bearer ${token}` }
                         });
 
@@ -1327,6 +1414,21 @@
                     } finally {
                         this.auditLogsLoading = false;
                     }
+                },
+
+                async applyAuditLogFilters() {
+                    this.auditLogsPage = 1;
+                    await this.loadAuditLogs(1);
+                },
+
+                async resetAuditLogFilters() {
+                    this.auditLogsFilters = {
+                        status: 'all',
+                        action: '',
+                        ip_address: '',
+                    };
+                    this.auditLogsPage = 1;
+                    await this.loadAuditLogs(1);
                 },
 
                 initTheme() {
