@@ -4,9 +4,10 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Optional
 import logging
+import re
 
 from backend.database import SessionLocal
 from backend.models.vpn_user import VPNUser, VPNConfig
@@ -27,6 +28,8 @@ class LimitEnforcementScheduler:
         self.is_running = False
         self.openvpn_manager = OpenVPNManager()
         self._runtime_usage_cache: Dict[str, Dict[str, int]] = {}
+        self._kill_cooldown_until: Dict[str, datetime] = {}
+        self._kill_cooldown_seconds = 45
     
     def start(self):
         """Start the background scheduler"""
@@ -57,7 +60,7 @@ class LimitEnforcementScheduler:
         # Enforce traffic caps during active sessions by disconnecting over-quota users.
         self.scheduler.add_job(
             self.enforce_live_traffic_quotas,
-            trigger=IntervalTrigger(minutes=1),
+            trigger=IntervalTrigger(seconds=15),
             id='enforce_live_traffic_quotas',
             name='Disconnect over-quota active OpenVPN users',
             replace_existing=True
@@ -87,6 +90,15 @@ class LimitEnforcementScheduler:
         """
         Parse OpenVPN status-version 2 file and return runtime stats per common name.
         """
+        def _split_status_fields(line: str):
+            return [segment.strip() for segment in re.split(r"[\t,]", line)]
+
+        def _is_header_client_list(parts):
+            return len(parts) >= 2 and parts[0] == "HEADER" and parts[1] == "CLIENT_LIST"
+
+        def _is_client_list(parts):
+            return len(parts) >= 1 and parts[0] == "CLIENT_LIST"
+
         def _normalize_header_name(value: str) -> str:
             return "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value or "").strip()).strip("_")
 
@@ -117,18 +129,18 @@ class LimitEnforcementScheduler:
             client_header_map: Dict[str, int] = {}
             for raw_line in status_path.read_text(errors="ignore").splitlines():
                 line = raw_line.strip()
-                if line.startswith("HEADER,CLIENT_LIST,"):
-                    header_columns = [segment.strip() for segment in line.split(",")][2:]
+                parts = _split_status_fields(line)
+                if _is_header_client_list(parts):
+                    header_columns = parts[2:]
                     client_header_map = {
                         _normalize_header_name(name): index + 1
                         for index, name in enumerate(header_columns)
                     }
                     continue
 
-                if not line or not line.startswith("CLIENT_LIST,"):
+                if not _is_client_list(parts):
                     continue
 
-                parts = [segment.strip() for segment in line.split(",")]
                 if len(parts) < 2:
                     continue
 
@@ -342,7 +354,7 @@ class LimitEnforcementScheduler:
 
     async def enforce_live_traffic_quotas(self):
         """
-        Disconnect active sessions that exceed traffic quota using live runtime counters.
+        Disconnect active sessions that exceed traffic quota OR expiry using live runtime counters.
 
         This protects quota enforcement during an ongoing session (before disconnect hooks run).
         """
@@ -358,7 +370,11 @@ class LimitEnforcementScheduler:
                 .all()
             )
 
+            checked_online = 0
+            violations_detected = 0
+            skipped_cooldown = 0
             disconnected = 0
+            kill_failed = 0
             now = datetime.utcnow()
 
             for user in users:
@@ -367,47 +383,98 @@ class LimitEnforcementScheduler:
                 if live_connections <= 0:
                     continue
 
-                limit_bytes = self._effective_limit_bytes(user)
-                if limit_bytes in {None, 0}:
+                checked_online += 1
+                user.refresh_limit_flags(now)
+
+                if now < self._kill_cooldown_until.get(user.username, datetime.min):
+                    skipped_cooldown += 1
                     continue
 
-                live_sent = max(0, int(stats.get("bytes_sent") or 0))
-                live_received = max(0, int(stats.get("bytes_received") or 0))
-                db_sent = max(0, int(user.total_bytes_sent or 0))
-                db_received = max(0, int(user.total_bytes_received or 0))
-                effective_usage = max(
-                    max(0, int(user.traffic_used_bytes or 0)),
-                    db_sent + db_received + live_sent + live_received,
-                )
+                violation_type: Optional[str] = None
+                violation_details: Dict[str, int] = {}
 
-                if effective_usage < limit_bytes:
+                if user.is_expired:
+                    violation_type = "expiry"
+                else:
+                    limit_bytes = self._effective_limit_bytes(user)
+                    if limit_bytes not in {None, 0}:
+                        live_sent = max(0, int(stats.get("bytes_sent") or 0))
+                        live_received = max(0, int(stats.get("bytes_received") or 0))
+                        db_sent = max(0, int(user.total_bytes_sent or 0))
+                        db_received = max(0, int(user.total_bytes_received or 0))
+                        effective_usage = max(
+                            max(0, int(user.traffic_used_bytes or 0)),
+                            db_sent + db_received + live_sent + live_received,
+                        )
+
+                        if effective_usage >= limit_bytes:
+                            violation_type = "quota"
+                            violation_details = {
+                                "effective_usage": effective_usage,
+                                "limit_bytes": int(limit_bytes),
+                            }
+
+                if not violation_type:
                     continue
+
+                violations_detected += 1
+                self._kill_cooldown_until[user.username] = now + timedelta(seconds=self._kill_cooldown_seconds)
+
+                if violation_type == "quota":
+                    effective_usage = int(violation_details.get("effective_usage") or 0)
+                    user.traffic_used_bytes = max(
+                        max(0, int(user.traffic_used_bytes or 0)),
+                        effective_usage,
+                    )
+                    user.is_data_limit_exceeded = True
+                    used_gb = user.traffic_used_bytes / float(BYTES_PER_GB)
+                    limit_gb = int(violation_details.get("limit_bytes") or 0) / float(BYTES_PER_GB)
+                    user.disabled_reason = (
+                        f"Automatic: Data limit exceeded ({used_gb:.2f} GB / {limit_gb:.2f} GB)"
+                    )
+                else:
+                    expiry_point = user.effective_access_expires_at
+                    expiry_label = expiry_point.strftime("%Y-%m-%d %H:%M:%S") if expiry_point else "unknown"
+                    user.disabled_reason = f"Automatic: Account expired at {expiry_label}"
+
+                user.is_enabled = False
+                if not user.disabled_at:
+                    user.disabled_at = now
+                user.updated_at = now
+                user.refresh_limit_flags(now)
+
+                db.commit()
+                self._sync_openvpn_auth_db_snapshot()
 
                 kill_result = self.openvpn_manager.kill_user(user.username)
                 if not kill_result.get("success"):
+                    kill_failed += 1
                     logger.warning(
-                        "Failed to disconnect over-quota user %s: %s",
+                        "Failed to disconnect violation user %s type=%s: %s",
                         user.username,
+                        violation_type,
                         kill_result.get("message"),
                     )
                     continue
 
-                user.is_data_limit_exceeded = True
-                user.updated_at = now
                 disconnected += 1
                 logger.warning(
-                    "Disconnected over-quota user %s (%s / %s bytes)",
+                    "Disconnected violation user %s type=%s",
                     user.username,
-                    effective_usage,
-                    limit_bytes,
+                    violation_type,
                 )
 
-            if disconnected:
-                db.commit()
-                self._sync_openvpn_auth_db_snapshot()
-                logger.info("Live quota enforcement disconnected users=%s", disconnected)
-            else:
-                db.rollback()
+            logger.warning(
+                (
+                    "Live enforcement summary checked_online=%s violations=%s disconnected=%s "
+                    "kill_failed=%s skipped_cooldown=%s"
+                ),
+                checked_online,
+                violations_detected,
+                disconnected,
+                kill_failed,
+                skipped_cooldown,
+            )
         except Exception as exc:
             logger.error("Live quota enforcement failed: %s", exc)
             db.rollback()
