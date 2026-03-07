@@ -26,6 +26,33 @@ openvpn_manager = OpenVPNManager()
 MAX_BACKUP_UPLOAD_BYTES = 512 * 1024 * 1024  # 512MB safety ceiling
 
 
+def _tls_key_candidates() -> tuple[Path, ...]:
+    return (
+        OpenVPNConfig.OPENVPN_SERVER_DIR / "ta.key",
+        OpenVPNConfig.OPENVPN_SERVER_DIR / "tc.key",
+    )
+
+
+def _apply_secure_permissions(path: Path, mode: int, warnings: list[str], context: str) -> None:
+    try:
+        os.chmod(path, mode)
+    except PermissionError:
+        warnings.append(f"Permission denied while setting secure permissions for {context}")
+
+
+def _harden_restored_private_materials(server_target: Path, warnings: list[str]) -> None:
+    private_dir = server_target / "pki" / "private"
+    if private_dir.exists() and private_dir.is_dir():
+        _apply_secure_permissions(private_dir, 0o700, warnings, "pki/private")
+        for private_file in private_dir.rglob("*"):
+            if private_file.is_file():
+                _apply_secure_permissions(private_file, 0o600, warnings, str(private_file.relative_to(server_target)))
+
+    for tls_key_path in _tls_key_candidates():
+        if tls_key_path.exists() and tls_key_path.is_file():
+            _apply_secure_permissions(tls_key_path, 0o600, warnings, tls_key_path.name)
+
+
 def _sqlite_database_path() -> Path:
     db_url = settings.DATABASE_URL.strip()
     if not db_url.startswith("sqlite:///"):
@@ -102,7 +129,7 @@ def _restore_openvpn_server_payload(source_root: Path, warnings: list[str]) -> b
         except PermissionError:
             warnings.append("Permission denied while restoring OpenVPN PKI directory")
 
-    for filename in ("server.conf", "ta.key", "crl.pem", "atlas_auth_user_pass.py", "atlas_enforcement_hook.py"):
+    for filename in ("server.conf", "ta.key", "tc.key", "crl.pem", "atlas_auth_user_pass.py", "atlas_enforcement_hook.py"):
         src = server_source / filename
         if not src.exists() or not src.is_file():
             continue
@@ -111,6 +138,8 @@ def _restore_openvpn_server_payload(source_root: Path, warnings: list[str]) -> b
             restored_any = True
         except PermissionError:
             warnings.append(f"Permission denied while restoring {filename}")
+
+    _harden_restored_private_materials(server_target, warnings)
 
     return restored_any
 
@@ -130,23 +159,34 @@ def download_full_backup(
     temp_dir = Path(tempfile.mkdtemp(prefix="atlas-backup-"))
     archive_path = temp_dir / backup_filename
 
+    pki_dir = OpenVPNConfig.PKI_DIR
+    private_dir = pki_dir / "private"
+    if not private_dir.exists() or not private_dir.is_dir():
+        raise HTTPException(status_code=500, detail="Critical PKI directory missing: pki/private")
+
+    tls_key_paths = [path for path in _tls_key_candidates() if path.exists() and path.is_file()]
+    if not tls_key_paths:
+        raise HTTPException(status_code=500, detail="Critical TLS key missing: expected ta.key or tc.key")
+
     try:
         with tarfile.open(archive_path, "w:gz") as archive:
             archive.add(db_path, arcname="atlas_backup/database/atlas.db")
 
-            pki_dir = OpenVPNConfig.PKI_DIR
             if pki_dir.exists() and pki_dir.is_dir():
                 archive.add(pki_dir, arcname="atlas_backup/openvpn/server/pki")
+            archive.add(private_dir, arcname="atlas_backup/openvpn/server/pki/private")
 
             for file_path, arcname in (
                 (OpenVPNConfig.SERVER_CONF, "atlas_backup/openvpn/server/server.conf"),
-                (OpenVPNConfig.TA_KEY, "atlas_backup/openvpn/server/ta.key"),
                 (OpenVPNConfig.CRL_FILE, "atlas_backup/openvpn/server/crl.pem"),
                 (OpenVPNConfig.AUTH_USER_PASS_SCRIPT, "atlas_backup/openvpn/server/atlas_auth_user_pass.py"),
                 (OpenVPNConfig.ENFORCEMENT_HOOK, "atlas_backup/openvpn/server/atlas_enforcement_hook.py"),
             ):
                 if file_path.exists() and file_path.is_file():
                     archive.add(file_path, arcname=arcname)
+
+            for tls_key_path in tls_key_paths:
+                archive.add(tls_key_path, arcname=f"atlas_backup/openvpn/server/{tls_key_path.name}")
     except Exception as exc:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Failed to build backup archive: {str(exc)}")
