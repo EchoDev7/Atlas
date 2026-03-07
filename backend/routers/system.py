@@ -4,12 +4,14 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import zipfile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import close_all_sessions
 from starlette.background import BackgroundTask
 
@@ -24,6 +26,20 @@ router = APIRouter(prefix="/system", tags=["System"])
 openvpn_manager = OpenVPNManager()
 
 MAX_BACKUP_UPLOAD_BYTES = 512 * 1024 * 1024  # 512MB safety ceiling
+LOG_TAIL_LINES = 100
+ALLOWED_SERVICE_ACTIONS = {"restart", "stop", "start"}
+DEFAULT_BACKEND_SYSTEMD_UNIT = os.getenv("ATLAS_BACKEND_SYSTEMD_UNIT", "atlas-backend")
+BACKEND_SERVICE_CANDIDATES = (
+    DEFAULT_BACKEND_SYSTEMD_UNIT,
+    "atlas-backend",
+    "atlas-panel-backend",
+    "atlas",
+)
+
+
+class ServiceActionRequest(BaseModel):
+    service_name: str
+    action: str
 
 
 def _tls_key_candidates() -> tuple[Path, ...]:
@@ -58,6 +74,47 @@ def _sqlite_database_path() -> Path:
     if not db_url.startswith("sqlite:///"):
         raise HTTPException(status_code=500, detail="Backup is supported only for SQLite deployments")
     return Path(db_url.replace("sqlite:///", "", 1)).resolve()
+
+
+def _ensure_systemctl_available() -> None:
+    if shutil.which("systemctl") is None:
+        raise HTTPException(status_code=503, detail="systemctl is not available on this host")
+
+
+def _run_system_subprocess(command: list[str], timeout_seconds: int = 40) -> tuple[int, str, str]:
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout_seconds,
+    )
+    return completed.returncode, (completed.stdout or "").strip(), (completed.stderr or "").strip()
+
+
+def _resolve_backend_service_unit() -> str:
+    _ensure_systemctl_available()
+    seen: set[str] = set()
+    candidates = [item.strip() for item in BACKEND_SERVICE_CANDIDATES if (item or "").strip()]
+
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        code, _, _ = _run_system_subprocess(["systemctl", "cat", candidate], timeout_seconds=10)
+        if code == 0:
+            return candidate
+
+    return DEFAULT_BACKEND_SYSTEMD_UNIT
+
+
+def _resolve_service_unit(alias: str) -> str:
+    normalized = (alias or "").strip().lower()
+    if normalized == "openvpn":
+        return openvpn_manager.service_name
+    if normalized == "backend":
+        return _resolve_backend_service_unit()
+    raise HTTPException(status_code=400, detail="Unsupported service_name. Use 'openvpn' or 'backend'")
 
 
 def _safe_extract_tar(archive_path: Path, destination_dir: Path) -> None:
@@ -316,3 +373,108 @@ async def restore_full_backup(
     finally:
         await backup_file.close()
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@router.post("/service/action")
+def run_service_action(
+    payload: ServiceActionRequest,
+    request: Request,
+    current_user: Admin = Depends(get_current_user),
+):
+    action = (payload.action or "").strip().lower()
+    if action not in ALLOWED_SERVICE_ACTIONS:
+        raise HTTPException(status_code=400, detail="Unsupported action. Use restart, stop, or start")
+
+    target_alias = (payload.service_name or "").strip().lower()
+    service_unit = _resolve_service_unit(target_alias)
+    _ensure_systemctl_available()
+
+    try:
+        code, stdout, stderr = _run_system_subprocess(["systemctl", action, service_unit])
+    except subprocess.TimeoutExpired:
+        record_audit_event(
+            action="system_service_action",
+            success=False,
+            admin_username=current_user.username,
+            resource_type="system_service",
+            resource_id=target_alias,
+            ip_address=extract_client_ip(request),
+            details={"service_unit": service_unit, "action": action, "reason": "timeout"},
+        )
+        raise HTTPException(status_code=504, detail="Service operation timed out")
+
+    success = code == 0
+    record_audit_event(
+        action="system_service_action",
+        success=success,
+        admin_username=current_user.username,
+        resource_type="system_service",
+        resource_id=target_alias,
+        ip_address=extract_client_ip(request),
+        details={
+            "service_unit": service_unit,
+            "action": action,
+            "return_code": code,
+            "stderr": stderr[:2000],
+        },
+    )
+
+    if not success:
+        error_text = stderr or stdout or f"systemctl returned non-zero exit code ({code})"
+        raise HTTPException(status_code=500, detail=error_text)
+
+    return {
+        "success": True,
+        "service_name": target_alias,
+        "service_unit": service_unit,
+        "action": action,
+        "message": f"Service {action} executed successfully",
+        "output": stdout,
+    }
+
+
+@router.get("/logs/{service_name}")
+def read_service_logs(
+    service_name: str,
+    request: Request,
+    current_user: Admin = Depends(get_current_user),
+):
+    target_alias = (service_name or "").strip().lower()
+    service_unit = _resolve_service_unit(target_alias)
+    _ensure_systemctl_available()
+
+    try:
+        code, stdout, stderr = _run_system_subprocess(
+            ["journalctl", "-u", service_unit, "-n", str(LOG_TAIL_LINES), "--no-pager"],
+            timeout_seconds=30,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Fetching service logs timed out")
+
+    success = code == 0
+    record_audit_event(
+        action="system_service_logs_read",
+        success=success,
+        admin_username=current_user.username,
+        resource_type="system_service",
+        resource_id=target_alias,
+        ip_address=extract_client_ip(request),
+        details={
+            "service_unit": service_unit,
+            "return_code": code,
+            "stderr": stderr[:2000],
+        },
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail=stderr or stdout or "Failed to read service logs")
+
+    lines = stdout.splitlines() if stdout else []
+    return {
+        "success": True,
+        "service_name": target_alias,
+        "service_unit": service_unit,
+        "line_count": len(lines),
+        "logs": lines,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
