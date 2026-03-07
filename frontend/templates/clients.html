@@ -1381,7 +1381,6 @@
 
                 startAutoRefresh() {
                     if (this.runtimeStreamActive) {
-                        console.log('[runtime-stream] singleton-guard active=true; skip start');
                         return;
                     }
                     this.stopAutoRefresh();
@@ -1392,7 +1391,6 @@
                     this.runtimeStreamGeneration += 1;
 
                     const generation = this.runtimeStreamGeneration;
-                    console.log(`[runtime-stream] start generation=${generation}`);
                     this.scheduleRuntimeStreamTick(0, generation);
                 },
 
@@ -1435,9 +1433,6 @@
                     if (!this.runtimeStreamActive || generation !== this.runtimeStreamGeneration) return;
 
                     if (ok) {
-                        if (!this.runtimeStreamConnected) {
-                            console.log(`[runtime-stream] connected generation=${generation}`);
-                        }
                         this.runtimeStreamConnected = true;
                         this.runtimeStreamReconnectAttempt = 0;
                         this.scheduleRuntimeStreamTick(this.autoRefreshMs, generation);
@@ -1453,9 +1448,6 @@
                     );
                     const jitter = Math.floor(Math.random() * 250);
                     const nextDelay = Math.min(this.runtimeStreamMaxBackoffMs, baseDelay + jitter);
-                    console.warn(
-                        `[runtime-stream] reconnect-backoff attempt=${this.runtimeStreamReconnectAttempt} delay_ms=${nextDelay} generation=${generation}`,
-                    );
                     this.scheduleRuntimeStreamTick(nextDelay, generation);
                 },
                 
@@ -1555,7 +1547,6 @@
                         });
                         return true;
                     } catch (err) {
-                        console.error('Load runtime snapshot error:', err);
                         return false;
                     }
                 },
@@ -1568,18 +1559,15 @@
                                 'Authorization': `Bearer ${token}`
                             }
                         });
-                        
+
                         if (response.ok) {
                             this.serviceStatus = await response.json();
-                        } else {
-                            console.warn('Service status fetch failed:', response.status);
                         }
-                    } catch (err) {
-                        console.error('Load service status error:', err);
+                    } catch (_) {
                         this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false };
                     }
                 },
-                
+
                 generateRandomUsername() {
                     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
                     let suffix = '';

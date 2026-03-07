@@ -259,12 +259,6 @@ class OpenVPNManager(BaseVPNService):
             )
 
         async def _send_with_asyncio() -> Tuple[bool, str]:
-            started_at = time.monotonic()
-            print(
-                f"ATLAS-DEBUG: OpenVPN management command start "
-                f"command={command} target={host}:{port} timeout={timeout:.2f}s"
-            )
-
             writer: Optional[asyncio.StreamWriter] = None
             try:
                 reader, writer = await asyncio.wait_for(
@@ -276,50 +270,27 @@ class OpenVPNManager(BaseVPNService):
                 await asyncio.wait_for(writer.drain(), timeout=timeout)
 
                 response_chunks: List[str] = []
-                response_termination = "loop_exhausted"
                 while True:
                     try:
                         data = await asyncio.wait_for(reader.read(8192), timeout=timeout)
                     except asyncio.TimeoutError:
-                        response_termination = "socket_timeout"
                         break
 
                     if not data:
-                        response_termination = "socket_closed"
                         break
 
                     text = data.decode(errors="ignore")
                     response_chunks.append(text)
                     merged = "".join(response_chunks)
                     if _is_completion_marker(merged):
-                        response_termination = "completion_marker"
                         break
 
                 response_text = "".join(response_chunks).strip()
-                full_data = "".join(response_chunks)
-                print(f"ATLAS-DEBUG: Raw Socket Data: {full_data}")
-                duration_ms = int((time.monotonic() - started_at) * 1000)
-                print(
-                    "ATLAS-DEBUG: OpenVPN management command done "
-                    f"command={command} target={host}:{port} duration_ms={duration_ms} "
-                    f"response_chunks={len(response_chunks)} response_termination={response_termination} "
-                    f"response_len={len(response_text)}"
-                )
                 return True, response_text
 
             except asyncio.TimeoutError:
-                duration_ms = int((time.monotonic() - started_at) * 1000)
-                print(
-                    "ATLAS-DEBUG: OpenVPN management command timeout "
-                    f"command={command} target={host}:{port} duration_ms={duration_ms}"
-                )
                 return False, f"Management interface timeout on {host}:{port}"
             except OSError as exc:
-                duration_ms = int((time.monotonic() - started_at) * 1000)
-                print(
-                    "ATLAS-DEBUG: OpenVPN management command os_error "
-                    f"command={command} target={host}:{port} duration_ms={duration_ms} error={exc}"
-                )
                 return False, f"Management interface unavailable on {host}:{port}: {exc}"
             finally:
                 if writer is not None:
@@ -343,16 +314,8 @@ class OpenVPNManager(BaseVPNService):
             worker.start()
             worker.join(timeout + 1.5)
             if worker.is_alive():
-                print(
-                    "ATLAS-DEBUG: OpenVPN management command thread_timeout "
-                    f"command={command} target={host}:{port} timeout={timeout:.2f}s"
-                )
                 return False, f"Management interface timeout on {host}:{port}"
             if "value" in error:
-                print(
-                    "ATLAS-DEBUG: OpenVPN management command thread_error "
-                    f"command={command} target={host}:{port} error={error['value']}"
-                )
                 return False, f"Management interface unavailable on {host}:{port}: {error['value']}"
             return result.get("value", (False, f"Management interface timeout on {host}:{port}"))
 
@@ -413,11 +376,9 @@ class OpenVPNManager(BaseVPNService):
             sessions: List[Dict[str, Any]] = []
             status_path = self.config.STATUS_LOG
             if not status_path.exists():
-                print(f"ATLAS-DEBUG: OpenVPN status log fallback path missing status_path={status_path}")
                 return sessions
 
             try:
-                print(f"ATLAS-DEBUG: OpenVPN status log fallback parse start status_path={status_path}")
                 client_header_map: Dict[str, int] = {}
                 for raw_line in status_path.read_text(errors="ignore").splitlines():
                     line = raw_line.strip()
@@ -454,20 +415,13 @@ class OpenVPNManager(BaseVPNService):
                             "raw": line,
                         }
                     )
-            except Exception as exc:
-                print(f"ATLAS-DEBUG: Failed to parse OpenVPN status log sessions: {exc}")
-
-            print(
-                f"ATLAS-DEBUG: OpenVPN status log fallback parse done "
-                f"status_path={status_path} sessions={len(sessions)}"
-            )
+            except Exception:
+                return sessions
 
             return sessions
 
         success, response = self._send_management_command("status 3")
         if not success:
-            print(f"ATLAS-DEBUG: OpenVPN management status query failed: {response}")
-            print("ATLAS-DEBUG: OpenVPN active sessions source=status_log reason=management_query_failed")
             return _parse_status_log_sessions()
 
         sessions: List[Dict[str, Any]] = []
@@ -509,10 +463,8 @@ class OpenVPNManager(BaseVPNService):
             )
 
         if sessions:
-            print(f"ATLAS-DEBUG: OpenVPN active sessions source=management status_format=status_3 sessions={len(sessions)}")
             return sessions
 
-        print("ATLAS-DEBUG: OpenVPN active sessions source=status_log reason=management_empty_or_unparsed")
         return _parse_status_log_sessions()
 
     def get_runtime_health(self) -> Dict[str, Any]:

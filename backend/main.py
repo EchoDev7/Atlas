@@ -10,7 +10,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 from backend.config import settings
 from backend.database import SessionLocal, init_db
-from backend.models.user import Admin
 from backend.models.general_settings import GeneralSettings
 from backend.routers import auth, openvpn, settings as server_settings, vpn_users, audit_logs, dashboard, system
 from backend.services.scheduler_service import get_scheduler
