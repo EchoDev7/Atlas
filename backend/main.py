@@ -12,7 +12,7 @@ from backend.config import settings
 from backend.database import SessionLocal, init_db
 from backend.models.user import Admin
 from backend.models.general_settings import GeneralSettings
-from backend.routers import auth, openvpn, settings as server_settings, vpn_users, audit_logs, dashboard
+from backend.routers import auth, openvpn, settings as server_settings, vpn_users, audit_logs, dashboard, system
 from backend.services.scheduler_service import get_scheduler
 
 
@@ -194,6 +194,7 @@ app.include_router(vpn_users.router, prefix=settings.API_PREFIX)
 app.include_router(server_settings.router, prefix=settings.API_PREFIX)
 app.include_router(audit_logs.router, prefix=settings.API_PREFIX)
 app.include_router(dashboard.router, prefix=settings.API_PREFIX)
+app.include_router(system.router, prefix=settings.API_PREFIX)
 
 frontend_path = Path(__file__).parent.parent / "frontend"
 app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")

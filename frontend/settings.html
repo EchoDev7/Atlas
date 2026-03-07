@@ -488,6 +488,51 @@
                                 <input type="text" x-model="generalForm.ntp_server" placeholder="pool.ntp.org" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
                         </div>
+
+                        <div class="rounded-2xl border p-4 sm:p-5 space-y-4"
+                             :class="darkMode ? 'border-amber-500/30 bg-amber-500/5' : 'border-amber-200 bg-amber-50/60'">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <h3 class="text-lg font-bold theme-transition" :class="darkMode ? 'text-amber-200' : 'text-amber-900'">Backup &amp; Restore</h3>
+                                    <p class="text-sm theme-transition" :class="darkMode ? 'text-amber-100/80' : 'text-amber-800/80'">Download full snapshot of Atlas database and critical OpenVPN PKI files.</p>
+                                </div>
+                                <button type="button"
+                                        @click="downloadFullBackup()"
+                                        :disabled="backupDownloading"
+                                        class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                    </svg>
+                                    <span x-text="backupDownloading ? 'Preparing Backup...' : 'Download Full Backup'"></span>
+                                </button>
+                            </div>
+
+                            <div class="rounded-xl border p-4"
+                                 :class="darkMode ? 'border-rose-500/40 bg-rose-500/10' : 'border-rose-200 bg-rose-50'">
+                                <p class="text-sm font-semibold" :class="darkMode ? 'text-rose-200' : 'text-rose-800'">Warning: Restore overwrites current data</p>
+                                <p class="mt-1 text-xs" :class="darkMode ? 'text-rose-100/80' : 'text-rose-700'">Upload only trusted backup archives. This operation replaces atlas.db and may replace OpenVPN certificates. A failed restore can require manual recovery.</p>
+
+                                <div class="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                                    <input type="file"
+                                           x-ref="backupFileInput"
+                                           @change="onBackupArchiveSelected($event)"
+                                           accept=".tar.gz,.tgz,.zip,application/gzip,application/zip,application/x-zip-compressed"
+                                           class="block w-full text-xs theme-transition"
+                                           :class="darkMode ? 'text-slate-300 file:bg-slate-700 file:text-slate-100 file:border-slate-600' : 'text-slate-700 file:bg-white file:text-slate-800 file:border-slate-300'">
+                                    <button type="button"
+                                            @click="restoreBackupArchive()"
+                                            :disabled="backupRestoring || !backupRestoreFile"
+                                            class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                            :class="darkMode ? 'bg-rose-500 hover:bg-rose-400' : 'bg-rose-600 hover:bg-rose-700'">
+                                        <span x-text="backupRestoring ? 'Restoring...' : 'Upload & Restore'"></span>
+                                    </button>
+                                </div>
+                                <p class="mt-2 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    Selected file: <span class="font-semibold" x-text="backupRestoreFile ? backupRestoreFile.name : 'None'"></span>
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <div x-show="activeGeneralSection === 'audit_logs'" class="space-y-4">
@@ -1302,6 +1347,9 @@
                     action: '',
                     ip_address: '',
                 },
+                backupDownloading: false,
+                backupRestoring: false,
+                backupRestoreFile: null,
                 toast: {
                     visible: false,
                     message: '',
@@ -1461,6 +1509,126 @@
 
                 toggleTooltip(key) {
                     this.openTooltip = this.openTooltip === key ? null : key;
+                },
+
+                onBackupArchiveSelected(event) {
+                    const files = event?.target?.files;
+                    this.backupRestoreFile = files && files.length > 0 ? files[0] : null;
+                },
+
+                async downloadFullBackup() {
+                    this.backupDownloading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/system/backup', {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Failed to download backup';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const blob = await response.blob();
+                        const disposition = response.headers.get('Content-Disposition') || response.headers.get('content-disposition') || '';
+                        const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+                        const rawHeaderFilename = (filenameMatch && (filenameMatch[1] || filenameMatch[2])) || '';
+                        const headerFilename = rawHeaderFilename ? decodeURIComponent(rawHeaderFilename) : '';
+                        const downloadName = headerFilename || `atlas-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.tar.gz`;
+
+                        const url = window.URL.createObjectURL(blob);
+                        const anchor = document.createElement('a');
+                        anchor.href = url;
+                        anchor.style.display = 'none';
+                        anchor.download = downloadName;
+                        document.body.appendChild(anchor);
+                        anchor.click();
+                        requestAnimationFrame(() => {
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(anchor);
+                        });
+
+                        this.showToast('Backup archive downloaded successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to download backup', 'error');
+                    } finally {
+                        this.backupDownloading = false;
+                    }
+                },
+
+                async restoreBackupArchive() {
+                    if (!this.backupRestoreFile) {
+                        this.showToast('Please select a backup archive first', 'error');
+                        return;
+                    }
+
+                    const confirmation = window.confirm('Warning: This operation will overwrite current Atlas data and OpenVPN PKI files. Continue?');
+                    if (!confirmation) {
+                        return;
+                    }
+
+                    this.backupRestoring = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const formData = new FormData();
+                        formData.append('backup_file', this.backupRestoreFile);
+
+                        const response = await fetch('/api/system/backup/restore', {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}` },
+                            body: formData,
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        let payload = null;
+                        try {
+                            payload = await response.json();
+                        } catch (_) {
+                            payload = null;
+                        }
+
+                        if (!response.ok) {
+                            const message = payload && typeof payload.detail === 'string'
+                                ? payload.detail
+                                : 'Backup restore failed';
+                            throw new Error(message);
+                        }
+
+                        const warnings = Array.isArray(payload?.warnings) ? payload.warnings : [];
+                        if (warnings.length > 0) {
+                            this.showToast(`Restore completed with warnings: ${warnings[0]}`, 'error');
+                        } else {
+                            this.showToast('Backup restored successfully', 'success');
+                        }
+
+                        this.backupRestoreFile = null;
+                        if (this.$refs.backupFileInput) {
+                            this.$refs.backupFileInput.value = '';
+                        }
+                    } catch (error) {
+                        this.showToast(error.message || 'Backup restore failed', 'error');
+                    } finally {
+                        this.backupRestoring = false;
+                    }
                 },
 
                 async init() {
