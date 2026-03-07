@@ -39,6 +39,68 @@ def init_db():
             connection.execute(
                 text("ALTER TABLE vpn_users ADD COLUMN max_devices INTEGER NOT NULL DEFAULT 1")
             )
+        vpn_user_column_migrations = {
+            "traffic_limit_bytes": "ALTER TABLE vpn_users ADD COLUMN traffic_limit_bytes BIGINT",
+            "traffic_used_bytes": "ALTER TABLE vpn_users ADD COLUMN traffic_used_bytes BIGINT NOT NULL DEFAULT 0",
+            "access_start_at": "ALTER TABLE vpn_users ADD COLUMN access_start_at DATETIME",
+            "access_expires_at": "ALTER TABLE vpn_users ADD COLUMN access_expires_at DATETIME",
+            "max_concurrent_connections": "ALTER TABLE vpn_users ADD COLUMN max_concurrent_connections INTEGER NOT NULL DEFAULT 1",
+            "current_connections": "ALTER TABLE vpn_users ADD COLUMN current_connections INTEGER NOT NULL DEFAULT 0",
+            "is_connection_limit_exceeded": "ALTER TABLE vpn_users ADD COLUMN is_connection_limit_exceeded BOOLEAN NOT NULL DEFAULT 0",
+        }
+        for column_name, migration_sql in vpn_user_column_migrations.items():
+            if column_name not in column_names:
+                connection.execute(text(migration_sql))
+
+        columns = connection.execute(text("PRAGMA table_info(vpn_users)")).fetchall()
+        column_names = {col[1] for col in columns}
+
+        if {"traffic_limit_bytes", "data_limit_gb"}.issubset(column_names):
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET traffic_limit_bytes = CAST(data_limit_gb * 1073741824 AS INTEGER)
+                    WHERE traffic_limit_bytes IS NULL
+                      AND data_limit_gb IS NOT NULL
+                    """
+                )
+            )
+
+        if {"traffic_used_bytes", "total_bytes_sent", "total_bytes_received"}.issubset(column_names):
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET traffic_used_bytes = COALESCE(
+                        MAX(COALESCE(traffic_used_bytes, 0), COALESCE(total_bytes_sent, 0) + COALESCE(total_bytes_received, 0)),
+                        0
+                    )
+                    """
+                )
+            )
+
+        if {"access_expires_at", "expiry_date"}.issubset(column_names):
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET access_expires_at = expiry_date
+                    WHERE access_expires_at IS NULL
+                      AND expiry_date IS NOT NULL
+                    """
+                )
+            )
+
+        if {"max_concurrent_connections", "max_devices"}.issubset(column_names):
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET max_concurrent_connections = COALESCE(NULLIF(max_concurrent_connections, 0), max_devices, 1)
+                    """
+                )
+            )
 
         openvpn_settings_table_exists = connection.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='openvpn_settings'")
@@ -90,16 +152,10 @@ def init_db():
                 "custom_windows": "ALTER TABLE openvpn_settings ADD COLUMN custom_windows TEXT",
                 "custom_mac": "ALTER TABLE openvpn_settings ADD COLUMN custom_mac TEXT",
                 "enable_auth_nocache": "ALTER TABLE openvpn_settings ADD COLUMN enable_auth_nocache BOOLEAN NOT NULL DEFAULT 1",
-<<<<<<< HEAD
-<<<<<<< HEAD
                 "resolv_retry_mode": "ALTER TABLE openvpn_settings ADD COLUMN resolv_retry_mode VARCHAR(16) NOT NULL DEFAULT 'infinite'",
                 "persist_key": "ALTER TABLE openvpn_settings ADD COLUMN persist_key BOOLEAN NOT NULL DEFAULT 1",
                 "persist_tun": "ALTER TABLE openvpn_settings ADD COLUMN persist_tun BOOLEAN NOT NULL DEFAULT 1",
-=======
->>>>>>> feature-server-settings
-=======
                 "enable_dns_leak_protection": "ALTER TABLE openvpn_settings ADD COLUMN enable_dns_leak_protection BOOLEAN NOT NULL DEFAULT 1",
->>>>>>> feature-server-settings
             }
 
             for column_name, migration_sql in openvpn_column_migrations.items():
@@ -150,7 +206,6 @@ def init_db():
                         """
                     )
                 )
-<<<<<<< HEAD
             
             # Update default values for improved settings
             if "tls_version_min" in openvpn_column_names:
@@ -185,8 +240,6 @@ def init_db():
                         """
                     )
                 )
-=======
->>>>>>> feature-server-settings
 
             if {"ipv4_pool", "ipv4_network", "ipv4_netmask"}.issubset(openvpn_column_names):
                 connection.execute(
@@ -273,7 +326,11 @@ def init_db():
                 "public_ipv6_address": "ALTER TABLE general_settings ADD COLUMN public_ipv6_address VARCHAR(64)",
                 "global_ipv6_support": "ALTER TABLE general_settings ADD COLUMN global_ipv6_support BOOLEAN NOT NULL DEFAULT 1",
                 "wan_interface": "ALTER TABLE general_settings ADD COLUMN wan_interface VARCHAR(32) NOT NULL DEFAULT 'eth0'",
+                "server_system_dns_primary": "ALTER TABLE general_settings ADD COLUMN server_system_dns_primary VARCHAR(64) NOT NULL DEFAULT '1.1.1.1'",
+                "server_system_dns_secondary": "ALTER TABLE general_settings ADD COLUMN server_system_dns_secondary VARCHAR(64) NOT NULL DEFAULT '8.8.8.8'",
                 "admin_allowed_ips": "ALTER TABLE general_settings ADD COLUMN admin_allowed_ips TEXT NOT NULL DEFAULT '0.0.0.0/0'",
+                "login_max_failed_attempts": "ALTER TABLE general_settings ADD COLUMN login_max_failed_attempts INTEGER NOT NULL DEFAULT 5",
+                "login_block_duration_minutes": "ALTER TABLE general_settings ADD COLUMN login_block_duration_minutes INTEGER NOT NULL DEFAULT 15",
                 "panel_domain": "ALTER TABLE general_settings ADD COLUMN panel_domain VARCHAR(255) NOT NULL DEFAULT ''",
                 "panel_https_port": "ALTER TABLE general_settings ADD COLUMN panel_https_port INTEGER NOT NULL DEFAULT 2053",
                 "subscription_domain": "ALTER TABLE general_settings ADD COLUMN subscription_domain VARCHAR(255) NOT NULL DEFAULT ''",
@@ -327,6 +384,23 @@ def init_db():
                     )
                 )
 
+            if {"login_max_failed_attempts", "login_block_duration_minutes"}.issubset(general_column_names):
+                connection.execute(
+                    text(
+                        """
+                        UPDATE general_settings
+                        SET login_max_failed_attempts = CASE
+                                WHEN login_max_failed_attempts BETWEEN 1 AND 20 THEN login_max_failed_attempts
+                                ELSE 5
+                            END,
+                            login_block_duration_minutes = CASE
+                                WHEN login_block_duration_minutes BETWEEN 1 AND 1440 THEN login_block_duration_minutes
+                                ELSE 15
+                            END
+                        """
+                    )
+                )
+
             general_settings_row_count = connection.execute(
                 text("SELECT COUNT(*) FROM general_settings")
             ).scalar_one()
@@ -341,7 +415,11 @@ def init_db():
                             public_ipv6_address,
                             global_ipv6_support,
                             wan_interface,
+                            server_system_dns_primary,
+                            server_system_dns_secondary,
                             admin_allowed_ips,
+                            login_max_failed_attempts,
+                            login_block_duration_minutes,
                             panel_domain,
                             panel_https_port,
                             subscription_domain,
@@ -363,7 +441,11 @@ def init_db():
                             NULL,
                             1,
                             'eth0',
+                            '1.1.1.1',
+                            '8.8.8.8',
                             '0.0.0.0/0',
+                            5,
+                            15,
                             '',
                             2053,
                             '',
@@ -382,3 +464,29 @@ def init_db():
                         """
                     )
                 )
+
+        audit_logs_table_exists = connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_logs'")
+        ).fetchone()
+        if not audit_logs_table_exists:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE audit_logs (
+                        id INTEGER PRIMARY KEY,
+                        admin_username VARCHAR(64),
+                        action VARCHAR(128) NOT NULL,
+                        resource_type VARCHAR(64),
+                        resource_id VARCHAR(128),
+                        ip_address VARCHAR(64),
+                        success BOOLEAN NOT NULL DEFAULT 1,
+                        details TEXT,
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_admin_username ON audit_logs (admin_username)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs (action)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_resource_type ON audit_logs (resource_type)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs (created_at)"))

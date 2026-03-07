@@ -157,6 +157,36 @@
                     <div x-show="activeGeneralSection === 'network'" class="space-y-4">
                         <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Network</h2>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="rounded-xl border p-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide font-semibold" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Server IPv4</p>
+                                        <p class="mt-1 text-sm font-mono break-all" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'" x-text="serverIps.public_ipv4"></p>
+                                    </div>
+                                    <button type="button"
+                                            @click="copyToClipboard(serverIps.public_ipv4, 'Server IPv4')"
+                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                            :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
+                                        Copy
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="rounded-xl border p-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide font-semibold" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Server IPv6</p>
+                                        <p class="mt-1 text-sm font-mono break-all" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'" x-text="serverIps.public_ipv6"></p>
+                                    </div>
+                                    <button type="button"
+                                            @click="copyToClipboard(serverIps.public_ipv6, 'Server IPv6')"
+                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                            :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
+                                        Copy
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                                     <span>Server Address (IP or Domain)</span>
@@ -169,23 +199,26 @@
                             </label>
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>Public IPv6 Address</span>
-                                    <span class="relative" @mouseenter="showTooltip('public_ipv6_address')" @mouseleave="hideTooltip('public_ipv6_address')">
-                                        <button type="button" @click.stop="toggleTooltip('public_ipv6_address')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'public_ipv6_address'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The public IPv6 address. Leave blank if not used.</div>
-                                    </span>
-                                </span>
-                                <input type="text" x-model="generalForm.public_ipv6_address" placeholder="2001:db8::10" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                            </label>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                                     <span>WAN Interface</span>
                                     <span class="relative" @mouseenter="showTooltip('wan_interface')" @mouseleave="hideTooltip('wan_interface')">
                                         <button type="button" @click.stop="toggleTooltip('wan_interface')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
                                         <div x-cloak x-show="openTooltip === 'wan_interface'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">The main network interface providing internet access. Crucial for NAT/Routing.</div>
                                     </span>
                                 </span>
-                                <input type="text" x-model="generalForm.wan_interface" placeholder="eth0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <input type="text" x-model="generalForm.wan_interface" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition cursor-not-allowed" :class="darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-500'">
+                                <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-500'">Auto-detected from Linux routing table</p>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Server System DNS Primary</span>
+                                </span>
+                                <input type="text" x-model="generalForm.server_system_dns_primary" placeholder="1.1.1.1" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                    <span>Server System DNS Secondary</span>
+                                </span>
+                                <input type="text" x-model="generalForm.server_system_dns_secondary" placeholder="8.8.8.8" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
                         </div>
                         <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
@@ -215,6 +248,78 @@
                             </span>
                             <textarea x-model="generalForm.admin_allowed_ips" rows="4" placeholder="0.0.0.0/0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-sm" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
                         </label>
+
+                        <div class="rounded-xl border p-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                            <h3 class="text-sm font-bold theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-900'">Login Brute-Force Protection</h3>
+                            <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Configure lockout policy for failed admin login attempts.</p>
+
+                            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Max Failed Attempts</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="20"
+                                        x-model.number="generalForm.login_max_failed_attempts"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Block Duration (Minutes)</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="1440"
+                                        x-model.number="generalForm.login_block_duration_minutes"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="rounded-xl border p-4 space-y-3" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                            <div>
+                                <h3 class="text-sm font-bold theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-900'">Change Admin Password</h3>
+                                <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Update your admin password using your current credentials.</p>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Current Password</span>
+                                    <input
+                                        type="password"
+                                        x-model="adminPasswordForm.current_password"
+                                        autocomplete="current-password"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">New Password</span>
+                                    <input
+                                        type="password"
+                                        x-model="adminPasswordForm.new_password"
+                                        autocomplete="new-password"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                </label>
+                            </div>
+
+                            <div class="flex justify-end">
+                                <button
+                                    type="button"
+                                    @click="changeAdminPassword()"
+                                    :disabled="changingAdminPassword || loading || saving"
+                                    class="px-4 py-2 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-amber-500 hover:bg-amber-400' : 'bg-amber-600 hover:bg-amber-700'"
+                                >
+                                    <span x-text="changingAdminPassword ? 'Updating...' : 'Update Password'"></span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <div x-show="activeGeneralSection === 'domain_ssl'" class="space-y-4">
@@ -383,10 +488,283 @@
                                 <input type="text" x-model="generalForm.ntp_server" placeholder="pool.ntp.org" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
                         </div>
+
+                        <div class="rounded-2xl border p-4 sm:p-5 space-y-4"
+                             :class="darkMode ? 'border-amber-500/30 bg-amber-500/5' : 'border-amber-200 bg-amber-50/60'">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <h3 class="text-lg font-bold theme-transition" :class="darkMode ? 'text-amber-200' : 'text-amber-900'">Backup &amp; Restore</h3>
+                                    <p class="text-sm theme-transition" :class="darkMode ? 'text-amber-100/80' : 'text-amber-800/80'">Download full snapshot of Atlas database and critical OpenVPN PKI files.</p>
+                                </div>
+                                <button type="button"
+                                        @click="downloadFullBackup()"
+                                        :disabled="backupDownloading"
+                                        class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                    </svg>
+                                    <span x-text="backupDownloading ? 'Preparing Backup...' : 'Download Full Backup'"></span>
+                                </button>
+                            </div>
+
+                            <div class="rounded-xl border p-4"
+                                 :class="darkMode ? 'border-rose-500/40 bg-rose-500/10' : 'border-rose-200 bg-rose-50'">
+                                <p class="text-sm font-semibold" :class="darkMode ? 'text-rose-200' : 'text-rose-800'">Warning: Restore overwrites current data</p>
+                                <p class="mt-1 text-xs" :class="darkMode ? 'text-rose-100/80' : 'text-rose-700'">Upload only trusted backup archives. This operation replaces atlas.db and may replace OpenVPN certificates. A failed restore can require manual recovery.</p>
+
+                                <div class="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                                    <input type="file"
+                                           x-ref="backupFileInput"
+                                           @change="onBackupArchiveSelected($event)"
+                                           accept=".tar.gz,.tgz,.zip,application/gzip,application/zip,application/x-zip-compressed"
+                                           class="block w-full text-xs theme-transition"
+                                           :class="darkMode ? 'text-slate-300 file:bg-slate-700 file:text-slate-100 file:border-slate-600' : 'text-slate-700 file:bg-white file:text-slate-800 file:border-slate-300'">
+                                    <button type="button"
+                                            @click="restoreBackupArchive()"
+                                            :disabled="backupRestoring || !backupRestoreFile"
+                                            class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                            :class="darkMode ? 'bg-rose-500 hover:bg-rose-400' : 'bg-rose-600 hover:bg-rose-700'">
+                                        <span x-text="backupRestoring ? 'Restoring...' : 'Upload & Restore'"></span>
+                                    </button>
+                                </div>
+                                <p class="mt-2 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    Selected file: <span class="font-semibold" x-text="backupRestoreFile ? backupRestoreFile.name : 'None'"></span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div x-show="activeGeneralSection === 'server_ops'" class="space-y-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div>
+                                <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Server Operations</h2>
+                                <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Control core services and inspect recent system logs without SSH access.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <button
+                                type="button"
+                                @click="confirmAndRunServiceAction('openvpn', 'restart', 'OpenVPN')"
+                                :disabled="serviceActionLoading"
+                                class="rounded-2xl border p-5 text-left transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                :class="darkMode ? 'border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20' : 'border-cyan-200 bg-cyan-50 hover:bg-cyan-100'"
+                            >
+                                <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'">Service Control</p>
+                                <p class="mt-1 text-lg font-bold" :class="darkMode ? 'text-cyan-100' : 'text-cyan-900'">Restart OpenVPN</p>
+                                <p class="mt-2 text-xs" :class="darkMode ? 'text-cyan-200/80' : 'text-cyan-800/80'">Apply runtime config updates and reload VPN control plane.</p>
+                            </button>
+
+                            <button
+                                type="button"
+                                @click="confirmAndRunServiceAction('backend', 'restart', 'Panel Backend')"
+                                :disabled="serviceActionLoading"
+                                class="rounded-2xl border p-5 text-left transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                :class="darkMode ? 'border-violet-500/40 bg-violet-500/10 hover:bg-violet-500/20' : 'border-violet-200 bg-violet-50 hover:bg-violet-100'"
+                            >
+                                <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-violet-300' : 'text-violet-700'">Service Control</p>
+                                <p class="mt-1 text-lg font-bold" :class="darkMode ? 'text-violet-100' : 'text-violet-900'">Restart Panel Backend</p>
+                                <p class="mt-2 text-xs" :class="darkMode ? 'text-violet-200/80' : 'text-violet-800/80'">Restart API workers and panel runtime process.</p>
+                            </button>
+                        </div>
+
+                        <div class="rounded-2xl border p-4"
+                             :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                                <div>
+                                    <h3 class="text-sm font-bold uppercase tracking-wide" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Service Logs</h3>
+                                    <p class="text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Last 100 lines from journalctl</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <select
+                                        x-model="serviceLogsService"
+                                        :disabled="serviceLogsLoading"
+                                        class="rounded-lg border px-3 py-2 text-sm theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                        <option value="openvpn">OpenVPN</option>
+                                        <option value="backend">Backend</option>
+                                    </select>
+                                    <button
+                                        type="button"
+                                        @click="loadServiceLogs()"
+                                        :disabled="serviceLogsLoading"
+                                        class="px-3 py-2 rounded-lg text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        :class="darkMode ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'"
+                                    >
+                                        <span x-text="serviceLogsLoading ? 'Refreshing...' : 'Refresh Logs'"></span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="rounded-xl border border-slate-800 bg-black h-72 overflow-y-auto px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+                                <template x-if="serviceLogs.length === 0">
+                                    <p class="text-slate-400">No logs loaded yet.</p>
+                                </template>
+                                <template x-for="(line, index) in serviceLogs" :key="`srv-log-${index}`">
+                                    <div class="text-emerald-300" x-text="line"></div>
+                                </template>
+                            </div>
+                            <p class="mt-2 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                Last refresh: <span x-text="serviceLogsGeneratedAt || 'N/A'"></span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div x-show="activeGeneralSection === 'audit_logs'" class="space-y-4">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Audit Logs</h2>
+                                <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Sensitive admin events (latest first)</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    <span class="mr-1">Rows</span>
+                                    <select
+                                        x-model.number="auditLogsPageSize"
+                                        @change="applyAuditLogFilters()"
+                                        class="rounded-lg border px-2 py-1 text-xs theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                    >
+                                        <option :value="10">10</option>
+                                        <option :value="25">25</option>
+                                        <option :value="50">50</option>
+                                        <option :value="100">100</option>
+                                    </select>
+                                </label>
+                                <button
+                                    type="button"
+                                    @click="loadAuditLogs(auditLogsPage)"
+                                    :disabled="auditLogsLoading"
+                                    class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30' : 'bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100'"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                    </svg>
+                                    <span x-text="auditLogsLoading ? 'Refreshing...' : 'Refresh Logs'"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 rounded-xl border p-3"
+                             :class="darkMode ? 'border-slate-700 bg-slate-900/20' : 'border-slate-300 bg-slate-50'">
+                            <label class="block">
+                                <span class="text-xs font-semibold uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Status</span>
+                                <select
+                                    x-model="auditLogsFilters.status"
+                                    class="mt-1 w-full rounded-lg border px-3 py-2 text-sm theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                >
+                                    <option value="all">All</option>
+                                    <option value="success">Success</option>
+                                    <option value="failed">Failed</option>
+                                </select>
+                            </label>
+                            <label class="block">
+                                <span class="text-xs font-semibold uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Action</span>
+                                <input
+                                    type="text"
+                                    x-model="auditLogsFilters.action"
+                                    placeholder="login, settings, user..."
+                                    class="mt-1 w-full rounded-lg border px-3 py-2 text-sm theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                >
+                            </label>
+                            <label class="block">
+                                <span class="text-xs font-semibold uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">IP Address</span>
+                                <input
+                                    type="text"
+                                    x-model="auditLogsFilters.ip_address"
+                                    placeholder="192.168.1.10"
+                                    class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
+                                >
+                            </label>
+                            <div class="flex items-end gap-2">
+                                <button
+                                    type="button"
+                                    @click="applyAuditLogFilters()"
+                                    :disabled="auditLogsLoading"
+                                    class="w-full px-3 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'"
+                                >Apply</button>
+                                <button
+                                    type="button"
+                                    @click="resetAuditLogFilters()"
+                                    :disabled="auditLogsLoading"
+                                    class="w-full px-3 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'"
+                                >Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="rounded-2xl border overflow-hidden" :class="darkMode ? 'border-slate-700 bg-slate-900/20' : 'border-slate-300 bg-white'">
+                            <div x-show="auditLogsLoading" class="py-10 flex justify-center">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2" :class="darkMode ? 'border-cyan-400' : 'border-cyan-600'"></div>
+                            </div>
+
+                            <div x-show="!auditLogsLoading" class="overflow-x-auto">
+                                <table class="w-full min-w-[760px]">
+                                    <thead>
+                                        <tr class="border-b" :class="darkMode ? 'border-slate-700 bg-slate-900/40' : 'border-slate-200 bg-slate-50'">
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Date/Time</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">IP Address</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Action</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Target</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y" :class="darkMode ? 'divide-slate-700/60' : 'divide-slate-200'">
+                                        <template x-if="auditLogs.length === 0">
+                                            <tr>
+                                                <td colspan="5" class="px-4 py-8 text-center text-sm" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">No audit logs found.</td>
+                                            </tr>
+                                        </template>
+                                        <template x-for="item in auditLogs" :key="item.id">
+                                            <tr class="transition" :class="darkMode ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'">
+                                                <td class="px-4 py-3 text-sm" :class="darkMode ? 'text-slate-200' : 'text-slate-800'" x-text="formatAuditTimestamp(item.created_at)"></td>
+                                                <td class="px-4 py-3 text-sm font-mono" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'" x-text="item.ip_address || 'N/A'"></td>
+                                                <td class="px-4 py-3 text-sm" :class="darkMode ? 'text-slate-200' : 'text-slate-800'" x-text="item.action"></td>
+                                                <td class="px-4 py-3 text-sm" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="auditTargetLabel(item)"></td>
+                                                <td class="px-4 py-3 text-sm">
+                                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold"
+                                                          :class="item.success ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'"
+                                                          x-text="item.success ? 'Success' : 'Failed'"></span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="border-t px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                                 :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
+                                <p class="text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    <span x-text="auditLogsTotal"></span> total logs • page <span x-text="auditLogsPage"></span> of <span x-text="auditLogsTotalPages"></span>
+                                </p>
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        @click="loadAuditLogs(auditLogsPage - 1)"
+                                        :disabled="auditLogsLoading || auditLogsPage <= 1"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'"
+                                    >Prev</button>
+                                    <button
+                                        type="button"
+                                        @click="loadAuditLogs(auditLogsPage + 1)"
+                                        :disabled="auditLogsLoading || auditLogsPage >= auditLogsTotalPages"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'"
+                                    >Next</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="mt-8 sticky bottom-0 pt-4 flex justify-end border-t backdrop-blur-sm"
+                <div x-show="activeGeneralSection !== 'audit_logs' && activeGeneralSection !== 'server_ops'" class="mt-8 sticky bottom-0 pt-4 flex justify-end border-t backdrop-blur-sm"
                      :class="darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white/80'">
                     <button @click="saveChanges()" :disabled="saving || loading"
                             class="px-6 py-3 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -680,6 +1058,8 @@
                                 <option value="http_proxy_basic">HTTP Proxy Basic</option>
                                 <option value="http_proxy_advanced">HTTP Proxy Advanced</option>
                                 <option value="socks5_proxy_injection">SOCKS5 Proxy Injection</option>
+                                <option value="tls_tunnel">TLS Tunnel</option>
+                                <option value="websocket_cdn">WebSocket CDN</option>
                             </select>
                         </label>
 
@@ -751,49 +1131,6 @@
                             </div>
                             <button type="button" @click="form.enable_auth_nocache = !form.enable_auth_nocache" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.enable_auth_nocache ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.enable_auth_nocache ? 'ON' : 'OFF'"></button>
                         </div>
-<<<<<<< HEAD
-                        
-                        <h3 class="text-lg font-semibold mt-6 theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Client Behavior</h3>
-                        <div class="grid grid-cols-1 gap-4">
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>DNS Resolve Retry Mode</span>
-                                    <span class="relative" @mouseenter="showTooltip('resolv_retry_mode')" @mouseleave="hideTooltip('resolv_retry_mode')">
-                                        <button type="button" @click.stop="toggleTooltip('resolv_retry_mode')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'resolv_retry_mode'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl w-64 z-50" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Controls DNS resolution retry behavior. Infinite: retry forever (best for laptops), 60: retry for 60 seconds, Disabled: no retry. Default: Infinite.</div>
-                                    </span>
-                                </span>
-                                <select x-model="form.resolv_retry_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                    <option value="infinite">Infinite (Recommended)</option>
-                                    <option value="60">60 Seconds</option>
-                                    <option value="disabled">Disabled</option>
-                                </select>
-                            </label>
-                        </div>
-                        
-                        <div class="flex items-center justify-between p-4 rounded-xl border theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700' : 'bg-white border-slate-300'">
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Persist Key on Reconnect</span>
-                                <span class="relative" @mouseenter="showTooltip('persist_key')" @mouseleave="hideTooltip('persist_key')">
-                                    <button type="button" @click.stop="toggleTooltip('persist_key')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                    <div x-cloak x-show="openTooltip === 'persist_key'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl w-64 z-50" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Keep encryption keys in memory during reconnects. Improves reconnection speed. Disable for maximum security. Default: ON.</div>
-                                </span>
-                            </div>
-                            <button type="button" @click="form.persist_key = !form.persist_key" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.persist_key ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.persist_key ? 'ON' : 'OFF'"></button>
-                        </div>
-                        
-                        <div class="flex items-center justify-between p-4 rounded-xl border theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700' : 'bg-white border-slate-300'">
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Persist TUN Interface on Reconnect</span>
-                                <span class="relative" @mouseenter="showTooltip('persist_tun')" @mouseleave="hideTooltip('persist_tun')">
-                                    <button type="button" @click.stop="toggleTooltip('persist_tun')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                    <div x-cloak x-show="openTooltip === 'persist_tun'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl w-64 z-50" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Keep TUN/TAP device open during reconnects. Improves reconnection speed. Disable to fully reset interface. Default: ON.</div>
-                                </span>
-                            </div>
-                            <button type="button" @click="form.persist_tun = !form.persist_tun" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="form.persist_tun ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="form.persist_tun ? 'ON' : 'OFF'"></button>
-                        </div>
-=======
->>>>>>> feature-server-settings
                     </div>
 
                     <div x-show="activeSection === 'custom'" class="space-y-4">
@@ -975,6 +1312,8 @@
                     { key: 'security', label: 'Security' },
                     { key: 'domain_ssl', label: 'Domain & SSL' },
                     { key: 'system', label: 'System' },
+                    { key: 'server_ops', label: 'Server Operations' },
+                    { key: 'audit_logs', label: 'Audit Logs' },
                 ],
                 sectionTabs: [
                     { key: 'network', label: 'Network & Core' },
@@ -1045,7 +1384,11 @@
                     public_ipv6_address: '',
                     global_ipv6_support: true,
                     wan_interface: 'eth0',
+                    server_system_dns_primary: '1.1.1.1',
+                    server_system_dns_secondary: '8.8.8.8',
                     admin_allowed_ips: '0.0.0.0/0',
+                    login_max_failed_attempts: 5,
+                    login_block_duration_minutes: 15,
                     panel_domain: '',
                     panel_https_port: 2053,
                     subscription_domain: '',
@@ -1059,9 +1402,36 @@
                     system_timezone: 'UTC',
                     ntp_server: 'pool.ntp.org',
                 },
+                adminPasswordForm: {
+                    current_password: '',
+                    new_password: '',
+                },
+                changingAdminPassword: false,
+                serverIps: {
+                    public_ipv4: 'Loading...',
+                    public_ipv6: 'Loading...',
+                },
                 sslIssuing: false,
                 terminalModalOpen: false,
                 terminalLogs: [],
+                auditLogs: [],
+                auditLogsLoading: false,
+                auditLogsPage: 1,
+                auditLogsPageSize: 25,
+                auditLogsTotal: 0,
+                auditLogsFilters: {
+                    status: 'all',
+                    action: '',
+                    ip_address: '',
+                },
+                backupDownloading: false,
+                backupRestoring: false,
+                backupRestoreFile: null,
+                serviceActionLoading: false,
+                serviceLogsLoading: false,
+                serviceLogsService: 'openvpn',
+                serviceLogs: [],
+                serviceLogsGeneratedAt: '',
                 toast: {
                     visible: false,
                     message: '',
@@ -1087,6 +1457,108 @@
                     } else {
                         this.form.tcp_nodelay = false;
                     }
+                },
+
+                formatAuditTimestamp(value) {
+                    if (!value) {
+                        return 'N/A';
+                    }
+                    const date = new Date(value);
+                    if (Number.isNaN(date.getTime())) {
+                        return String(value);
+                    }
+                    return date.toLocaleString();
+                },
+
+                auditTargetLabel(item) {
+                    const resourceType = (item.resource_type || '').trim();
+                    const resourceId = (item.resource_id || '').trim();
+                    if (resourceType && resourceId) {
+                        return `${resourceType}:${resourceId}`;
+                    }
+                    if (resourceType) {
+                        return resourceType;
+                    }
+                    if (resourceId) {
+                        return resourceId;
+                    }
+                    return '—';
+                },
+
+                get auditLogsTotalPages() {
+                    return Math.max(1, Math.ceil(Number(this.auditLogsTotal || 0) / Number(this.auditLogsPageSize || 25)));
+                },
+
+                async loadAuditLogs(page = 1) {
+                    this.auditLogsLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const safePage = Math.max(1, Number(page) || 1);
+                        const safePageSize = Math.max(1, Number(this.auditLogsPageSize) || 25);
+                        const params = new URLSearchParams({
+                            page: String(safePage),
+                            page_size: String(safePageSize),
+                            status: this.auditLogsFilters.status || 'all',
+                        });
+                        const actionFilter = (this.auditLogsFilters.action || '').trim();
+                        const ipFilter = (this.auditLogsFilters.ip_address || '').trim();
+                        if (actionFilter) {
+                            params.set('action', actionFilter);
+                        }
+                        if (ipFilter) {
+                            params.set('ip_address', ipFilter);
+                        }
+
+                        const response = await fetch(`/api/logs/audit?${params.toString()}`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Failed to load audit logs';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const data = await response.json();
+                        this.auditLogs = Array.isArray(data.logs) ? data.logs : [];
+                        this.auditLogsTotal = Number(data.total) || 0;
+                        this.auditLogsPage = Number(data.page) || safePage;
+                        this.auditLogsPageSize = Number(data.page_size) || safePageSize;
+                    } catch (error) {
+                        this.auditLogs = [];
+                        this.auditLogsTotal = 0;
+                        this.showToast(error.message || 'Failed to load audit logs', 'error');
+                    } finally {
+                        this.auditLogsLoading = false;
+                    }
+                },
+
+                async applyAuditLogFilters() {
+                    this.auditLogsPage = 1;
+                    await this.loadAuditLogs(1);
+                },
+
+                async resetAuditLogFilters() {
+                    this.auditLogsFilters = {
+                        status: 'all',
+                        action: '',
+                        ip_address: '',
+                    };
+                    this.auditLogsPage = 1;
+                    await this.loadAuditLogs(1);
                 },
 
                 initTheme() {
@@ -1119,6 +1591,223 @@
 
                 toggleTooltip(key) {
                     this.openTooltip = this.openTooltip === key ? null : key;
+                },
+
+                onBackupArchiveSelected(event) {
+                    const files = event?.target?.files;
+                    this.backupRestoreFile = files && files.length > 0 ? files[0] : null;
+                },
+
+                async downloadFullBackup() {
+                    this.backupDownloading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/system/backup', {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Failed to download backup';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const blob = await response.blob();
+                        const disposition = response.headers.get('Content-Disposition') || response.headers.get('content-disposition') || '';
+                        const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+                        const rawHeaderFilename = (filenameMatch && (filenameMatch[1] || filenameMatch[2])) || '';
+                        const headerFilename = rawHeaderFilename ? decodeURIComponent(rawHeaderFilename) : '';
+                        const downloadName = headerFilename || `atlas-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.tar.gz`;
+
+                        const url = window.URL.createObjectURL(blob);
+                        const anchor = document.createElement('a');
+                        anchor.href = url;
+                        anchor.style.display = 'none';
+                        anchor.download = downloadName;
+                        document.body.appendChild(anchor);
+                        anchor.click();
+                        requestAnimationFrame(() => {
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(anchor);
+                        });
+
+                        this.showToast('Backup archive downloaded successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to download backup', 'error');
+                    } finally {
+                        this.backupDownloading = false;
+                    }
+                },
+
+                async restoreBackupArchive() {
+                    if (!this.backupRestoreFile) {
+                        this.showToast('Please select a backup archive first', 'error');
+                        return;
+                    }
+
+                    const confirmation = window.confirm('Warning: This operation will overwrite current Atlas data and OpenVPN PKI files. Continue?');
+                    if (!confirmation) {
+                        return;
+                    }
+
+                    this.backupRestoring = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const formData = new FormData();
+                        formData.append('backup_file', this.backupRestoreFile);
+
+                        const response = await fetch('/api/system/backup/restore', {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}` },
+                            body: formData,
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        let payload = null;
+                        try {
+                            payload = await response.json();
+                        } catch (_) {
+                            payload = null;
+                        }
+
+                        if (!response.ok) {
+                            const message = payload && typeof payload.detail === 'string'
+                                ? payload.detail
+                                : 'Backup restore failed';
+                            throw new Error(message);
+                        }
+
+                        const warnings = Array.isArray(payload?.warnings) ? payload.warnings : [];
+                        if (warnings.length > 0) {
+                            this.showToast(`Restore completed with warnings: ${warnings[0]}`, 'error');
+                        } else {
+                            this.showToast('Backup restored successfully', 'success');
+                        }
+
+                        this.backupRestoreFile = null;
+                        if (this.$refs.backupFileInput) {
+                            this.$refs.backupFileInput.value = '';
+                        }
+                    } catch (error) {
+                        this.showToast(error.message || 'Backup restore failed', 'error');
+                    } finally {
+                        this.backupRestoring = false;
+                    }
+                },
+
+                async runServiceAction(serviceName, action) {
+                    this.serviceActionLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/system/service/action', {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                service_name: serviceName,
+                                action,
+                            }),
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        let payload = null;
+                        try {
+                            payload = await response.json();
+                        } catch (_) {
+                            payload = null;
+                        }
+
+                        if (!response.ok) {
+                            const message = payload && typeof payload.detail === 'string'
+                                ? payload.detail
+                                : 'Service action failed';
+                            throw new Error(message);
+                        }
+
+                        this.showToast(payload?.message || 'Service action executed', 'success');
+                        if ((this.serviceLogsService || '').toLowerCase() === (serviceName || '').toLowerCase()) {
+                            await this.loadServiceLogs();
+                        }
+                    } catch (error) {
+                        this.showToast(error.message || 'Service action failed', 'error');
+                    } finally {
+                        this.serviceActionLoading = false;
+                    }
+                },
+
+                async confirmAndRunServiceAction(serviceName, action, displayName) {
+                    const safeName = displayName || serviceName;
+                    const confirmed = window.confirm(`Are you sure you want to ${action} ${safeName}? This may temporarily interrupt active connections.`);
+                    if (!confirmed) {
+                        return;
+                    }
+                    await this.runServiceAction(serviceName, action);
+                },
+
+                async loadServiceLogs() {
+                    this.serviceLogsLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const serviceName = (this.serviceLogsService || 'openvpn').toLowerCase();
+                        const response = await fetch(`/api/system/logs/${serviceName}`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        let payload = null;
+                        try {
+                            payload = await response.json();
+                        } catch (_) {
+                            payload = null;
+                        }
+
+                        if (!response.ok) {
+                            const message = payload && typeof payload.detail === 'string'
+                                ? payload.detail
+                                : 'Failed to load service logs';
+                            throw new Error(message);
+                        }
+
+                        this.serviceLogs = Array.isArray(payload?.logs) ? payload.logs : [];
+                        this.serviceLogsGeneratedAt = payload?.generated_at
+                            ? new Date(payload.generated_at).toLocaleString()
+                            : new Date().toLocaleString();
+                    } catch (error) {
+                        this.serviceLogs = [];
+                        this.showToast(error.message || 'Failed to load service logs', 'error');
+                    } finally {
+                        this.serviceLogsLoading = false;
+                    }
                 },
 
                 async init() {
@@ -1176,7 +1865,100 @@
                         }
                     });
 
+                    this.$watch('activeGeneralSection', async (section) => {
+                        if (section === 'network') {
+                            await this.loadServerIps();
+                            return;
+                        }
+                        if (section === 'server_ops') {
+                            await this.loadServiceLogs();
+                            return;
+                        }
+                        if (section === 'audit_logs') {
+                            this.auditLogsPage = 1;
+                            await this.loadAuditLogs(1);
+                        }
+                    });
+
+                    this.$watch('serviceLogsService', async (serviceName) => {
+                        if (this.activeGeneralSection !== 'server_ops') {
+                            return;
+                        }
+                        if (!serviceName) {
+                            return;
+                        }
+                        await this.loadServiceLogs();
+                    });
+
                     await this.loadSettings();
+                    await this.loadServerIps();
+                },
+
+                async loadServerIps() {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/settings/server-ips', {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            this.serverIps = {
+                                public_ipv4: 'N/A',
+                                public_ipv6: 'Not Configured',
+                            };
+                            return;
+                        }
+
+                        const data = await response.json();
+                        this.serverIps = {
+                            public_ipv4: data.public_ipv4 || 'N/A',
+                            public_ipv6: data.public_ipv6 || 'Not Configured',
+                        };
+                    } catch (_) {
+                        this.serverIps = {
+                            public_ipv4: 'N/A',
+                            public_ipv6: 'Not Configured',
+                        };
+                    }
+                },
+
+                async copyToClipboard(value, label) {
+                    if (!value || value === 'N/A' || value === 'Not Configured' || value === 'Loading...') {
+                        this.showToast(`${label} is not available`, 'error');
+                        return;
+                    }
+
+                    try {
+                        if (navigator.clipboard && window.isSecureContext) {
+                            await navigator.clipboard.writeText(value);
+                        } else {
+                            const textarea = document.createElement('textarea');
+                            textarea.value = value;
+                            textarea.setAttribute('readonly', '');
+                            textarea.style.position = 'fixed';
+                            textarea.style.top = '-9999px';
+                            textarea.style.left = '-9999px';
+                            document.body.appendChild(textarea);
+                            textarea.focus();
+                            textarea.select();
+
+                            const copied = document.execCommand('copy');
+                            document.body.removeChild(textarea);
+
+                            if (!copied) {
+                                throw new Error('execCommand copy failed');
+                            }
+                        }
+                        this.showToast(`${label} copied`, 'success');
+                    } catch (_) {
+                        this.showToast(`Failed to copy ${label}`, 'error');
+                    }
                 },
 
                 toggleCipher(cipher) {
@@ -1189,6 +1971,22 @@
                     } else {
                         this.form.data_ciphers = [...this.form.data_ciphers, cipher];
                     }
+                },
+
+                normalizeLoginMaxFailedAttempts(value) {
+                    const parsed = Number(value);
+                    if (!Number.isFinite(parsed)) {
+                        return 5;
+                    }
+                    return Math.min(20, Math.max(1, Math.round(parsed)));
+                },
+
+                normalizeLoginBlockDurationMinutes(value) {
+                    const parsed = Number(value);
+                    if (!Number.isFinite(parsed)) {
+                        return 15;
+                    }
+                    return Math.min(1440, Math.max(1, Math.round(parsed)));
                 },
 
                 async loadSettings() {
@@ -1225,7 +2023,11 @@
                             public_ipv4_address: generalData.public_ipv4_address || '',
                             public_ipv6_address: generalData.public_ipv6_address || '',
                             admin_allowed_ips: generalData.admin_allowed_ips || '0.0.0.0/0',
+                            login_max_failed_attempts: this.normalizeLoginMaxFailedAttempts(generalData.login_max_failed_attempts),
+                            login_block_duration_minutes: this.normalizeLoginBlockDurationMinutes(generalData.login_block_duration_minutes),
                             wan_interface: generalData.wan_interface || 'eth0',
+                            server_system_dns_primary: generalData.server_system_dns_primary || '1.1.1.1',
+                            server_system_dns_secondary: generalData.server_system_dns_secondary || '8.8.8.8',
                             panel_domain: generalData.panel_domain || '',
                             panel_https_port: Number(generalData.panel_https_port) || 2053,
                             subscription_domain: generalData.subscription_domain || '',
@@ -1269,16 +2071,7 @@
                             ws_port: Number(data.ws_port) || 8080,
                             tcp_nodelay: !!data.tcp_nodelay,
                             enable_auth_nocache: data.enable_auth_nocache !== undefined ? !!data.enable_auth_nocache : true,
-<<<<<<< HEAD
-<<<<<<< HEAD
-                            resolv_retry_mode: data.resolv_retry_mode || 'infinite',
-                            persist_key: data.persist_key !== undefined ? !!data.persist_key : true,
-                            persist_tun: data.persist_tun !== undefined ? !!data.persist_tun : true,
-=======
->>>>>>> feature-server-settings
-=======
                             enable_dns_leak_protection: data.enable_dns_leak_protection !== undefined ? !!data.enable_dns_leak_protection : true,
->>>>>>> feature-server-settings
                         };
                         if (this.form.obfuscation_mode !== 'standard') {
                             this.form.protocol = 'tcp';
@@ -1302,6 +2095,10 @@
 
                 async saveChanges() {
                     if (this.activeProtocolTab === 'general') {
+                        if (this.activeGeneralSection === 'audit_logs' || this.activeGeneralSection === 'server_ops') {
+                            this.showToast('This section has no save operation', 'success');
+                            return;
+                        }
                         await this.saveGeneralSettings();
                         return;
                     }
@@ -1312,33 +2109,44 @@
                     this.saving = true;
                     try {
                         const token = localStorage.getItem('access_token');
+                        const toInt = (value, fallback) => {
+                            const parsed = Number.parseInt(value, 10);
+                            return Number.isFinite(parsed) ? parsed : fallback;
+                        };
+                        const toOptionalInt = (value) => {
+                            if (value === null || value === undefined) {
+                                return null;
+                            }
+                            const normalized = String(value).trim();
+                            if (!normalized) {
+                                return null;
+                            }
+                            const parsed = Number.parseInt(normalized, 10);
+                            return Number.isFinite(parsed) ? parsed : null;
+                        };
+                        const toBool = (value) => value === true || value === 'true' || value === 1 || value === '1';
                         const payload = {
                             ...this.form,
-                            port: Number(this.form.port),
-                            max_clients: Number(this.form.max_clients),
-                            reneg_sec: Number(this.form.reneg_sec),
-                            tun_mtu: Number(this.form.tun_mtu),
-                            mssfix: Number(this.form.mssfix),
-                            sndbuf: Number(this.form.sndbuf),
-                            rcvbuf: Number(this.form.rcvbuf),
-                            tcp_nodelay: !!this.form.tcp_nodelay,
-                            explicit_exit_notify: Number(this.form.explicit_exit_notify),
-                            keepalive_ping: Number(this.form.keepalive_ping),
-                            keepalive_timeout: Number(this.form.keepalive_timeout),
-                            inactive_timeout: Number(this.form.inactive_timeout),
-                            management_port: Number(this.form.management_port),
-                            verbosity: Number(this.form.verbosity),
-                            enable_auth_nocache: Boolean(this.form.enable_auth_nocache),
-<<<<<<< HEAD
-<<<<<<< HEAD
-                            resolv_retry_mode: this.form.resolv_retry_mode || 'infinite',
-                            persist_key: Boolean(this.form.persist_key),
-                            persist_tun: Boolean(this.form.persist_tun),
-=======
->>>>>>> feature-server-settings
-=======
-                            enable_dns_leak_protection: Boolean(this.form.enable_dns_leak_protection),
->>>>>>> feature-server-settings
+                            port: toInt(this.form.port, 1194),
+                            max_clients: toInt(this.form.max_clients, 100),
+                            client_to_client: toBool(this.form.client_to_client),
+                            redirect_gateway: toBool(this.form.redirect_gateway),
+                            block_outside_dns: toBool(this.form.block_outside_dns),
+                            reneg_sec: toInt(this.form.reneg_sec, 3600),
+                            tun_mtu: toInt(this.form.tun_mtu, 1500),
+                            mssfix: toInt(this.form.mssfix, 1450),
+                            sndbuf: toInt(this.form.sndbuf, 393216),
+                            rcvbuf: toInt(this.form.rcvbuf, 393216),
+                            fast_io: toBool(this.form.fast_io),
+                            tcp_nodelay: toBool(this.form.tcp_nodelay),
+                            explicit_exit_notify: toInt(this.form.explicit_exit_notify, 1),
+                            keepalive_ping: toInt(this.form.keepalive_ping, 10),
+                            keepalive_timeout: toInt(this.form.keepalive_timeout, 120),
+                            inactive_timeout: toInt(this.form.inactive_timeout, 300),
+                            management_port: toInt(this.form.management_port, 5555),
+                            verbosity: toInt(this.form.verbosity, 3),
+                            enable_auth_nocache: toBool(this.form.enable_auth_nocache),
+                            enable_dns_leak_protection: toBool(this.form.enable_dns_leak_protection),
                             protocol: this.form.protocol,
                             device_type: this.form.device_type,
                             topology: 'subnet',
@@ -1349,7 +2157,7 @@
                             ipv4_network: (this.form.ipv4_network || '').trim(),
                             ipv4_netmask: (this.form.ipv4_netmask || '').trim(),
                             ipv6_network: this.generalForm.global_ipv6_support ? ((this.form.ipv6_network || '').trim() || null) : null,
-                            ipv6_prefix: this.generalForm.global_ipv6_support && this.form.ipv6_network ? Number(this.form.ipv6_prefix) : null,
+                            ipv6_prefix: this.generalForm.global_ipv6_support && this.form.ipv6_network ? toOptionalInt(this.form.ipv6_prefix) : null,
                             primary_dns: (this.form.primary_dns || '').trim(),
                             secondary_dns: (this.form.secondary_dns || '').trim(),
                             push_custom_routes: (this.form.push_custom_routes || '').trim() || null,
@@ -1362,17 +2170,17 @@
                             proxy_address: this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced'
                                 ? ((this.form.proxy_server || '').trim() || (this.generalForm.server_address || '').trim() || null)
                                 : null,
-                            proxy_port: Number(this.form.proxy_port),
+                            proxy_port: toInt(this.form.proxy_port, 8080),
                             spoofed_host: this.form.obfuscation_mode === 'stealth' || this.form.obfuscation_mode === 'http_proxy_advanced'
                                 ? ((this.form.spoofed_host || 'speedtest.net').trim() || 'speedtest.net')
                                 : null,
                             socks_server: this.form.obfuscation_mode === 'socks5_proxy_injection' ? ((this.form.socks_server || '').trim() || null) : null,
-                            socks_port: this.form.obfuscation_mode === 'socks5_proxy_injection' ? Number(this.form.socks_port) : null,
-                            stunnel_port: Number(this.form.stunnel_port),
+                            socks_port: this.form.obfuscation_mode === 'socks5_proxy_injection' ? toOptionalInt(this.form.socks_port) : null,
+                            stunnel_port: toInt(this.form.stunnel_port, 443),
                             sni_domain: null,
                             cdn_domain: null,
                             ws_path: (this.form.ws_path || '').trim() || '/stream',
-                            ws_port: Number(this.form.ws_port),
+                            ws_port: toInt(this.form.ws_port, 8080),
                         };
 
                         if (payload.obfuscation_mode !== 'standard') {
@@ -1449,6 +2257,66 @@
                         this.showToast(error.message || 'Failed to save settings', 'error');
                     } finally {
                         this.saving = false;
+                    }
+                },
+
+                async changeAdminPassword() {
+                    const currentPassword = (this.adminPasswordForm.current_password || '').trim();
+                    const newPassword = (this.adminPasswordForm.new_password || '').trim();
+
+                    if (!currentPassword || !newPassword) {
+                        this.showToast('Both current and new password are required', 'error');
+                        return;
+                    }
+
+                    if (newPassword.length < 8) {
+                        this.showToast('New password must be at least 8 characters', 'error');
+                        return;
+                    }
+
+                    this.changingAdminPassword = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/auth/change-password', {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                current_password: currentPassword,
+                                new_password: newPassword,
+                            }),
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Failed to update admin password';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                } else if (Array.isArray(error.detail) && error.detail.length > 0) {
+                                    message = error.detail.map(item => `${item.loc.join('.')}: ${item.msg}`).join(', ');
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        this.adminPasswordForm.current_password = '';
+                        this.adminPasswordForm.new_password = '';
+                        this.showToast('Admin password updated successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to update admin password', 'error');
+                    } finally {
+                        this.changingAdminPassword = false;
                     }
                 },
 
@@ -1537,13 +2405,23 @@
                     this.saving = true;
                     try {
                         const token = localStorage.getItem('access_token');
+                        const loginMaxFailedAttempts = this.normalizeLoginMaxFailedAttempts(this.generalForm.login_max_failed_attempts);
+                        const loginBlockDurationMinutes = this.normalizeLoginBlockDurationMinutes(this.generalForm.login_block_duration_minutes);
+
+                        this.generalForm.login_max_failed_attempts = loginMaxFailedAttempts;
+                        this.generalForm.login_block_duration_minutes = loginBlockDurationMinutes;
+
                         const payload = {
                             server_address: (this.generalForm.server_address || '').trim() || null,
                             public_ipv4_address: (this.generalForm.public_ipv4_address || '').trim() || null,
                             public_ipv6_address: (this.generalForm.public_ipv6_address || '').trim() || null,
                             global_ipv6_support: !!this.generalForm.global_ipv6_support,
                             wan_interface: (this.generalForm.wan_interface || '').trim(),
+                            server_system_dns_primary: (this.generalForm.server_system_dns_primary || '').trim(),
+                            server_system_dns_secondary: (this.generalForm.server_system_dns_secondary || '').trim(),
                             admin_allowed_ips: (this.generalForm.admin_allowed_ips || '').trim(),
+                            login_max_failed_attempts: loginMaxFailedAttempts,
+                            login_block_duration_minutes: loginBlockDurationMinutes,
                             panel_domain: (this.generalForm.panel_domain || '').trim(),
                             panel_https_port: Number(this.generalForm.panel_https_port),
                             subscription_domain: (this.generalForm.subscription_domain || '').trim(),
@@ -1590,7 +2468,11 @@
                             public_ipv4_address: updated.public_ipv4_address || '',
                             public_ipv6_address: updated.public_ipv6_address || '',
                             admin_allowed_ips: updated.admin_allowed_ips || '0.0.0.0/0',
+                            login_max_failed_attempts: this.normalizeLoginMaxFailedAttempts(updated.login_max_failed_attempts),
+                            login_block_duration_minutes: this.normalizeLoginBlockDurationMinutes(updated.login_block_duration_minutes),
                             wan_interface: updated.wan_interface || 'eth0',
+                            server_system_dns_primary: updated.server_system_dns_primary || '1.1.1.1',
+                            server_system_dns_secondary: updated.server_system_dns_secondary || '8.8.8.8',
                             panel_domain: updated.panel_domain || '',
                             panel_https_port: Number(updated.panel_https_port) || 2053,
                             subscription_domain: updated.subscription_domain || '',

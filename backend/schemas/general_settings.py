@@ -11,8 +11,12 @@ class GeneralSettingsBase(BaseModel):
     public_ipv6_address: Optional[str] = Field(default=None, max_length=64)
     global_ipv6_support: bool = Field(True)
     wan_interface: str = Field("eth0", min_length=1, max_length=32)
+    server_system_dns_primary: str = Field("1.1.1.1", min_length=3, max_length=64)
+    server_system_dns_secondary: str = Field("8.8.8.8", min_length=3, max_length=64)
 
     admin_allowed_ips: str = Field("0.0.0.0/0", min_length=1)
+    login_max_failed_attempts: int = Field(5, ge=1, le=20)
+    login_block_duration_minutes: int = Field(15, ge=1, le=1440)
 
     panel_domain: Optional[str] = Field(default=None, max_length=255)
     panel_https_port: int = Field(2053)
@@ -62,6 +66,18 @@ class GeneralSettingsBase(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Value cannot be empty")
+        return normalized
+
+    @field_validator("server_system_dns_primary", "server_system_dns_secondary")
+    @classmethod
+    def validate_server_system_dns(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("DNS value cannot be empty")
+        try:
+            ipaddress.ip_address(normalized)
+        except ValueError as exc:
+            raise ValueError("Server DNS must be a valid IPv4 or IPv6 address") from exc
         return normalized
 
     @field_validator("server_address", "panel_domain", "subscription_domain", "custom_ssl_certificate", "custom_ssl_private_key", "letsencrypt_email")

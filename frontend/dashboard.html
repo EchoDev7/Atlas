@@ -152,132 +152,99 @@
     </nav>
 
     <div class="max-w-7xl mx-auto py-4 sm:py-6 lg:py-8 px-4 sm:px-6 lg:px-8">
-        <div class="mb-6 sm:mb-8 lg:mb-10">
-            <h1 class="text-3xl sm:text-4xl font-black mb-2 theme-transition"
-                :class="darkMode ? 'text-white' : 'text-slate-900'">
-                Dashboard
-            </h1>
-            <p class="text-base sm:text-lg font-semibold theme-transition"
-               :class="darkMode ? 'text-cyan-400' : 'text-cyan-600'">
-                VPN INFRASTRUCTURE OVERVIEW
-            </p>
+        <div class="mb-6 sm:mb-8 lg:mb-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+                <h1 class="text-3xl sm:text-4xl font-black mb-2 theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Dashboard</h1>
+                <p class="text-base sm:text-lg font-semibold theme-transition" :class="darkMode ? 'text-cyan-400' : 'text-cyan-600'">Enterprise Command Center</p>
+                <p class="text-xs mt-2" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Last updated: <span x-text="formatDateTime(dashboard.generated_at)"></span></p>
+            </div>
+            <button @click="loadDashboardOverview()" :disabled="dashboardLoading"
+                    class="px-4 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30' : 'bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100'">
+                <span x-text="dashboardLoading ? 'Refreshing...' : 'Refresh Overview'"></span>
+            </button>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 lg:gap-6 mb-6 sm:mb-8">
-            <div class="rounded-xl sm:rounded-2xl p-5 sm:p-6 shadow-xl theme-transition"
-                 :class="darkMode ? 'glass-dark' : 'glass-light'">
-                <div class="flex items-center justify-between mb-3 sm:mb-4">
-                    <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center theme-transition"
-                         :class="darkMode ? 'bg-emerald-500/20' : 'bg-emerald-100'">
-                        <svg class="w-6 h-6 sm:w-7 sm:h-7 theme-transition"
-                             :class="darkMode ? 'text-emerald-400' : 'text-emerald-600'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
-                        </svg>
-                    </div>
-                    <span class="text-[10px] sm:text-xs font-black tracking-wider theme-transition"
-                          :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
-                        ACTIVE USERS
-                    </span>
-                </div>
-                <p class="text-3xl sm:text-4xl font-black theme-transition"
-                   :class="darkMode ? 'text-white' : 'text-slate-900'">0</p>
-                <p class="text-xs sm:text-sm font-semibold mt-2 theme-transition"
-                   :class="darkMode ? 'text-slate-400' : 'text-slate-600'">No connections yet</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 mb-6 sm:mb-8">
+            <div class="rounded-2xl p-5 shadow-xl theme-transition" :class="darkMode ? 'glass-dark' : 'glass-light'">
+                <p class="text-xs uppercase tracking-widest" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Total Users</p>
+                <p class="mt-2 text-4xl font-black" :class="darkMode ? 'text-white' : 'text-slate-900'" x-text="dashboard.totals.total_users"></p>
+                <p class="mt-2 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Active: <span x-text="dashboard.totals.active_users"></span></p>
             </div>
-
-            <div class="rounded-xl sm:rounded-2xl p-5 sm:p-6 shadow-xl theme-transition"
-                 :class="darkMode ? 'glass-dark' : 'glass-light'">
-                <div class="flex items-center justify-between mb-3 sm:mb-4">
-                    <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center theme-transition"
-                         :class="darkMode ? 'bg-cyan-500/20' : 'bg-cyan-100'">
-                        <svg class="w-6 h-6 sm:w-7 sm:h-7 theme-transition"
-                             :class="darkMode ? 'text-cyan-400' : 'text-cyan-600'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                        </svg>
-                    </div>
-                    <span class="text-[10px] sm:text-xs font-black tracking-wider theme-transition"
-                          :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
-                        SERVER STATUS
-                    </span>
-                </div>
-                <p class="text-3xl sm:text-4xl font-black theme-transition"
-                   :class="darkMode ? 'text-white' : 'text-slate-900'">Ready</p>
-                <p class="text-xs sm:text-sm font-semibold mt-2 theme-transition"
-                   :class="darkMode ? 'text-slate-400' : 'text-slate-600'">System operational</p>
+            <div class="rounded-2xl p-5 shadow-xl theme-transition" :class="darkMode ? 'glass-dark' : 'glass-light'">
+                <p class="text-xs uppercase tracking-widest" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Expired Users</p>
+                <p class="mt-2 text-4xl font-black" :class="dashboard.totals.expired_users > 0 ? 'text-amber-500' : (darkMode ? 'text-white' : 'text-slate-900')" x-text="dashboard.totals.expired_users"></p>
+                <p class="mt-2 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Requires renewal workflow</p>
             </div>
-
-            <div class="rounded-xl sm:rounded-2xl p-5 sm:p-6 shadow-xl theme-transition"
-                 :class="darkMode ? 'glass-dark' : 'glass-light'">
-                <div class="flex items-center justify-between mb-3 sm:mb-4">
-                    <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center theme-transition"
-                         :class="darkMode ? 'bg-purple-500/20' : 'bg-purple-100'">
-                        <svg class="w-6 h-6 sm:w-7 sm:h-7 theme-transition"
-                             :class="darkMode ? 'text-purple-400' : 'text-purple-600'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-                        </svg>
-                    </div>
-                    <span class="text-[10px] sm:text-xs font-black tracking-wider theme-transition"
-                          :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
-                        VPN PROTOCOLS
-                    </span>
-                </div>
-                <p class="text-3xl sm:text-4xl font-black theme-transition"
-                   :class="darkMode ? 'text-white' : 'text-slate-900'">0</p>
-                <p class="text-xs sm:text-sm font-semibold mt-2 theme-transition"
-                   :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Awaiting configuration</p>
+            <div class="rounded-2xl p-5 shadow-xl theme-transition" :class="darkMode ? 'glass-dark' : 'glass-light'">
+                <p class="text-xs uppercase tracking-widest" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Data Limit Exceeded</p>
+                <p class="mt-2 text-4xl font-black" :class="dashboard.totals.limit_exceeded_users > 0 ? 'text-rose-500' : (darkMode ? 'text-white' : 'text-slate-900')" x-text="dashboard.totals.limit_exceeded_users"></p>
+                <p class="mt-2 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Users blocked by traffic cap</p>
+            </div>
+            <div class="rounded-2xl p-5 shadow-xl theme-transition" :class="darkMode ? 'glass-dark' : 'glass-light'">
+                <p class="text-xs uppercase tracking-widest" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Online Now</p>
+                <p class="mt-2 text-4xl font-black" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'" x-text="dashboard.live.online_users"></p>
+                <p class="mt-2 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Sessions: <span x-text="dashboard.live.active_sessions"></span></p>
             </div>
         </div>
 
-        <div class="rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8 shadow-xl theme-transition"
-             :class="darkMode ? 'glass-dark' : 'glass-light'">
-            <div class="flex flex-col sm:flex-row items-start space-y-4 sm:space-y-0 sm:space-x-5">
-                <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg theme-transition"
-                     :class="darkMode ? 'bg-gradient-to-br from-cyan-500 to-teal-600 shadow-glow-cyan' : 'bg-gradient-to-r from-cyan-500 to-teal-500'">
-                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                </div>
-                <div class="flex-1">
-                    <h2 class="text-xl sm:text-2xl font-black mb-2 sm:mb-3 theme-transition"
-                        :class="darkMode ? 'text-white' : 'text-slate-900'">
-                        Phase 1: Authentication Complete
-                    </h2>
-                    <p class="text-sm sm:text-base font-medium mb-4 sm:mb-5 leading-relaxed theme-transition"
-                       :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                        The authentication system is now operational. You can securely log in and manage your VPN infrastructure.
-                    </p>
-                    <div class="rounded-lg sm:rounded-xl p-4 sm:p-5 theme-transition"
-                         :class="darkMode ? 'bg-slate-800/50 border border-slate-700' : 'bg-slate-100 border border-slate-200'">
-                        <p class="text-xs sm:text-sm font-black mb-2 sm:mb-3 tracking-wide theme-transition"
-                           :class="darkMode ? 'text-cyan-400' : 'text-cyan-600'">
-                            NEXT STEPS:
-                        </p>
-                        <ul class="text-xs sm:text-sm font-medium space-y-2 sm:space-y-2.5 theme-transition"
-                            :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                            <li class="flex items-start">
-                                <svg class="w-5 h-5 mr-3 mt-0.5 flex-shrink-0 theme-transition"
-                                     :class="darkMode ? 'text-emerald-400' : 'text-emerald-600'" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-                                </svg>
-                                OpenVPN management (PKI, client creation, service control)
-                            </li>
-                            <li class="flex items-start">
-                                <svg class="w-5 h-5 mr-3 mt-0.5 flex-shrink-0 theme-transition"
-                                     :class="darkMode ? 'text-slate-600' : 'text-slate-400'" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd"/>
-                                </svg>
-                                WireGuard integration (peer management, QR codes)
-                            </li>
-                            <li class="flex items-start">
-                                <svg class="w-5 h-5 mr-3 mt-0.5 flex-shrink-0 theme-transition"
-                                     :class="darkMode ? 'text-slate-600' : 'text-slate-400'" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd"/>
-                                </svg>
-                                Sing-box support (multi-protocol inbounds)
-                            </li>
-                        </ul>
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-6 sm:mb-8">
+            <div class="xl:col-span-2 rounded-2xl p-5 shadow-xl theme-transition" :class="darkMode ? 'glass-dark' : 'glass-light'">
+                <h2 class="text-lg font-black mb-4" :class="darkMode ? 'text-white' : 'text-slate-900'">System Health</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="rounded-xl border p-4" :class="darkMode ? 'border-slate-700 bg-slate-900/20' : 'border-slate-200 bg-slate-50'">
+                        <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">OpenVPN Service</p>
+                        <p class="mt-2 text-xl font-bold" :class="dashboard.system_health.openvpn.is_active ? 'text-emerald-500' : 'text-rose-500'" x-text="dashboard.system_health.openvpn.is_active ? 'Running' : 'Stopped'"></p>
+                        <p class="mt-1 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'" x-text="dashboard.system_health.openvpn.is_enabled ? 'Enabled at boot' : 'Not enabled at boot'"></p>
+                    </div>
+                    <div class="rounded-xl border p-4" :class="darkMode ? 'border-slate-700 bg-slate-900/20' : 'border-slate-200 bg-slate-50'">
+                        <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Database</p>
+                        <p class="mt-2 text-xl font-bold" :class="dashboard.system_health.database.ok ? 'text-emerald-500' : 'text-rose-500'" x-text="dashboard.system_health.database.ok ? 'Healthy' : 'Issue Detected'"></p>
+                        <p class="mt-1 text-xs break-words" :class="darkMode ? 'text-slate-400' : 'text-slate-600'" x-text="dashboard.system_health.database.message"></p>
+                    </div>
+                    <div class="rounded-xl border p-4 md:col-span-2" :class="darkMode ? 'border-slate-700 bg-slate-900/20' : 'border-slate-200 bg-slate-50'">
+                        <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Traffic</p>
+                        <p class="mt-2 text-2xl font-black" :class="darkMode ? 'text-white' : 'text-slate-900'" x-text="formatBytes(dashboard.traffic.total_traffic_bytes)"></p>
+                        <p class="mt-1 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Live runtime traffic: <span x-text="formatBytes(dashboard.traffic.live_total_bytes)"></span></p>
                     </div>
                 </div>
+            </div>
+
+            <div class="rounded-2xl p-5 shadow-xl theme-transition" :class="darkMode ? 'glass-dark' : 'glass-light'">
+                <h2 class="text-lg font-black mb-4" :class="darkMode ? 'text-white' : 'text-slate-900'">Global Snapshot</h2>
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between gap-3"><span :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Server Address</span><span class="font-semibold break-all" :class="darkMode ? 'text-slate-200' : 'text-slate-800'" x-text="dashboard.global.server_address || 'N/A'"></span></div>
+                    <div class="flex justify-between gap-3"><span :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Panel Domain</span><span class="font-semibold break-all" :class="darkMode ? 'text-slate-200' : 'text-slate-800'" x-text="dashboard.global.panel_domain || 'N/A'"></span></div>
+                    <div class="flex justify-between gap-3"><span :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Force HTTPS</span><span class="font-semibold" :class="dashboard.global.force_https ? 'text-emerald-500' : 'text-amber-500'" x-text="dashboard.global.force_https ? 'ON' : 'OFF'"></span></div>
+                    <div class="flex justify-between gap-3"><span :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Global IPv6</span><span class="font-semibold" :class="dashboard.global.global_ipv6_support ? 'text-emerald-500' : 'text-slate-500'" x-text="dashboard.global.global_ipv6_support ? 'Enabled' : 'Disabled'"></span></div>
+                    <div class="flex justify-between gap-3"><span :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Timezone</span><span class="font-semibold" :class="darkMode ? 'text-slate-200' : 'text-slate-800'" x-text="dashboard.global.system_timezone"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="rounded-2xl p-5 shadow-xl theme-transition" :class="darkMode ? 'glass-dark' : 'glass-light'">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-black" :class="darkMode ? 'text-white' : 'text-slate-900'">Alerts / Needs Attention</h2>
+                <span class="px-2.5 py-1 rounded-full text-xs font-semibold"
+                      :class="dashboard.alerts.total > 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'"
+                      x-text="dashboard.alerts.total > 0 ? `${dashboard.alerts.total} issues` : 'No active alerts'"></span>
+            </div>
+            <div x-show="dashboard.alerts.items.length === 0" class="text-sm" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                All clear. No expired users or traffic-cap violations detected.
+            </div>
+            <div x-show="dashboard.alerts.items.length > 0" class="space-y-2">
+                <template x-for="(alert, idx) in dashboard.alerts.items" :key="`alert-${idx}`">
+                    <div class="rounded-xl border px-4 py-3 flex items-start justify-between gap-3"
+                         :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
+                        <div>
+                            <p class="text-sm font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="alert.message"></p>
+                            <p class="text-xs mt-1" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">User: <span x-text="alert.username"></span></p>
+                        </div>
+                        <span class="text-xs px-2 py-1 rounded-full font-semibold"
+                              :class="alert.type === 'expired' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'"
+                              x-text="alert.type === 'expired' ? 'Expired' : 'Data Limit'"></span>
+                    </div>
+                </template>
             </div>
         </div>
     </div>
@@ -313,10 +280,71 @@
             return {
                 ...themeManager(),
                 username: '',
+                dashboardLoading: false,
                 serviceStatus: {
                     is_active: false,
                     is_enabled: false,
                     is_mock: false
+                },
+                dashboard: {
+                    generated_at: null,
+                    totals: {
+                        total_users: 0,
+                        active_users: 0,
+                        expired_users: 0,
+                        limit_exceeded_users: 0,
+                        disabled_users: 0,
+                    },
+                    live: {
+                        online_users: 0,
+                        active_sessions: 0,
+                        openvpn_runtime_healthy: false,
+                    },
+                    traffic: {
+                        total_traffic_bytes: 0,
+                        live_total_bytes: 0,
+                    },
+                    system_health: {
+                        openvpn: { is_active: false, is_enabled: false, message: '' },
+                        database: { ok: false, message: 'Not checked' },
+                    },
+                    global: {
+                        server_address: '',
+                        panel_domain: '',
+                        force_https: false,
+                        global_ipv6_support: false,
+                        system_timezone: 'UTC',
+                    },
+                    alerts: {
+                        total: 0,
+                        items: [],
+                    },
+                },
+
+                formatBytes(bytes) {
+                    const value = Number(bytes || 0);
+                    if (!Number.isFinite(value) || value <= 0) {
+                        return '0 B';
+                    }
+                    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                    let unitIndex = 0;
+                    let size = value;
+                    while (size >= 1024 && unitIndex < units.length - 1) {
+                        size /= 1024;
+                        unitIndex += 1;
+                    }
+                    return `${size.toFixed(size >= 100 ? 0 : size >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+                },
+
+                formatDateTime(value) {
+                    if (!value) {
+                        return 'N/A';
+                    }
+                    const date = new Date(value);
+                    if (Number.isNaN(date.getTime())) {
+                        return String(value);
+                    }
+                    return date.toLocaleString();
                 },
 
                 async init() {
@@ -342,29 +370,56 @@
 
                         const data = await response.json();
                         this.username = data.username;
-                        
-                        // Load OpenVPN service status
-                        await this.loadServiceStatus();
+
+                        await this.loadDashboardOverview();
                     } catch (err) {
                         localStorage.removeItem('access_token');
                         window.location.href = '/templates/login.html';
                     }
                 },
-                
-                async loadServiceStatus() {
+
+                async loadDashboardOverview() {
+                    this.dashboardLoading = true;
                     try {
                         const token = localStorage.getItem('access_token');
-                        const response = await fetch('/api/openvpn/service/status', {
+                        const response = await fetch('/api/dashboard/overview', {
                             headers: {
                                 'Authorization': `Bearer ${token}`
                             }
                         });
-                        
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/templates/login.html';
+                            return;
+                        }
                         if (response.ok) {
-                            this.serviceStatus = await response.json();
+                            const overview = await response.json();
+                            this.dashboard = {
+                                ...this.dashboard,
+                                ...overview,
+                                totals: { ...this.dashboard.totals, ...(overview.totals || {}) },
+                                live: { ...this.dashboard.live, ...(overview.live || {}) },
+                                traffic: { ...this.dashboard.traffic, ...(overview.traffic || {}) },
+                                system_health: {
+                                    openvpn: { ...this.dashboard.system_health.openvpn, ...((overview.system_health || {}).openvpn || {}) },
+                                    database: { ...this.dashboard.system_health.database, ...((overview.system_health || {}).database || {}) },
+                                },
+                                global: { ...this.dashboard.global, ...(overview.global || {}) },
+                                alerts: {
+                                    total: Number((overview.alerts || {}).total || 0),
+                                    items: Array.isArray((overview.alerts || {}).items) ? overview.alerts.items : [],
+                                },
+                            };
+                            this.serviceStatus = {
+                                ...this.serviceStatus,
+                                is_active: !!this.dashboard.system_health.openvpn.is_active,
+                                is_enabled: !!this.dashboard.system_health.openvpn.is_enabled,
+                            };
                         }
                     } catch (err) {
-                        console.error('Failed to load service status:', err);
+                        console.error('Failed to load dashboard overview:', err);
+                    } finally {
+                        this.dashboardLoading = false;
                     }
                 },
 

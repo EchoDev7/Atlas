@@ -256,29 +256,78 @@
             <!-- Table Header -->
             <div class="px-6 py-4 border-b theme-transition"
                  :class="darkMode ? 'border-slate-700/50 bg-slate-900/30' : 'border-slate-200/50 bg-slate-50/50'">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <h2 class="text-lg font-semibold theme-transition"
-                        :class="darkMode ? 'text-white' : 'text-slate-900'">
-                        Active Clients (<span x-text="clients.length"></span>)
-                    </h2>
-                    <div class="flex items-center gap-2 self-start sm:self-auto">
-                        <button x-show="selectedUserIds.length > 0"
-                                @click="confirmBulkDelete()"
-                                class="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
-                            Delete Selected (<span x-text="selectedUserIds.length"></span>)
-                        </button>
-                        <button x-show="selectedUserIds.length > 0"
-                                @click="clearSelection()"
-                                class="px-3 py-2 rounded-lg text-xs font-semibold theme-transition"
-                                :class="darkMode ? 'bg-slate-700/50 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
-                            Clear
-                        </button>
-                        <button @click="loadClients()" class="text-sm theme-transition hover:scale-105 transition-transform"
-                                :class="darkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-cyan-600 hover:text-cyan-700'">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                <div class="flex flex-col gap-4">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <h2 class="text-lg font-semibold theme-transition"
+                            :class="darkMode ? 'text-white' : 'text-slate-900'">
+                            Active Clients (<span x-text="totalUsers"></span>)
+                        </h2>
+                        <div class="flex items-center gap-2 self-start sm:self-auto">
+                            <button x-show="selectedUserIds.length > 0"
+                                    @click="confirmBulkDelete()"
+                                    class="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                                Delete Selected (<span x-text="selectedUserIds.length"></span>)
+                            </button>
+                            <button x-show="selectedUserIds.length > 0"
+                                    @click="clearSelection()"
+                                    class="px-3 py-2 rounded-lg text-xs font-semibold theme-transition"
+                                    :class="darkMode ? 'bg-slate-700/50 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+                                Clear
+                            </button>
+                            <button @click="loadClients({ preservePage: true })" class="text-sm theme-transition hover:scale-105 transition-transform"
+                                    :class="darkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-cyan-600 hover:text-cyan-700'">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                        <div class="lg:col-span-5 relative">
+                            <input type="text"
+                                   x-model="filters.search"
+                                   @input="debouncedApplyFilters()"
+                                   placeholder="Search by username..."
+                                   class="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm theme-transition focus:outline-none focus:ring-2"
+                                   :class="darkMode ? 'input-dark text-white placeholder-slate-500 focus:ring-cyan-500/40' : 'bg-white border border-slate-200 text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:ring-cyan-100'">
+                            <svg class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" :class="darkMode ? 'text-slate-500' : 'text-slate-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z"/>
                             </svg>
-                        </button>
+                        </div>
+                        <div class="lg:col-span-3">
+                            <select x-model="filters.statusFilter" @change="applyFilters()"
+                                    class="w-full px-3 py-2.5 rounded-xl text-sm theme-transition focus:outline-none focus:ring-2"
+                                    :class="darkMode ? 'input-dark text-white focus:ring-cyan-500/40' : 'bg-white border border-slate-200 text-slate-900 focus:border-cyan-500 focus:ring-cyan-100'">
+                                <option value="all">All statuses</option>
+                                <option value="active">Active</option>
+                                <option value="expired">Expired</option>
+                                <option value="data_limited">Data-limit exceeded</option>
+                                <option value="disabled">Disabled</option>
+                            </select>
+                        </div>
+                        <div class="lg:col-span-3">
+                            <select x-model="filters.sortKey" @change="applyFilters()"
+                                    class="w-full px-3 py-2.5 rounded-xl text-sm theme-transition focus:outline-none focus:ring-2"
+                                    :class="darkMode ? 'input-dark text-white focus:ring-cyan-500/40' : 'bg-white border border-slate-200 text-slate-900 focus:border-cyan-500 focus:ring-cyan-100'">
+                                <option value="created_at:desc">Newest created</option>
+                                <option value="username:asc">Username (A-Z)</option>
+                                <option value="username:desc">Username (Z-A)</option>
+                                <option value="expiry_date:asc">Expiry (soonest first)</option>
+                                <option value="expiry_date:desc">Expiry (latest first)</option>
+                                <option value="traffic_used:desc">Traffic (highest first)</option>
+                                <option value="traffic_used:asc">Traffic (lowest first)</option>
+                            </select>
+                        </div>
+                        <div class="lg:col-span-1">
+                            <select x-model.number="pageSize" @change="applyFilters()"
+                                    class="w-full px-3 py-2.5 rounded-xl text-sm theme-transition focus:outline-none focus:ring-2"
+                                    :class="darkMode ? 'input-dark text-white focus:ring-cyan-500/40' : 'bg-white border border-slate-200 text-slate-900 focus:border-cyan-500 focus:ring-cyan-100'">
+                                <option :value="10">10</option>
+                                <option :value="25">25</option>
+                                <option :value="50">50</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -346,7 +395,7 @@
                                             <div class="mt-1">
                                                 <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded-full theme-transition"
                                                       :class="darkMode ? 'bg-slate-700/60 text-slate-300 border border-slate-600/60' : 'bg-slate-100 text-slate-600 border border-slate-200'"
-                                                      x-text="'Max Devices: ' + (client.max_devices || 1)"></span>
+                                                      x-text="'Max: ' + getMaxConcurrent(client) + ' | Online: ' + (client.current_connections || 0)"></span>
                                             </div>
                                             <div class="flex items-center space-x-1 mt-1">
                                                 <span x-show="client.has_openvpn" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">OpenVPN</span>
@@ -372,9 +421,9 @@
                                                     </span>
                                                 </div>
                                                 <div class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
-                                                    Usage: <span x-text="client.total_gb_used.toFixed(2)"></span><span x-show="client.data_limit_gb"> / <span x-text="client.data_limit_gb"></span></span> GB
+                                                    Usage: <span x-text="client.total_gb_used.toFixed(2)"></span><span x-show="getTrafficLimitGB(client)"> / <span x-text="getTrafficLimitGB(client)"></span></span> GB
                                                 </div>
-                                                <div x-show="client.data_limit_gb" class="w-full h-1.5 rounded-full overflow-hidden theme-transition"
+                                                <div x-show="getTrafficLimitGB(client)" class="w-full h-1.5 rounded-full overflow-hidden theme-transition"
                                                      :class="darkMode ? 'bg-slate-700' : 'bg-slate-200'">
                                                     <div class="h-full rounded-full transition-all duration-500"
                                                          :class="{
@@ -384,8 +433,8 @@
                                                          }"
                                                          :style="'width: ' + Math.min(client.data_usage_percentage, 100) + '%'"></div>
                                                 </div>
-                                                <div x-show="client.expiry_date" class="text-xs theme-transition" :class="getRemainingDays(client.expiry_date) < 0 ? 'text-red-500 font-semibold' : (darkMode ? 'text-slate-400' : 'text-slate-600')">
-                                                    <span x-text="getRemainingDays(client.expiry_date) < 0 ? 'Expired' : ('Remaining: ' + getRemainingDays(client.expiry_date) + ' days')"></span>
+                                                <div x-show="getExpiryDate(client)" class="text-xs theme-transition" :class="getRemainingDays(getExpiryDate(client)) < 0 ? 'text-red-500 font-semibold' : (darkMode ? 'text-slate-400' : 'text-slate-600')">
+                                                    <span x-text="getRemainingDays(getExpiryDate(client)) < 0 ? 'Expired' : ('Remaining: ' + getRemainingDays(getExpiryDate(client)) + ' days')"></span>
                                                 </div>
                                             </div>
                                         </div>
@@ -411,8 +460,8 @@
                                               }"
                                               x-text="client.is_active ? 'ACTIVE' : (client.is_expired ? 'EXPIRED' : (client.is_data_limit_exceeded ? 'LIMIT EXCEEDED' : 'IDLE'))">
                                         </span>
-                                        <div x-show="client.expiry_date" class="text-xs theme-transition" :class="getRemainingDays(client.expiry_date) < 0 ? 'text-red-500 font-semibold' : (darkMode ? 'text-slate-400' : 'text-slate-600')">
-                                            <span x-text="getRemainingDays(client.expiry_date) < 0 ? 'Expired' : ('Remaining: ' + getRemainingDays(client.expiry_date) + ' days')"></span>
+                                        <div x-show="getExpiryDate(client)" class="text-xs theme-transition" :class="getRemainingDays(getExpiryDate(client)) < 0 ? 'text-red-500 font-semibold' : (darkMode ? 'text-slate-400' : 'text-slate-600')">
+                                            <span x-text="getRemainingDays(getExpiryDate(client)) < 0 ? 'Expired' : ('Remaining: ' + getRemainingDays(getExpiryDate(client)) + ' days')"></span>
                                         </div>
                                     </div>
                                 </td>
@@ -424,11 +473,11 @@
                                             <span class="text-sm font-medium theme-transition"
                                                   :class="darkMode ? 'text-slate-300' : 'text-slate-700'"
                                                   x-text="client.total_gb_used.toFixed(2) + ' GB'"></span>
-                                            <span x-show="client.data_limit_gb" class="text-xs theme-transition"
+                                            <span x-show="getTrafficLimitGB(client)" class="text-xs theme-transition"
                                                   :class="darkMode ? 'text-slate-500' : 'text-slate-500'"
-                                                  x-text="'/ ' + client.data_limit_gb + ' GB'"></span>
+                                                  x-text="'/ ' + getTrafficLimitGB(client) + ' GB'"></span>
                                         </div>
-                                        <div x-show="client.data_limit_gb" class="w-full h-2 rounded-full overflow-hidden theme-transition"
+                                        <div x-show="getTrafficLimitGB(client)" class="w-full h-2 rounded-full overflow-hidden theme-transition"
                                              :class="darkMode ? 'bg-slate-700' : 'bg-slate-200'">
                                             <div class="h-full rounded-full transition-all duration-500"
                                                  :class="{
@@ -440,8 +489,8 @@
                                         </div>
                                         <div class="text-xs theme-transition"
                                              :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
-                                            ↑ <span x-text="formatBytes(client.total_bytes_sent)"></span>
-                                            ↓ <span x-text="formatBytes(client.total_bytes_received)"></span>
+                                            <span title="Total uploaded traffic">Up ↑ <span x-text="formatBytes(client.total_bytes_sent)"></span></span>
+                                            <span class="ml-2" title="Total downloaded traffic">Down ↓ <span x-text="formatBytes(client.total_bytes_received)"></span></span>
                                         </div>
                                     </div>
                                 </td>
@@ -486,10 +535,15 @@
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>🪟</span><span>Download for Windows</span>
                                                     </button>
+                                                    <button @click.prevent="downloadConfig(client.id, 'mac'); downloadOpen = false"
+                                                            class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
+                                                            :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
+                                                        <span>🖥️</span><span>Download for macOS</span>
+                                                    </button>
                                                     <button @click.prevent="downloadConfig(client.id, 'ios'); downloadOpen = false"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
-                                                        <span>🍎</span><span>Download for Mac/iOS</span>
+                                                        <span>📱</span><span>Download for iOS</span>
                                                     </button>
                                                     <button @click.prevent="downloadConfig(client.id, 'android'); downloadOpen = false"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
@@ -499,7 +553,7 @@
                                                     <button @click.prevent="downloadConfig(client.id, 'linux'); downloadOpen = false"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
-                                                        <span>🐧</span><span>Download for Linux</span>
+                                                        <span>🐧</span><span>Download for Linux / Router</span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -593,11 +647,11 @@
                                     </svg>
                                     <p class="text-lg font-medium theme-transition"
                                        :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
-                                        No clients yet
+                                        No matching clients
                                     </p>
                                     <p class="text-sm theme-transition"
                                        :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
-                                        Create your first VPN client to get started
+                                        Try changing your search, status filter, or sort options
                                     </p>
                                 </div>
                             </td>
@@ -608,7 +662,7 @@
             <div class="px-6 py-4 border-t theme-transition flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
                  :class="darkMode ? 'border-slate-700/50 bg-slate-900/20' : 'border-slate-200/50 bg-slate-50/30'">
                 <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
-                    Showing <span x-text="paginationStart()"></span>-<span x-text="paginationEnd()"></span> of <span x-text="clients.length"></span> users
+                    Showing <span x-text="paginationStart()"></span>-<span x-text="paginationEnd()"></span> of <span x-text="totalUsers"></span> users
                 </p>
                 <div class="flex items-center flex-wrap gap-2">
                     <button
@@ -1196,6 +1250,21 @@
                         this.darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
                     }
                 },
+
+                applyFilters() {
+                    this.currentPage = 1;
+                    this.selectedUserIds = [];
+                    this.loadClients({ preservePage: false });
+                },
+
+                debouncedApplyFilters() {
+                    if (this.searchDebounceTimer) {
+                        window.clearTimeout(this.searchDebounceTimer);
+                    }
+                    this.searchDebounceTimer = window.setTimeout(() => {
+                        this.applyFilters();
+                    }, 250);
+                },
                 
                 toggleTheme() {
                     this.darkMode = !this.darkMode;
@@ -1210,17 +1279,33 @@
                 
                 // State
                 clients: [],
+                totalUsers: 0,
                 selectedUserIds: [],
                 loading: false,
                 error: '',
                 successMessage: '',
                 currentPage: 1,
                 pageSize: 10,
+                filters: {
+                    search: '',
+                    statusFilter: 'all',
+                    sortKey: 'created_at:desc',
+                },
+                searchDebounceTimer: null,
                 serviceStatus: {
                     is_active: false,
                     is_enabled: false,
                     is_mock: false
                 },
+                autoRefreshTimerId: null,
+                autoRefreshMs: 3000,
+                runtimeStreamGeneration: 0,
+                runtimeStreamActive: false,
+                runtimeStreamConnected: false,
+                runtimeStreamReconnectAttempt: 0,
+                runtimeStreamMinBackoffMs: 1000,
+                runtimeStreamMaxBackoffMs: 30000,
+                runtimeStreamLastTickAt: null,
                 
                 // Create Modal
                 showCreateModal: false,
@@ -1277,17 +1362,117 @@
                     }
                     
                     // Load data
-                    await this.loadClients();
+                    await this.loadClients({ preservePage: false });
                     await this.loadServiceStatus();
+                    this.startAutoRefresh();
+
+                    window.addEventListener('beforeunload', () => {
+                        this.stopAutoRefresh();
+                    });
+
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.hidden) {
+                            this.stopAutoRefresh();
+                            return;
+                        }
+                        this.startAutoRefresh();
+                    });
+                },
+
+                startAutoRefresh() {
+                    if (this.runtimeStreamActive) {
+                        return;
+                    }
+                    this.stopAutoRefresh();
+
+                    this.runtimeStreamActive = true;
+                    this.runtimeStreamConnected = false;
+                    this.runtimeStreamReconnectAttempt = 0;
+                    this.runtimeStreamGeneration += 1;
+
+                    const generation = this.runtimeStreamGeneration;
+                    this.scheduleRuntimeStreamTick(0, generation);
+                },
+
+                stopAutoRefresh() {
+                    this.runtimeStreamActive = false;
+                    this.runtimeStreamConnected = false;
+                    this.runtimeStreamGeneration += 1;
+
+                    if (!this.autoRefreshTimerId) return;
+                    window.clearTimeout(this.autoRefreshTimerId);
+                    this.autoRefreshTimerId = null;
+                },
+
+                scheduleRuntimeStreamTick(delayMs, generation) {
+                    if (!this.runtimeStreamActive) return;
+                    if (generation !== this.runtimeStreamGeneration) return;
+
+                    if (this.autoRefreshTimerId) {
+                        window.clearTimeout(this.autoRefreshTimerId);
+                        this.autoRefreshTimerId = null;
+                    }
+
+                    this.autoRefreshTimerId = window.setTimeout(async () => {
+                        await this.runRuntimeStreamCycle(generation);
+                    }, Math.max(0, delayMs));
+                },
+
+                async runRuntimeStreamCycle(generation) {
+                    if (!this.runtimeStreamActive || generation !== this.runtimeStreamGeneration) return;
+
+                    const busy = this.loading || this.creating || this.editing || this.deletingUser || this.revoking || this.showCreateModal || this.showEditModal || this.showDeleteModal || this.showRevokeModal || this.showQRModal;
+                    if (document.hidden || busy) {
+                        this.scheduleRuntimeStreamTick(this.autoRefreshMs, generation);
+                        return;
+                    }
+
+                    const ok = await this.loadRuntimeSnapshot();
+                    this.runtimeStreamLastTickAt = new Date().toISOString();
+
+                    if (!this.runtimeStreamActive || generation !== this.runtimeStreamGeneration) return;
+
+                    if (ok) {
+                        this.runtimeStreamConnected = true;
+                        this.runtimeStreamReconnectAttempt = 0;
+                        this.scheduleRuntimeStreamTick(this.autoRefreshMs, generation);
+                        return;
+                    }
+
+                    this.runtimeStreamConnected = false;
+                    this.runtimeStreamReconnectAttempt += 1;
+                    const exp = Math.max(0, this.runtimeStreamReconnectAttempt - 1);
+                    const baseDelay = Math.min(
+                        this.runtimeStreamMaxBackoffMs,
+                        this.runtimeStreamMinBackoffMs * (2 ** exp),
+                    );
+                    const jitter = Math.floor(Math.random() * 250);
+                    const nextDelay = Math.min(this.runtimeStreamMaxBackoffMs, baseDelay + jitter);
+                    this.scheduleRuntimeStreamTick(nextDelay, generation);
                 },
                 
-                async loadClients() {
-                    this.loading = true;
+                async loadClients(options = {}) {
+                    const preservePage = options.preservePage !== false;
+                    const silent = options.silent === true;
+                    if (!silent) {
+                        this.loading = true;
+                    }
                     this.error = '';
                     
                     try {
                         const token = localStorage.getItem('access_token');
-                        const response = await fetch('/api/users', {
+                        const targetPage = preservePage ? Math.max(1, this.currentPage) : 1;
+                        const skip = (targetPage - 1) * this.pageSize;
+                        const [sortBy, sortOrder] = (this.filters.sortKey || 'created_at:desc').split(':');
+                        const queryParams = new URLSearchParams({
+                            skip: String(skip),
+                            limit: String(this.pageSize),
+                            search: this.filters.search || '',
+                            status_filter: this.filters.statusFilter || 'all',
+                            sort_by: sortBy || 'created_at',
+                            sort_order: sortOrder || 'desc',
+                        });
+                        const response = await fetch(`/api/users?${queryParams.toString()}`, {
                             headers: {
                                 'Authorization': `Bearer ${token}`
                             }
@@ -1304,13 +1489,65 @@
                         
                         const data = await response.json();
                         this.clients = data.users || [];
+                        this.totalUsers = Number(data.total || 0);
+                        const maxPage = Math.max(1, Math.ceil(this.totalUsers / this.pageSize));
+                        this.currentPage = Math.min(Math.max(1, Number(data.page || targetPage)), maxPage);
                         this.selectedUserIds = this.selectedUserIds.filter(id => this.clients.some(client => client.id === id));
-                        this.currentPage = 1;
+                        await this.loadRuntimeSnapshot();
                     } catch (err) {
-                        this.error = err.message || 'Failed to load users';
+                        if (!silent) {
+                            this.error = err.message || 'Failed to load users';
+                        }
                         console.error('Load users error:', err);
                     } finally {
-                        this.loading = false;
+                        if (!silent) {
+                            this.loading = false;
+                        }
+                    }
+                },
+
+                async loadRuntimeSnapshot() {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            return false;
+                        }
+                        const response = await fetch('/api/users/runtime', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+
+                        if (!response.ok) {
+                            if (response.status === 401) {
+                                localStorage.removeItem('access_token');
+                                window.location.href = '/templates/login.html';
+                            }
+                            return false;
+                        }
+
+                        const data = await response.json();
+                        const runtimeUsers = Array.isArray(data.users) ? data.users : [];
+                        const runtimeById = new Map(runtimeUsers.map(item => [item.id, item]));
+
+                        this.clients = this.clients.map(client => {
+                            const runtime = runtimeById.get(client.id);
+                            if (!runtime) return client;
+                            return {
+                                ...client,
+                                current_connections: runtime.current_connections,
+                                is_online: runtime.is_online,
+                                total_bytes_sent: runtime.total_bytes_sent,
+                                total_bytes_received: runtime.total_bytes_received,
+                                traffic_used_bytes: runtime.traffic_used_bytes,
+                                total_gb_used: runtime.total_gb_used,
+                                data_usage_percentage: runtime.data_usage_percentage,
+                                is_data_limit_exceeded: runtime.is_data_limit_exceeded,
+                            };
+                        });
+                        return true;
+                    } catch (err) {
+                        return false;
                     }
                 },
                 
@@ -1322,15 +1559,15 @@
                                 'Authorization': `Bearer ${token}`
                             }
                         });
-                        
+
                         if (response.ok) {
                             this.serviceStatus = await response.json();
                         }
-                    } catch (err) {
-                        console.error('Load service status error:', err);
+                    } catch (_) {
+                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false };
                     }
                 },
-                
+
                 generateRandomUsername() {
                     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
                     let suffix = '';
@@ -1420,12 +1657,14 @@
                 openEditModal(client) {
                     this.editClientId = client.id;
                     this.editError = '';
+                    const limitGB = this.getTrafficLimitGB(client);
+                    const expiryDate = this.getExpiryDate(client);
                     this.editForm = {
                         username: client.username,
                         new_password: '',
-                        max_devices: client.max_devices || 1,
-                        data_limit_gb: client.data_limit_gb ?? '',
-                        expiry_date: client.expiry_date ? client.expiry_date.split('T')[0] : '',
+                        max_devices: this.getMaxConcurrent(client),
+                        data_limit_gb: limitGB || '',
+                        expiry_date: expiryDate ? expiryDate.split('T')[0] : '',
                         notes: client.notes || client.description || ''
                     };
                     this.showEditModal = true;
@@ -1444,6 +1683,7 @@
                     this.editing = true;
                     this.editError = '';
                     this.successMessage = '';
+                    
                     try {
                         const token = localStorage.getItem('access_token');
                         const payload = {
@@ -1464,8 +1704,18 @@
                         });
 
                         if (!response.ok) {
-                            const error = await response.json();
-                            throw new Error(error.detail || 'Failed to update user');
+                            let errorMessage = 'Failed to update user';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    errorMessage = error.detail;
+                                } else if (Array.isArray(error.detail)) {
+                                    errorMessage = error.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join(', ');
+                                }
+                            } catch (_) {
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            }
+                            throw new Error(errorMessage);
                         }
 
                         this.successMessage = `User ${this.editForm.username} updated successfully`;
@@ -1473,15 +1723,21 @@
                         await this.loadClients();
                     } catch (err) {
                         this.editError = err.message || 'Failed to update user';
+                        console.error('Edit user error:', err);
                     } finally {
                         this.editing = false;
                     }
                 },
 
                 async downloadConfig(userId, osType) {
+                    this.error = '';
+                    
                     try {
-                        this.error = '';
                         const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            throw new Error('Not authenticated. Please log in again.');
+                        }
+                        
                         const client = this.clients.find((item) => item.id === userId);
                         const safeUsername = client?.username || `user_${userId}`;
                         const normalizedOs = osType || 'default';
@@ -1499,7 +1755,7 @@
                                 const errorData = await response.json();
                                 errorMessage = errorData.detail || errorMessage;
                             } catch (_) {
-                                // Ignore JSON parsing errors for non-JSON responses
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                             }
                             throw new Error(errorMessage);
                         }
@@ -1526,6 +1782,8 @@
                             window.URL.revokeObjectURL(url);
                             document.body.removeChild(a);
                         });
+                        
+                        this.successMessage = `Config downloaded successfully for ${safeUsername}`;
                     } catch (err) {
                         this.error = err.message || 'Failed to download config';
                         console.error('Download config error:', err);
@@ -1533,32 +1791,34 @@
                 },
 
                 totalPages() {
-                    return Math.max(1, Math.ceil(this.clients.length / this.pageSize));
+                    return Math.max(1, Math.ceil(this.totalUsers / this.pageSize));
                 },
 
                 paginatedClients() {
-                    const start = (this.currentPage - 1) * this.pageSize;
-                    return this.clients.slice(start, start + this.pageSize);
+                    return this.clients;
                 },
 
                 paginationStart() {
-                    if (this.clients.length === 0) return 0;
+                    if (this.totalUsers === 0 || this.clients.length === 0) return 0;
                     return (this.currentPage - 1) * this.pageSize + 1;
                 },
 
                 paginationEnd() {
-                    return Math.min(this.currentPage * this.pageSize, this.clients.length);
+                    if (this.totalUsers === 0 || this.clients.length === 0) return 0;
+                    return Math.min((this.currentPage - 1) * this.pageSize + this.clients.length, this.totalUsers);
                 },
 
                 previousPage() {
                     if (this.currentPage > 1) {
                         this.currentPage -= 1;
+                        this.loadClients({ preservePage: true });
                     }
                 },
 
                 nextPage() {
                     if (this.currentPage < this.totalPages()) {
                         this.currentPage += 1;
+                        this.loadClients({ preservePage: true });
                     }
                 },
                 
@@ -1577,7 +1837,14 @@
                         });
                         
                         if (!response.ok) {
-                            throw new Error('Failed to generate QR code');
+                            let errorMessage = 'Failed to generate QR code';
+                            try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.detail || errorMessage;
+                            } catch (_) {
+                                // Ignore JSON parsing errors
+                            }
+                            throw new Error(errorMessage);
                         }
                         
                         const data = await response.json();
@@ -1659,28 +1926,36 @@
 
                     try {
                         const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            throw new Error('Not authenticated. Please log in again.');
+                        }
+                        
                         const deletedIds = [];
                         const failedDeletes = [];
 
                         for (const target of this.deleteTargets) {
-                            const response = await fetch(`/api/users/${target.id}`, {
-                                method: 'DELETE',
-                                headers: {
-                                    'Authorization': `Bearer ${token}`
-                                }
-                            });
+                            try {
+                                const response = await fetch(`/api/users/${target.id}`, {
+                                    method: 'DELETE',
+                                    headers: {
+                                        'Authorization': `Bearer ${token}`
+                                    }
+                                });
 
-                            if (!response.ok) {
-                                let errorMessage = 'Delete failed';
-                                try {
-                                    const error = await response.json();
-                                    errorMessage = error.detail || errorMessage;
-                                } catch (_) {
-                                    // keep default message
+                                if (!response.ok) {
+                                    let errorMessage = 'Delete failed';
+                                    try {
+                                        const error = await response.json();
+                                        errorMessage = error.detail || errorMessage;
+                                    } catch (_) {
+                                        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                                    }
+                                    failedDeletes.push(`${target.username}: ${errorMessage}`);
+                                } else {
+                                    deletedIds.push(target.id);
                                 }
-                                failedDeletes.push(`${target.username}: ${errorMessage}`);
-                            } else {
-                                deletedIds.push(target.id);
+                            } catch (fetchErr) {
+                                failedDeletes.push(`${target.username}: ${fetchErr.message}`);
                             }
                         }
 
@@ -1699,6 +1974,7 @@
                         this.successMessage = `${deletedIds.length} user(s) deleted successfully`;
                     } catch (err) {
                         this.deleteError = err.message || 'Failed to delete user';
+                        console.error('Delete user error:', err);
                     } finally {
                         this.deletingUser = false;
                     }
@@ -1706,6 +1982,7 @@
                 
                 async revokeClient() {
                     this.revoking = true;
+                    this.error = '';
                     
                     try {
                         const token = localStorage.getItem('access_token');
@@ -1721,11 +1998,17 @@
                         });
                         
                         if (!response.ok) {
-                            const error = await response.json();
-                            throw new Error(error.detail || 'Failed to revoke certificate');
+                            let errorMessage = 'Failed to revoke certificate';
+                            try {
+                                const error = await response.json();
+                                errorMessage = error.detail || errorMessage;
+                            } catch (_) {
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            }
+                            throw new Error(errorMessage);
                         }
                         
-                        // Success
+                        this.successMessage = `Certificate for ${this.selectedClient.username} revoked successfully`;
                         this.showRevokeModal = false;
                         await this.loadClients();
                     } catch (err) {
@@ -1741,6 +2024,8 @@
 
                     this.statusUpdatingId = client.id;
                     this.successMessage = '';
+                    this.error = '';
+                    
                     try {
                         const token = localStorage.getItem('access_token');
                         const response = await fetch(`/api/users/${client.id}`, {
@@ -1755,8 +2040,14 @@
                         });
 
                         if (!response.ok) {
-                            const error = await response.json();
-                            throw new Error(error.detail || 'Failed to update user status');
+                            let errorMessage = 'Failed to update user status';
+                            try {
+                                const error = await response.json();
+                                errorMessage = error.detail || errorMessage;
+                            } catch (_) {
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            }
+                            throw new Error(errorMessage);
                         }
 
                         this.successMessage = `${client.username} ${client.is_enabled ? 'suspended' : 'enabled'} successfully`;
@@ -1785,11 +2076,15 @@
                 },
                 
                 formatBytes(bytes) {
-                    if (bytes === 0) return '0 B';
+                    const numericBytes = Number(bytes);
+                    if (!Number.isFinite(numericBytes) || numericBytes <= 0) return '0 B';
                     const k = 1024;
                     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-                    const i = Math.floor(Math.log(bytes) / Math.log(k));
-                    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+                    const i = Math.min(
+                        sizes.length - 1,
+                        Math.floor(Math.log(numericBytes) / Math.log(k))
+                    );
+                    return Math.round((numericBytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
                 },
                 
                 getRemainingDays(expiryDate) {
@@ -1799,6 +2094,27 @@
                     const diffTime = expiry - now;
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                     return diffDays;
+                },
+
+                getTrafficLimitGB(client) {
+                    if (!client) return null;
+                    if (client.traffic_limit_bytes != null && client.traffic_limit_bytes > 0) {
+                        return (client.traffic_limit_bytes / (1024 ** 3)).toFixed(2);
+                    }
+                    if (client.data_limit_gb != null && client.data_limit_gb > 0) {
+                        return parseFloat(client.data_limit_gb).toFixed(2);
+                    }
+                    return null;
+                },
+
+                getExpiryDate(client) {
+                    if (!client) return null;
+                    return client.access_expires_at || client.expiry_date || null;
+                },
+
+                getMaxConcurrent(client) {
+                    if (!client) return 1;
+                    return client.max_concurrent_connections || client.max_devices || 1;
                 }
             }
         }

@@ -1,18 +1,53 @@
-from passlib.context import CryptContext
-from jose import JWTError, jwt
+import base64
 from datetime import datetime, timedelta
+import hashlib
+import hmac
+import secrets
 from typing import Optional
+
+import bcrypt
+from jose import JWTError, jwt
+
 from backend.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+PBKDF2_SCHEME = "pbkdf2_sha256"
+PBKDF2_ITERATIONS = 390000
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    if hashed_password.startswith(f"{PBKDF2_SCHEME}$"):
+        try:
+            _, iterations_raw, salt_b64, expected_b64 = hashed_password.split("$", 3)
+            iterations = int(iterations_raw)
+            salt = base64.b64decode(salt_b64.encode("ascii"))
+            digest = hashlib.pbkdf2_hmac(
+                "sha256", plain_password.encode("utf-8"), salt, iterations
+            )
+            calculated_b64 = base64.b64encode(digest).decode("ascii")
+            return hmac.compare_digest(calculated_b64, expected_b64)
+        except Exception:
+            return False
+
+    # Backward compatibility for existing bcrypt hashes.
+    try:
+        if not hashed_password.startswith("$2"):
+            return False
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except Exception:
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt, PBKDF2_ITERATIONS
+    )
+    salt_b64 = base64.b64encode(salt).decode("ascii")
+    digest_b64 = base64.b64encode(digest).decode("ascii")
+    return f"{PBKDF2_SCHEME}${PBKDF2_ITERATIONS}${salt_b64}${digest_b64}"
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

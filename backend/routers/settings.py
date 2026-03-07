@@ -1,6 +1,12 @@
 from datetime import datetime
+import ipaddress
+import logging
+from pathlib import Path
+import shutil
+import socket
+import subprocess
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -16,10 +22,324 @@ from backend.schemas.general_settings import (
     GeneralSettingsUpdate,
 )
 from backend.schemas.openvpn_settings import OpenVPNSettingsResponse, OpenVPNSettingsUpdate
+from backend.services.audit_service import extract_client_ip, record_audit_event
 
 router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_manager = OpenVPNManager()
 obfuscation_manager = ObfuscationManager()
+logger = logging.getLogger(__name__)
+RESOLVED_DROPIN_DIR = Path("/etc/systemd/resolved.conf.d")
+ATLAS_DNS_DROPIN_FILE = RESOLVED_DROPIN_DIR / "atlas-dns.conf"
+
+
+def _command_exists(command: str) -> bool:
+    return shutil.which(command) is not None
+
+
+def _detect_global_ip_from_interface(wan_interface: str, family: int) -> str | None:
+    interface = (wan_interface or "").strip()
+    if not interface:
+        return None
+
+    ip_flag = "-4" if family == 4 else "-6"
+    token_prefix = "inet " if family == 4 else "inet6 "
+
+    if not _command_exists("ip"):
+        logger.warning("ip command is not available. Skipping interface IP detection.")
+        return None
+
+    try:
+        result = subprocess.run(
+            ["ip", ip_flag, "addr", "show", "dev", interface, "scope", "global"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith(token_prefix):
+                continue
+
+            parts = stripped.split()
+            if len(parts) < 2:
+                continue
+
+            candidate = parts[1].strip().split("/")[0].strip()
+            if not candidate:
+                continue
+
+            try:
+                parsed_ip = ipaddress.ip_address(candidate)
+            except ValueError:
+                continue
+
+            if parsed_ip.version != family:
+                continue
+            if family == 6 and parsed_ip.is_link_local:
+                continue
+
+            return candidate
+    except subprocess.CalledProcessError:
+        return None
+    except FileNotFoundError:
+        logger.warning("ip command not found while detecting interface IP.")
+        return None
+    except Exception:
+        return None
+
+    return None
+
+
+def _detect_public_ipv4(wan_interface: str | None = None) -> str:
+    wan_interface = (wan_interface or "").strip() or _detect_wan_interface()
+    detected = _detect_global_ip_from_interface(wan_interface, family=4)
+    return detected or "N/A"
+
+
+def _detect_ipv6_from_interface(wan_interface: str) -> str | None:
+    return _detect_global_ip_from_interface(wan_interface, family=6)
+
+
+def _detect_public_ipv6(wan_interface: str | None = None) -> str:
+    if not socket.has_ipv6:
+        return "Not Configured"
+
+    resolved_wan = (wan_interface or "").strip() or _detect_wan_interface()
+    local_ipv6 = _detect_ipv6_from_interface(resolved_wan)
+    if local_ipv6:
+        return local_ipv6
+
+    return "Not Configured"
+
+
+def _detect_wan_interface() -> str:
+    if not _command_exists("ip"):
+        logger.warning("ip command is not available. Falling back to default WAN interface eth0.")
+        return "eth0"
+
+    try:
+        result = subprocess.run(
+            ["ip", "route", "show", "default"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.strip().split()
+                if "dev" in parts:
+                    idx = parts.index("dev")
+                    if idx + 1 < len(parts):
+                        return parts[idx + 1]
+    except subprocess.CalledProcessError:
+        pass
+    except FileNotFoundError:
+        logger.warning("ip command not found while detecting WAN interface. Using eth0.")
+    except Exception:
+        pass
+    return "eth0"
+
+
+def _extract_dns_ips(raw_text: str) -> list[str]:
+    results: list[str] = []
+    for line in (raw_text or "").splitlines():
+        normalized_line = line.strip()
+        if not normalized_line:
+            continue
+
+        tokens = normalized_line.split()
+        for token in tokens:
+            candidate = token.strip().strip(",;[]()")
+            if not candidate:
+                continue
+            try:
+                parsed_ip = ipaddress.ip_address(candidate)
+            except ValueError:
+                continue
+
+            if parsed_ip.version not in (4, 6):
+                continue
+            if candidate not in results:
+                results.append(candidate)
+    return results
+
+
+def _read_dns_from_resolvectl_dns(wan_interface: str) -> list[str]:
+    if not _command_exists("resolvectl"):
+        logger.warning("resolvectl is not available. Skipping resolvectl dns lookup.")
+        return []
+
+    try:
+        result = subprocess.run(
+            ["resolvectl", "dns", wan_interface],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return _extract_dns_ips(result.stdout)
+    except subprocess.CalledProcessError:
+        pass
+    except FileNotFoundError:
+        logger.warning("resolvectl command not found during DNS lookup.")
+    except Exception:
+        pass
+    return []
+
+
+def _read_dns_from_atlas_dropin() -> list[str]:
+    try:
+        if not ATLAS_DNS_DROPIN_FILE.exists():
+            return []
+
+        raw_content = ATLAS_DNS_DROPIN_FILE.read_text(encoding="utf-8", errors="ignore")
+        dns_lines: list[str] = []
+        for line in raw_content.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or stripped.startswith(";"):
+                continue
+            if stripped.lower().startswith("dns="):
+                dns_lines.append(stripped.split("=", 1)[1].strip())
+
+        if not dns_lines:
+            return []
+
+        return _extract_dns_ips("\n".join(dns_lines))
+    except Exception:
+        return []
+
+
+def _read_dns_from_resolvectl_status(wan_interface: str) -> list[str]:
+    if not _command_exists("resolvectl"):
+        logger.warning("resolvectl is not available. Skipping resolvectl status lookup.")
+        return []
+
+    try:
+        result = subprocess.run(
+            ["resolvectl", "status", wan_interface],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+
+        status_lines = result.stdout.splitlines()
+        dns_lines: list[str] = []
+        capture_continuation = False
+        for line in status_lines:
+            stripped = line.strip()
+            if not stripped:
+                capture_continuation = False
+                continue
+
+            if stripped.startswith("DNS Servers:") or stripped.startswith("Current DNS Server:"):
+                dns_lines.append(stripped)
+                capture_continuation = True
+                continue
+
+            if capture_continuation and line.startswith(" "):
+                dns_lines.append(stripped)
+                continue
+
+            capture_continuation = False
+
+        return _extract_dns_ips("\n".join(dns_lines))
+    except subprocess.CalledProcessError:
+        pass
+    except FileNotFoundError:
+        logger.warning("resolvectl command not found during status lookup.")
+    except Exception:
+        pass
+    return []
+
+
+def _read_dns_from_resolv_conf() -> list[str]:
+    try:
+        resolv_path = Path("/etc/resolv.conf")
+        if resolv_path.exists():
+            return _extract_dns_ips(resolv_path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        pass
+    return []
+
+
+def _read_system_dns_servers() -> tuple[str, str]:
+    primary = "1.1.1.1"
+    secondary = "8.8.8.8"
+    wan_interface = _detect_wan_interface()
+    detected_dns = _read_dns_from_atlas_dropin()
+
+    if not detected_dns:
+        detected_dns = _read_dns_from_resolvectl_dns(wan_interface)
+
+    if not detected_dns:
+        detected_dns = _read_dns_from_resolv_conf()
+
+    if detected_dns == ["127.0.0.53"]:
+        resolved_dns = _read_dns_from_resolvectl_status(wan_interface)
+        if resolved_dns:
+            detected_dns = resolved_dns
+
+    if detected_dns:
+        primary = detected_dns[0]
+    if len(detected_dns) > 1:
+        secondary = detected_dns[1]
+
+    return primary, secondary
+
+
+def _apply_system_dns_servers(wan_interface: str, primary_dns: str, secondary_dns: str) -> dict:
+    try:
+        RESOLVED_DROPIN_DIR.mkdir(parents=True, exist_ok=True)
+        dropin_content = (
+            "[Resolve]\n"
+            f"DNS={primary_dns} {secondary_dns}\n"
+            "Domains=~.\n"
+        )
+        ATLAS_DNS_DROPIN_FILE.write_text(dropin_content, encoding="utf-8")
+
+        if _command_exists("systemctl"):
+            restart_result = subprocess.run(
+                ["systemctl", "restart", "systemd-resolved"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if restart_result.returncode != 0:
+                return {
+                    "success": False,
+                    "message": (restart_result.stderr or restart_result.stdout or "failed to restart systemd-resolved").strip(),
+                }
+        else:
+            logger.warning("systemctl is not available. Skipping systemd-resolved restart.")
+
+        if _command_exists("resolvectl"):
+            flush_result = subprocess.run(
+                ["resolvectl", "flush-caches"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if flush_result.returncode != 0:
+                logger.warning(
+                    "resolvectl cache flush failed: %s",
+                    (flush_result.stderr or flush_result.stdout or "failed to flush resolvectl caches").strip(),
+                )
+        else:
+            logger.warning("resolvectl is not available. Skipping DNS cache flush.")
+
+        return {"success": True, "method": "resolved-dropin"}
+    except subprocess.CalledProcessError as exc:
+        return {"success": False, "message": f"failed to apply system DNS: {exc}"}
+    except FileNotFoundError as exc:
+        logger.warning("System command missing while applying DNS settings: %s", exc)
+        return {"success": True, "method": "resolved-dropin", "message": "DNS applied; skipped missing system command"}
+    except Exception as exc:
+        return {"success": False, "message": f"failed to apply system DNS: {exc}"}
 
 
 def _get_or_create_openvpn_settings(db: Session) -> OpenVPNSettings:
@@ -30,6 +350,7 @@ def _get_or_create_openvpn_settings(db: Session) -> OpenVPNSettings:
     settings = OpenVPNSettings()
     db.add(settings)
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
     return settings
 
@@ -42,6 +363,7 @@ def _get_or_create_general_settings(db: Session) -> GeneralSettings:
     settings = GeneralSettings()
     db.add(settings)
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
     return settings
 
@@ -100,18 +422,16 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
         management_port=settings.management_port,
         verbosity=settings.verbosity,
         enable_auth_nocache=settings.enable_auth_nocache,
-<<<<<<< HEAD
-<<<<<<< HEAD
         resolv_retry_mode=settings.resolv_retry_mode,
         persist_key=settings.persist_key,
         persist_tun=settings.persist_tun,
-=======
->>>>>>> feature-server-settings
-=======
         enable_dns_leak_protection=settings.enable_dns_leak_protection,
->>>>>>> feature-server-settings
         custom_directives=settings.custom_directives,
         advanced_client_push=settings.advanced_client_push,
+        custom_ios=settings.custom_ios,
+        custom_android=settings.custom_android,
+        custom_windows=settings.custom_windows,
+        custom_mac=settings.custom_mac,
         obfuscation_mode=settings.obfuscation_mode,
         proxy_server=settings.proxy_server,
         proxy_address=settings.proxy_address,
@@ -129,6 +449,16 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
     )
 
 
+def _sync_openvpn_auth_db_snapshot() -> None:
+    """Best-effort sync of OpenVPN auth DB snapshot after settings updates."""
+    try:
+        result = openvpn_manager.sync_auth_database_snapshot()
+        if not result.get("success"):
+            logger.warning("OpenVPN auth DB sync warning after settings update: %s", result.get("message"))
+    except Exception as exc:
+        logger.warning("Failed to sync OpenVPN auth DB snapshot after settings update: %s", exc)
+
+
 def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
     return GeneralSettingsResponse(
         id=settings.id,
@@ -137,7 +467,11 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         public_ipv6_address=settings.public_ipv6_address,
         global_ipv6_support=settings.global_ipv6_support,
         wan_interface=settings.wan_interface,
+        server_system_dns_primary=settings.server_system_dns_primary,
+        server_system_dns_secondary=settings.server_system_dns_secondary,
         admin_allowed_ips=settings.admin_allowed_ips,
+        login_max_failed_attempts=settings.login_max_failed_attempts,
+        login_block_duration_minutes=settings.login_block_duration_minutes,
         panel_domain=settings.panel_domain,
         panel_https_port=settings.panel_https_port,
         subscription_domain=settings.subscription_domain,
@@ -162,22 +496,69 @@ def get_general_settings(
 ):
     _ = current_user
     settings = _get_or_create_general_settings(db)
+
+    detected_wan = _detect_wan_interface()
+    detected_ipv4 = _detect_public_ipv4(detected_wan)
+    detected_ipv6 = _detect_public_ipv6(detected_wan)
+    dns_primary, dns_secondary = _read_system_dns_servers()
+    has_change = False
+
+    normalized_ipv4 = None if detected_ipv4 == "N/A" else detected_ipv4
+    normalized_ipv6 = None if detected_ipv6 == "Not Configured" else detected_ipv6
+
+    if (settings.wan_interface or "").strip() != detected_wan:
+        settings.wan_interface = detected_wan
+        has_change = True
+    if (settings.public_ipv4_address or None) != normalized_ipv4:
+        settings.public_ipv4_address = normalized_ipv4
+        has_change = True
+    if (settings.public_ipv6_address or None) != normalized_ipv6:
+        settings.public_ipv6_address = normalized_ipv6
+        has_change = True
+    if (settings.server_system_dns_primary or "").strip() != dns_primary:
+        settings.server_system_dns_primary = dns_primary
+        has_change = True
+    if (settings.server_system_dns_secondary or "").strip() != dns_secondary:
+        settings.server_system_dns_secondary = dns_secondary
+        has_change = True
+
+    if has_change:
+        settings.updated_at = datetime.utcnow()
+        db.commit()
+        _sync_openvpn_auth_db_snapshot()
+        db.refresh(settings)
+
     return _to_general_response(settings)
+
+
+@router.get("/server-ips")
+def get_server_public_ips(current_user: Admin = Depends(get_current_user)):
+    _ = current_user
+    detected_wan = _detect_wan_interface()
+    return {
+        "public_ipv4": _detect_public_ipv4(detected_wan),
+        "public_ipv6": _detect_public_ipv6(detected_wan),
+    }
 
 
 @router.patch("/general", response_model=GeneralSettingsResponse)
 def update_general_settings(
     payload: GeneralSettingsUpdate,
+    request: Request,
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _ = current_user
     settings = _get_or_create_general_settings(db)
+    detected_wan = _detect_wan_interface()
 
     previous_ipv6_support = settings.global_ipv6_support
     previous_timezone = settings.system_timezone
     previous_panel_port = settings.panel_https_port
     previous_subscription_port = settings.subscription_https_port
+    previous_admin_allowed_ips = settings.admin_allowed_ips or ""
+    previous_login_max_failed_attempts = settings.login_max_failed_attempts
+    previous_login_block_duration_minutes = settings.login_block_duration_minutes
 
     if payload.panel_https_port == payload.subscription_https_port:
         raise HTTPException(
@@ -185,12 +566,19 @@ def update_general_settings(
             detail="Panel HTTPS Port and Subscription HTTPS Port must be different",
         )
 
-    settings.public_ipv4_address = payload.public_ipv4_address
+    detected_ipv4 = _detect_public_ipv4(detected_wan)
+    detected_ipv6 = _detect_public_ipv6(detected_wan)
+
     settings.server_address = payload.server_address
-    settings.public_ipv6_address = payload.public_ipv6_address
+    settings.public_ipv4_address = None if detected_ipv4 == "N/A" else detected_ipv4
+    settings.public_ipv6_address = None if detected_ipv6 == "Not Configured" else detected_ipv6
     settings.global_ipv6_support = payload.global_ipv6_support
-    settings.wan_interface = payload.wan_interface
+    settings.wan_interface = detected_wan
+    settings.server_system_dns_primary = payload.server_system_dns_primary
+    settings.server_system_dns_secondary = payload.server_system_dns_secondary
     settings.admin_allowed_ips = payload.admin_allowed_ips
+    settings.login_max_failed_attempts = payload.login_max_failed_attempts
+    settings.login_block_duration_minutes = payload.login_block_duration_minutes
     settings.panel_domain = payload.panel_domain or ""
     settings.panel_https_port = payload.panel_https_port
     settings.subscription_domain = payload.subscription_domain or ""
@@ -204,6 +592,18 @@ def update_general_settings(
     settings.system_timezone = payload.system_timezone
     settings.ntp_server = payload.ntp_server
     settings.updated_at = datetime.utcnow()
+
+    dns_apply_result = _apply_system_dns_servers(
+        wan_interface=detected_wan,
+        primary_dns=payload.server_system_dns_primary,
+        secondary_dns=payload.server_system_dns_secondary,
+    )
+    if not dns_apply_result.get("success"):
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=dns_apply_result.get("message", "Failed to update server DNS settings"),
+        )
 
     sync_result = openvpn_manager.sync_system_general_settings(
         old_global_ipv6_support=previous_ipv6_support,
@@ -223,7 +623,31 @@ def update_general_settings(
         )
 
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
+
+    changed_fields: list[str] = []
+    if previous_admin_allowed_ips != settings.admin_allowed_ips:
+        changed_fields.append("admin_allowed_ips")
+    if previous_login_max_failed_attempts != settings.login_max_failed_attempts:
+        changed_fields.append("login_max_failed_attempts")
+    if previous_login_block_duration_minutes != settings.login_block_duration_minutes:
+        changed_fields.append("login_block_duration_minutes")
+    if previous_panel_port != settings.panel_https_port:
+        changed_fields.append("panel_https_port")
+    if previous_subscription_port != settings.subscription_https_port:
+        changed_fields.append("subscription_https_port")
+
+    record_audit_event(
+        action="general_settings_updated",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="general_settings",
+        resource_id=str(settings.id),
+        ip_address=extract_client_ip(request),
+        details={"changed_fields": changed_fields},
+    )
+
     return _to_general_response(settings)
 
 
@@ -297,6 +721,14 @@ def get_openvpn_settings(
     return _to_response(settings)
 
 
+@router.get("/openvpn/auth-assets/health")
+def get_openvpn_auth_assets_health(
+    current_user: Admin = Depends(get_current_user),
+):
+    _ = current_user
+    return openvpn_manager.get_auth_assets_health()
+
+
 @router.patch("/openvpn", response_model=OpenVPNSettingsResponse)
 def update_openvpn_settings(
     payload: OpenVPNSettingsUpdate,
@@ -357,17 +789,10 @@ def update_openvpn_settings(
     settings.management_port = payload.management_port
     settings.verbosity = payload.verbosity
     settings.enable_auth_nocache = payload.enable_auth_nocache
-<<<<<<< HEAD
-<<<<<<< HEAD
-    
     settings.resolv_retry_mode = payload.resolv_retry_mode
     settings.persist_key = payload.persist_key
     settings.persist_tun = payload.persist_tun
-=======
->>>>>>> feature-server-settings
-=======
     settings.enable_dns_leak_protection = payload.enable_dns_leak_protection
->>>>>>> feature-server-settings
 
     settings.custom_directives = payload.custom_directives.strip() if payload.custom_directives else None
     settings.advanced_client_push = payload.advanced_client_push.strip() if payload.advanced_client_push else None
@@ -418,6 +843,7 @@ def update_openvpn_settings(
         )
 
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
 
     try:

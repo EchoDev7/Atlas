@@ -16,8 +16,12 @@ class GeneralSettings(Base):
     public_ipv6_address = Column(String(64), nullable=True)
     global_ipv6_support = Column(Boolean, nullable=False, default=True)
     wan_interface = Column(String(32), nullable=False, default="eth0")
+    server_system_dns_primary = Column(String(64), nullable=False, default="1.1.1.1")
+    server_system_dns_secondary = Column(String(64), nullable=False, default="8.8.8.8")
 
     admin_allowed_ips = Column(Text, nullable=False, default="0.0.0.0/0")
+    login_max_failed_attempts = Column(Integer, nullable=False, default=5)
+    login_block_duration_minutes = Column(Integer, nullable=False, default=15)
 
     panel_domain = Column(String(255), nullable=False, default="")
     panel_https_port = Column(Integer, nullable=False, default=2053)

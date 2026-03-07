@@ -1,13 +1,12 @@
 # Atlas — VPN Users router (Phase 2 Enhancements)
 # Multi-protocol user management with limits enforcement
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from sqlalchemy import and_, asc, desc, func, or_
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
-import random
-from passlib.context import CryptContext
 
 from backend.database import get_db
 from backend.dependencies import get_current_user
@@ -28,16 +27,23 @@ from backend.schemas.vpn_user import (
 )
 from backend.core.openvpn import OpenVPNManager, validate_openvpn_readiness
 from backend.services.scheduler_service import get_scheduler
+from backend.services.protocols.registry import protocol_registry
 from backend.models.general_settings import GeneralSettings
 from backend.models.openvpn_settings import OpenVPNSettings
+from backend.services.auth_service import get_password_hash
+from backend.services.audit_service import extract_client_ip, record_audit_event
 
 logger = logging.getLogger(__name__)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(prefix="/users", tags=["VPN Users"])
 
 # Initialize OpenVPN manager
 openvpn_manager = OpenVPNManager()
+
+# Fallback runtime accounting cache keyed by username.
+# It captures the latest active-session counters to preserve traffic totals
+# across reconnects if OpenVPN disconnect hooks fail to write usage.
+_runtime_usage_cache: Dict[str, Dict[str, int]] = {}
 
 
 def _get_or_create_general_settings(db: Session) -> GeneralSettings:
@@ -76,22 +82,281 @@ def _validate_required_settings(db: Session) -> None:
         )
 
 
+def _sync_legacy_accounting_fields(user: VPNUser) -> None:
+    """Keep legacy fields populated for backward compatibility."""
+    if user.traffic_limit_bytes is not None:
+        user.data_limit_gb = user.traffic_limit_bytes / float(1024 ** 3)
+    elif user.data_limit_gb is not None:
+        user.traffic_limit_bytes = int(float(user.data_limit_gb) * (1024 ** 3))
+
+    if user.access_expires_at is not None:
+        user.expiry_date = user.access_expires_at
+    elif user.expiry_date is not None:
+        user.access_expires_at = user.expiry_date
+
+    user.max_devices = user.effective_max_concurrent_connections
+
+
+def _sync_openvpn_auth_db_snapshot() -> None:
+    """Best-effort sync of auth DB snapshot consumed by OpenVPN scripts."""
+    try:
+        sync_result = openvpn_manager.sync_auth_database_snapshot()
+        if not sync_result.get("success"):
+            logger.warning("OpenVPN auth DB sync warning: %s", sync_result.get("message"))
+    except Exception as exc:
+        logger.warning("Failed to sync OpenVPN auth DB snapshot: %s", exc)
+
+
+def _get_openvpn_runtime_stats() -> Tuple[Dict[str, Dict[str, int]], bool]:
+    """Fetch live OpenVPN session stats grouped by username."""
+    try:
+        sessions = openvpn_manager.get_active_sessions()
+    except Exception as exc:
+        logger.warning("Failed to read OpenVPN active sessions for user list: %s", exc)
+        return {}, False
+
+    stats: Dict[str, Dict[str, int]] = {}
+    for session in sessions:
+        username = str(session.get("username") or "").strip()
+        if not username:
+            continue
+
+        item = stats.setdefault(
+            username,
+            {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+        )
+        item["connections"] += 1
+        item["bytes_sent"] += max(0, int(session.get("bytes_sent") or 0))
+        item["bytes_received"] += max(0, int(session.get("bytes_received") or 0))
+
+    return stats, True
+
+
+def _apply_runtime_disconnect_fallback_accounting(
+    db: Session,
+    runtime_stats: Dict[str, Dict[str, int]],
+    runtime_available: bool,
+    current_page_users: List[VPNUser],
+) -> None:
+    """
+    Persist previous live session counters when a reconnect/disconnect is observed.
+
+    This is a defensive fallback for environments where client-disconnect hook
+    accounting is not consistently written into SQLite.
+    """
+    if not runtime_available:
+        return
+
+    users_by_username: Dict[str, VPNUser] = {str(user.username): user for user in current_page_users}
+    known_usernames = set(runtime_stats.keys()) | set(_runtime_usage_cache.keys())
+
+    for username in known_usernames:
+        live = runtime_stats.get(username, {})
+        live_connections = max(0, int(live.get("connections") or 0))
+        live_sent = max(0, int(live.get("bytes_sent") or 0))
+        live_received = max(0, int(live.get("bytes_received") or 0))
+
+        previous = _runtime_usage_cache.get(username)
+        should_finalize_previous = False
+        if previous and int(previous.get("connections") or 0) > 0:
+            prev_sent = max(0, int(previous.get("bytes_sent") or 0))
+            prev_received = max(0, int(previous.get("bytes_received") or 0))
+            prev_connections = max(0, int(previous.get("connections") or 0))
+
+            if live_connections == 0:
+                should_finalize_previous = True
+            elif (
+                live_connections < prev_connections
+                or live_sent < prev_sent
+                or live_received < prev_received
+            ):
+                # Session counters dropped while user is still online: treat as reconnect.
+                should_finalize_previous = True
+
+        if should_finalize_previous and previous:
+            user = users_by_username.get(username)
+            if user is None:
+                user = db.query(VPNUser).filter(VPNUser.username == username).first()
+
+            if user is not None:
+                prev_sent = max(0, int(previous.get("bytes_sent") or 0))
+                prev_received = max(0, int(previous.get("bytes_received") or 0))
+                base_sent = max(0, int(previous.get("base_sent") or 0))
+                base_received = max(0, int(previous.get("base_received") or 0))
+
+                expected_sent = base_sent + prev_sent
+                expected_received = base_received + prev_received
+                current_sent = max(0, int(user.total_bytes_sent or 0))
+                current_received = max(0, int(user.total_bytes_received or 0))
+
+                # If hook accounting already applied, these deltas will be zero.
+                missing_sent = max(0, expected_sent - current_sent)
+                missing_received = max(0, expected_received - current_received)
+
+                if missing_sent or missing_received:
+                    user.total_bytes_sent = current_sent + missing_sent
+                    user.total_bytes_received = current_received + missing_received
+                    accumulated_total = max(0, int(user.traffic_used_bytes or 0)) + missing_sent + missing_received
+                    user.traffic_used_bytes = max(
+                        accumulated_total,
+                        int(user.total_bytes_sent or 0) + int(user.total_bytes_received or 0),
+                    )
+                    user.updated_at = datetime.utcnow()
+
+        if live_connections > 0:
+            user_for_baseline = users_by_username.get(username)
+            if user_for_baseline is None:
+                user_for_baseline = db.query(VPNUser).filter(VPNUser.username == username).first()
+
+            if previous is None or should_finalize_previous:
+                base_sent = max(0, int(getattr(user_for_baseline, "total_bytes_sent", 0) or 0))
+                base_received = max(0, int(getattr(user_for_baseline, "total_bytes_received", 0) or 0))
+            else:
+                base_sent = max(0, int(previous.get("base_sent") or 0))
+                base_received = max(0, int(previous.get("base_received") or 0))
+
+            _runtime_usage_cache[username] = {
+                "connections": live_connections,
+                "bytes_sent": live_sent,
+                "bytes_received": live_received,
+                "base_sent": base_sent,
+                "base_received": base_received,
+            }
+        else:
+            _runtime_usage_cache.pop(username, None)
+
+    db.flush()
+
+
+def _apply_runtime_metrics_to_user_dict(
+    user_dict: Dict[str, Any],
+    runtime_stats: Dict[str, Dict[str, int]],
+    runtime_available: bool,
+) -> Dict[str, Any]:
+    """Overlay live session/traffic metrics on top of persisted DB values."""
+    if not runtime_available:
+        user_dict["is_online"] = int(user_dict.get("current_connections") or 0) > 0
+        return user_dict
+
+    username = str(user_dict.get("username") or "").strip()
+    user_stats = runtime_stats.get(username, {})
+    live_connections = max(0, int(user_stats.get("connections") or 0))
+    live_sent = max(0, int(user_stats.get("bytes_sent") or 0))
+    live_received = max(0, int(user_stats.get("bytes_received") or 0))
+
+    db_sent = max(0, int(user_dict.get("total_bytes_sent") or 0))
+    db_received = max(0, int(user_dict.get("total_bytes_received") or 0))
+
+    total_sent = db_sent + live_sent
+    total_received = db_received + live_received
+    effective_total_bytes = max(
+        max(0, int(user_dict.get("traffic_used_bytes") or 0)),
+        total_sent + total_received,
+    )
+
+    user_dict["current_connections"] = live_connections
+    user_dict["is_online"] = live_connections > 0
+    user_dict["total_bytes_sent"] = total_sent
+    user_dict["total_bytes_received"] = total_received
+    user_dict["traffic_used_bytes"] = effective_total_bytes
+    user_dict["total_gb_used"] = effective_total_bytes / float(1024 ** 3)
+
+    limit_bytes = user_dict.get("traffic_limit_bytes")
+    if limit_bytes in {None, 0}:
+        user_dict["data_usage_percentage"] = 0.0
+    else:
+        user_dict["data_usage_percentage"] = min(100.0, (effective_total_bytes / float(limit_bytes)) * 100)
+
+    max_connections = max(1, int(user_dict.get("max_concurrent_connections") or 1))
+    user_dict["is_connection_limit_exceeded"] = live_connections > max_connections
+
+    return user_dict
+
+
 @router.get("", response_model=VPNUserListResponse)
 async def list_users(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    search: str = Query("", max_length=100),
+    status_filter: str = Query("all", pattern="^(all|active|expired|data_limited|disabled)$"),
+    sort_by: str = Query("created_at", pattern="^(created_at|username|expiry_date|traffic_used)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get list of all VPN users with pagination"""
-    users = db.query(VPNUser).offset(skip).limit(limit).all()
-    total = db.query(VPNUser).count()
+    """Get list of VPN users with pagination, search, filters, and sorting."""
+    _ = current_user
+    now = datetime.utcnow()
+
+    query = db.query(VPNUser)
+
+    search_term = search.strip()
+    if search_term:
+        query = query.filter(VPNUser.username.ilike(f"%{search_term}%"))
+
+    expiry_expr = func.coalesce(VPNUser.access_expires_at, VPNUser.expiry_date)
+    traffic_limit_expr = func.coalesce(
+        VPNUser.traffic_limit_bytes,
+        VPNUser.data_limit_gb * float(1024 ** 3),
+    )
+    traffic_used_expr = func.coalesce(
+        VPNUser.traffic_used_bytes,
+        VPNUser.total_bytes_sent + VPNUser.total_bytes_received,
+        0,
+    )
+
+    expired_condition = or_(
+        VPNUser.is_expired.is_(True),
+        and_(expiry_expr.isnot(None), expiry_expr < now),
+    )
+    data_limited_condition = or_(
+        VPNUser.is_data_limit_exceeded.is_(True),
+        and_(
+            traffic_limit_expr.isnot(None),
+            traffic_limit_expr > 0,
+            traffic_used_expr >= traffic_limit_expr,
+        ),
+    )
+
+    if status_filter == "active":
+        query = query.filter(
+            VPNUser.is_enabled.is_(True),
+            ~expired_condition,
+            ~data_limited_condition,
+        )
+    elif status_filter == "expired":
+        query = query.filter(expired_condition)
+    elif status_filter == "data_limited":
+        query = query.filter(data_limited_condition)
+    elif status_filter == "disabled":
+        query = query.filter(VPNUser.is_enabled.is_(False))
+
+    sort_ascending = sort_order == "asc"
+    if sort_by == "expiry_date":
+        query = query.order_by(
+            asc(expiry_expr.is_(None)),
+            asc(expiry_expr) if sort_ascending else desc(expiry_expr),
+            asc(VPNUser.username),
+        )
+    elif sort_by == "traffic_used":
+        query = query.order_by(
+            asc(traffic_used_expr) if sort_ascending else desc(traffic_used_expr),
+            asc(VPNUser.username),
+        )
+    elif sort_by == "username":
+        query = query.order_by(asc(VPNUser.username) if sort_ascending else desc(VPNUser.username))
+    else:
+        query = query.order_by(asc(VPNUser.created_at) if sort_ascending else desc(VPNUser.created_at))
+
+    total = query.count()
+    users = query.offset(skip).limit(limit).all()
+    runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, users)
     
-    # Mock is_online status for testing (30% chance of being online)
     user_responses = []
     for user in users:
         user_dict = VPNUserResponse.from_orm(user).dict()
-        user_dict['is_online'] = random.random() < 0.3 and user.is_active
+        user_dict = _apply_runtime_metrics_to_user_dict(user_dict, runtime_stats, runtime_available)
         user_responses.append(VPNUserResponse(**user_dict))
     
     return VPNUserListResponse(
@@ -100,6 +365,61 @@ async def list_users(
         page=skip // limit + 1,
         page_size=limit
     )
+
+
+@router.get("/runtime")
+async def list_users_runtime(
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fast runtime snapshot for live users page refresh (online + traffic)."""
+    users = db.query(VPNUser).all()
+    runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, users)
+
+    runtime_users: List[Dict[str, Any]] = []
+    for user in users:
+        stats = runtime_stats.get(str(user.username), {})
+        live_connections = max(0, int(stats.get("connections") or 0))
+        live_sent = max(0, int(stats.get("bytes_sent") or 0))
+        live_received = max(0, int(stats.get("bytes_received") or 0))
+
+        db_sent = max(0, int(user.total_bytes_sent or 0))
+        db_received = max(0, int(user.total_bytes_received or 0))
+        total_sent = db_sent + live_sent
+        total_received = db_received + live_received
+        effective_total_bytes = max(
+            max(0, int(user.traffic_used_bytes or 0)),
+            total_sent + total_received,
+        )
+
+        limit_bytes = user.effective_traffic_limit_bytes
+        if limit_bytes in {None, 0}:
+            data_usage_percentage = 0.0
+        else:
+            data_usage_percentage = min(100.0, (effective_total_bytes / float(limit_bytes)) * 100)
+
+        runtime_users.append(
+            {
+                "id": user.id,
+                "username": user.username,
+                "current_connections": live_connections if runtime_available else int(user.current_connections or 0),
+                "is_online": bool(live_connections > 0) if runtime_available else bool(int(user.current_connections or 0) > 0),
+                "total_bytes_sent": total_sent,
+                "total_bytes_received": total_received,
+                "traffic_used_bytes": effective_total_bytes,
+                "total_gb_used": effective_total_bytes / float(1024 ** 3),
+                "data_usage_percentage": data_usage_percentage,
+                "is_data_limit_exceeded": bool(limit_bytes is not None and effective_total_bytes >= limit_bytes),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+        )
+
+    return {
+        "runtime_available": runtime_available,
+        "generated_at": datetime.utcnow().isoformat(),
+        "users": runtime_users,
+    }
 
 
 @router.get("/{user_id}", response_model=VPNUserDetailResponse)
@@ -112,13 +432,61 @@ async def get_user(
     user = db.query(VPNUser).filter(VPNUser.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    return user
+
+    runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, [user])
+    user_dict = VPNUserDetailResponse.from_orm(user).dict()
+    user_dict = _apply_runtime_metrics_to_user_dict(user_dict, runtime_stats, runtime_available)
+    return VPNUserDetailResponse(**user_dict)
+
+
+@router.post("/{user_id}/disconnect")
+async def disconnect_user_sessions(
+    user_id: int,
+    protocol: str = "openvpn",
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Disconnect active sessions for a user using the selected protocol plugin."""
+    user = db.query(VPNUser).filter(VPNUser.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        manager = protocol_registry.get(protocol)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"Unsupported protocol: {protocol}")
+
+    result = manager.kill_user(user.username)
+    if not result.get("success"):
+        raise HTTPException(status_code=502, detail=result.get("message") or "Failed to disconnect user")
+
+    user.current_connections = 0
+    user.is_connection_limit_exceeded = False
+    user.updated_at = datetime.utcnow()
+    db.commit()
+    _sync_openvpn_auth_db_snapshot()
+
+    logger.info(
+        "User %s disconnected via %s by admin %s",
+        user.username,
+        protocol,
+        current_user.username,
+    )
+
+    return {
+        "success": True,
+        "user_id": user.id,
+        "username": user.username,
+        "protocol": protocol,
+        "message": result.get("message") or f"Disconnected active sessions for {user.username}",
+    }
 
 
 @router.post("", response_model=VPNUserCredentials, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_data: VPNUserCreate,
+    request: Request,
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -147,7 +515,7 @@ async def create_user(
         plain_password = VPNUser.generate_secure_password()
     
     # Hash password
-    hashed_password = pwd_context.hash(plain_password)
+    hashed_password = get_password_hash(plain_password)
     
     # Create user
     new_user = VPNUser(
@@ -155,10 +523,17 @@ async def create_user(
         password=hashed_password,
         description=user_data.description,
         data_limit_gb=user_data.data_limit_gb,
+        traffic_limit_bytes=user_data.traffic_limit_bytes,
+        traffic_used_bytes=user_data.traffic_used_bytes,
         expiry_date=user_data.expiry_date,
+        access_start_at=user_data.access_start_at,
+        access_expires_at=user_data.access_expires_at,
         max_devices=user_data.max_devices,
+        max_concurrent_connections=user_data.max_concurrent_connections,
         created_by=current_user.id
     )
+    _sync_legacy_accounting_fields(new_user)
+    new_user.refresh_limit_flags(datetime.utcnow())
     
     db.add(new_user)
     db.flush()  # Get user ID
@@ -188,7 +563,18 @@ async def create_user(
             logger.error(f"Error creating OpenVPN config: {e}")
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(new_user)
+
+    record_audit_event(
+        action="vpn_user_created",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="vpn_user",
+        resource_id=str(new_user.id),
+        ip_address=extract_client_ip(request),
+        details={"username": new_user.username},
+    )
     
     logger.info(f"User {username} created by admin {current_user.username}")
     
@@ -220,23 +606,40 @@ async def update_user(
     if user_data.notes is not None:
         user.notes = user_data.notes
     if user_data.new_password:
-        user.password = pwd_context.hash(user_data.new_password)
+        user.password = get_password_hash(user_data.new_password)
     if user_data.data_limit_gb is not None:
         user.data_limit_gb = user_data.data_limit_gb
-        user.is_data_limit_exceeded = False  # Reset flag when limit is updated
+        user.traffic_limit_bytes = int(float(user_data.data_limit_gb) * (1024 ** 3))
     if user_data.add_data_gb is not None:
-        current_limit = user.data_limit_gb or 0
-        user.data_limit_gb = current_limit + user_data.add_data_gb
-        user.is_data_limit_exceeded = False
+        current_limit_bytes = int(user.traffic_limit_bytes or 0)
+        user.traffic_limit_bytes = current_limit_bytes + int(float(user_data.add_data_gb) * (1024 ** 3))
+    if user_data.traffic_limit_bytes is not None:
+        user.traffic_limit_bytes = user_data.traffic_limit_bytes
+    if user_data.add_traffic_bytes is not None:
+        user.traffic_limit_bytes = int(user.traffic_limit_bytes or 0) + int(user_data.add_traffic_bytes)
+    if user_data.traffic_used_bytes is not None:
+        user.traffic_used_bytes = user_data.traffic_used_bytes
     if user_data.expiry_date is not None:
         user.expiry_date = user_data.expiry_date
-        user.is_expired = False  # Reset flag when date is updated
+        user.access_expires_at = user_data.expiry_date
+    if user_data.access_start_at is not None:
+        user.access_start_at = user_data.access_start_at
+    if user_data.access_expires_at is not None:
+        user.access_expires_at = user_data.access_expires_at
     if user_data.max_devices is not None:
         user.max_devices = user_data.max_devices
+        user.max_concurrent_connections = user_data.max_devices
+    if user_data.max_concurrent_connections is not None:
+        user.max_concurrent_connections = user_data.max_concurrent_connections
+    if user_data.current_connections is not None:
+        user.current_connections = user_data.current_connections
     if user_data.extend_days is not None:
-        base_date = user.expiry_date if user.expiry_date and user.expiry_date > datetime.utcnow() else datetime.utcnow()
-        user.expiry_date = base_date + timedelta(days=user_data.extend_days)
-        user.is_expired = False
+        base_date = (
+            user.access_expires_at
+            if user.access_expires_at and user.access_expires_at > datetime.utcnow()
+            else datetime.utcnow()
+        )
+        user.access_expires_at = base_date + timedelta(days=user_data.extend_days)
     if user_data.is_enabled is not None:
         user.is_enabled = user_data.is_enabled
         if user_data.is_enabled:
@@ -246,10 +649,24 @@ async def update_user(
         else:
             user.disabled_at = datetime.utcnow()
             user.disabled_reason = user.disabled_reason or "Disabled by admin"
+
+            has_openvpn_config = any(config.protocol == "openvpn" for config in user.configs)
+            if has_openvpn_config:
+                revoke_result = openvpn_manager.revoke_client_certificate(user.username)
+                if not revoke_result.get("success"):
+                    logger.warning(
+                        "OpenVPN certificate revoke skipped for disabled user %s: %s",
+                        user.username,
+                        revoke_result.get("message"),
+                    )
+
+    _sync_legacy_accounting_fields(user)
+    user.refresh_limit_flags(datetime.utcnow())
     
     user.updated_at = datetime.utcnow()
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(user)
     
     logger.info(f"User {user.username} updated by admin {current_user.username}")
@@ -260,6 +677,7 @@ async def update_user(
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: int,
+    request: Request,
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -270,16 +688,28 @@ async def delete_user(
     
     username = user.username
     
-    # Revoke OpenVPN certificates if any
-    for config in user.configs:
-        if config.protocol == "openvpn" and config.is_active:
-            try:
-                openvpn_manager.revoke_client_certificate(username)
-            except Exception as e:
-                logger.error(f"Error revoking certificate for {username}: {e}")
+    # Revoke OpenVPN certificate/CRL when any OpenVPN config exists for the user.
+    if any(config.protocol == "openvpn" for config in user.configs):
+        try:
+            revoke_result = openvpn_manager.revoke_client_certificate(username)
+            if not revoke_result.get("success"):
+                logger.warning("OpenVPN revoke skipped during delete for %s: %s", username, revoke_result.get("message"))
+        except Exception as e:
+            logger.error(f"Error revoking certificate for {username}: {e}")
     
     db.delete(user)
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
+
+    record_audit_event(
+        action="vpn_user_deleted",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="vpn_user",
+        resource_id=str(user_id),
+        ip_address=extract_client_ip(request),
+        details={"username": username},
+    )
     
     logger.info(f"User {username} deleted by admin {current_user.username}")
     
@@ -320,7 +750,6 @@ async def download_config(
             # Generate config with username/password auth
             config_content = openvpn_manager.generate_client_config(
                 user.username,
-                server_address or "vpn.example.com",
                 os_type=os or "default"
             )
 
@@ -338,6 +767,7 @@ async def download_config(
                 )
                 db.add(config)
                 db.commit()
+                _sync_openvpn_auth_db_snapshot()
                 db.refresh(user)
             
             return Response(
@@ -381,8 +811,7 @@ async def get_config(
             _validate_required_settings(db)
             
             config_content = openvpn_manager.generate_client_config(
-                user.username,
-                server_address or "vpn.example.com"
+                user.username
             )
             config_content += "\nauth-user-pass\n"
             
@@ -435,6 +864,7 @@ async def revoke_config(
     config.revoked_reason = revoke_data.reason or "Revoked by admin"
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(user)
     
     logger.info(f"{protocol} config revoked for user {user.username}")
@@ -455,10 +885,11 @@ async def reset_password(
     
     # Generate new password
     new_password = VPNUser.generate_secure_password()
-    user.password = pwd_context.hash(new_password)
+    user.password = get_password_hash(new_password)
     user.updated_at = datetime.utcnow()
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     
     logger.info(f"Password reset for user {user.username} by admin {current_user.username}")
     
@@ -480,10 +911,11 @@ async def change_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    user.password = pwd_context.hash(password_data.new_password)
+    user.password = get_password_hash(password_data.new_password)
     user.updated_at = datetime.utcnow()
     
     db.commit()
+    _sync_openvpn_auth_db_snapshot()
     db.refresh(user)
     
     logger.info(f"Password changed for user {user.username} by admin {current_user.username}")
