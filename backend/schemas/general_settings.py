@@ -1,6 +1,6 @@
 from datetime import datetime
 import ipaddress
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -141,3 +141,7 @@ class SSLCertificateIssueResponse(BaseModel):
     message: str
     is_mock: bool = False
     command: Optional[str] = None
+
+
+class SSLCertificateIssueRequest(BaseModel):
+    domains: List[str] = Field(default_factory=list)

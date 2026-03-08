@@ -1694,20 +1694,16 @@ if __name__ == "__main__":
             raise ValueError("Domain is invalid")
         return domain
 
-    def _build_ssl_targets(
-        self,
-        panel_domain: Optional[str],
-        subscription_domain: Optional[str],
-    ) -> List[Tuple[str, str]]:
+    def _build_ssl_targets(self, domains: List[str]) -> List[Tuple[str, str]]:
         targets: List[Tuple[str, str]] = []
 
-        panel_raw = (panel_domain or "").strip()
-        if panel_raw:
-            targets.append(("Panel Domain", self._normalize_cert_domain(panel_raw)))
-
-        subscription_raw = (subscription_domain or "").strip()
-        if subscription_raw:
-            targets.append(("Subscription Domain", self._normalize_cert_domain(subscription_raw)))
+        seen: set[str] = set()
+        for raw_domain in domains:
+            normalized_domain = self._normalize_cert_domain(str(raw_domain))
+            if normalized_domain in seen:
+                continue
+            seen.add(normalized_domain)
+            targets.append((f"Domain #{len(targets) + 1}", normalized_domain))
 
         if not targets:
             raise ValueError("At least one domain is required for SSL issuance")
@@ -1785,15 +1781,14 @@ if __name__ == "__main__":
 
     def stream_ssl_issue_logs(
         self,
-        panel_domain: Optional[str],
-        subscription_domain: Optional[str],
+        domains: List[str],
         email: str,
     ) -> Iterator[str]:
         normalized_email = (email or "").strip()
         if not normalized_email:
             raise ValueError("Let's Encrypt email is required")
 
-        targets = self._build_ssl_targets(panel_domain, subscription_domain)
+        targets = self._build_ssl_targets(domains)
 
         if not self.is_production:
             yield ">>> Running in development mode with mock SSL logs."

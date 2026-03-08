@@ -406,6 +406,12 @@
                                 </span>
                                 <input type="email" x-model="generalForm.letsencrypt_email" :required="generalForm.ssl_mode === 'auto'" placeholder="admin@domain.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
+
+                            <label class="block md:col-span-2" x-show="generalForm.ssl_mode === 'auto'">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Custom Subdomains (optional)</span>
+                                <input type="text" x-model="sslCustomDomainsInput" placeholder="api.example.com, vpn.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <p class="mt-1 text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Domains from Panel Domain + Subscription Domain are included automatically.</p>
+                            </label>
                         </div>
 
                         <button x-show="generalForm.ssl_mode === 'auto'"
@@ -1412,6 +1418,7 @@
                     public_ipv6: 'Loading...',
                 },
                 sslIssuing: false,
+                sslCustomDomainsInput: '',
                 terminalModalOpen: false,
                 terminalLogs: [],
                 auditLogs: [],
@@ -2323,10 +2330,33 @@
                         return;
                     }
 
+                    const domains = [];
+                    const addDomain = (value) => {
+                        const domain = (value || '').trim();
+                        if (!domain) {
+                            return;
+                        }
+                        if (!domains.some(existing => existing.toLowerCase() === domain.toLowerCase())) {
+                            domains.push(domain);
+                        }
+                    };
+
+                    addDomain(this.generalForm.panel_domain);
+                    addDomain(this.generalForm.subscription_domain);
+                    for (const raw of (this.sslCustomDomainsInput || '').split(/[\n,]+/)) {
+                        addDomain(raw);
+                    }
+
+                    if (domains.length === 0) {
+                        this.showToast('Please provide at least one domain for SSL issuance', 'error');
+                        return;
+                    }
+
                     this.sslIssuing = true;
                     this.terminalModalOpen = true;
                     this.terminalLogs = [];
                     this.appendTerminalLine('>>> Preparing SSL issuance request...');
+                    this.appendTerminalLine(`>>> Domains: ${domains.join(', ')}`);
                     this.showToast("Requesting SSL from Let's Encrypt... This may take a minute.", 'success');
 
                     try {
@@ -2337,6 +2367,7 @@
                                 Authorization: `Bearer ${token}`,
                                 'Content-Type': 'application/json',
                             },
+                            body: JSON.stringify({ domains }),
                         });
 
                         if (!response.ok) {

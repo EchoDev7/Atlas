@@ -20,6 +20,7 @@ from backend.models.user import Admin
 from backend.schemas.general_settings import (
     GeneralSettingsResponse,
     GeneralSettingsUpdate,
+    SSLCertificateIssueRequest,
 )
 from backend.schemas.openvpn_settings import OpenVPNSettingsResponse, OpenVPNSettingsUpdate
 from backend.services.audit_service import extract_client_ip, record_audit_event
@@ -653,6 +654,7 @@ def update_general_settings(
 
 @router.post("/ssl/issue")
 def issue_ssl_certificate(
+    payload: SSLCertificateIssueRequest,
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -672,19 +674,17 @@ def issue_ssl_certificate(
             detail="Let's Encrypt email is required when SSL mode is Auto (Let's Encrypt)",
         )
 
-    panel_domain = (settings.panel_domain or "").strip()
-    subscription_domain = (settings.subscription_domain or "").strip()
-    if not panel_domain and not subscription_domain:
+    domains = [str(domain).strip() for domain in (payload.domains or []) if str(domain).strip()]
+    if not domains:
         raise HTTPException(
             status_code=400,
-            detail="At least one domain is required to issue SSL certificates",
+            detail="At least one domain is required in payload to issue SSL certificates",
         )
 
     def sse_stream():
         try:
             for line in openvpn_manager.stream_ssl_issue_logs(
-                panel_domain=panel_domain,
-                subscription_domain=subscription_domain,
+                domains=domains,
                 email=letsencrypt_email,
             ):
                 sanitized = str(line).replace("\n", " ").strip()
