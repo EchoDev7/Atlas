@@ -158,19 +158,23 @@ else
   warn "OpenVPN systemd unit not detected automatically. Configure manually if needed."
 fi
 
-SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-if [[ -z "${SERVER_IP}" ]]; then
-  SERVER_IP="<YOUR_SERVER_IP>"
+PUBLIC_IP="$(curl -s --max-time 5 ifconfig.me || true)"
+if [[ -z "${PUBLIC_IP}" ]]; then
+  PUBLIC_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+fi
+if [[ -z "${PUBLIC_IP}" ]]; then
+  PUBLIC_IP="<PUBLIC_IP>"
 fi
 
-ADMIN_USERNAME="$(grep -E '^ADMIN_USERNAME=' "${PROJECT_ROOT}/.env" | head -n1 | cut -d'=' -f2- || true)"
-ADMIN_PASSWORD="$(grep -E '^ADMIN_PASSWORD=' "${PROJECT_ROOT}/.env" | head -n1 | cut -d'=' -f2- || true)"
-ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}"
-
-step "Installation completed successfully"
-echo -e "${GREEN}${BOLD}Atlas VPN Panel is now live.${NC}"
-echo -e "${CYAN}Panel URL:${NC}      http://${SERVER_IP}:8000"
-echo -e "${CYAN}Username:${NC}       ${ADMIN_USERNAME}"
-echo -e "${CYAN}Password:${NC}       ${ADMIN_PASSWORD}"
-echo -e "${YELLOW}Important:${NC} Please change the admin password immediately after first login."
+echo
+echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}${BOLD}║                 ✅ Atlas VPN Panel installed successfully!          ║${NC}"
+echo -e "${GREEN}${BOLD}╠══════════════════════════════════════════════════════════════════════╣${NC}"
+echo -e "${BLUE}${BOLD}║ Access URL:${NC}            http://${PUBLIC_IP}:8000"
+echo -e "${BLUE}${BOLD}║ Default Credentials:${NC}   Username: admin | Password: admin123"
+echo -e "${YELLOW}${BOLD}║ Security Warning:${NC}      حتماً بلافاصله بعد از ورود، رمز عبور را از بخش تنظیمات تغییر دهید!"
+echo -e "${BLUE}${BOLD}║ Useful Commands:${NC}"
+echo -e "${BLUE}║   - دیدن وضعیت:${NC} systemctl status atlas-backend"
+echo -e "${BLUE}║   - دیدن لاگ‌ها:${NC} journalctl -u atlas-backend -f"
+echo -e "${BLUE}║   - آپدیت پنل:${NC} cd /opt/Atlas && sudo bash update.sh"
+echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════════════════╝${NC}"
