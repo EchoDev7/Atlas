@@ -72,7 +72,7 @@ VENV_PATH="${PROJECT_ROOT}/.venv"
 step "Installing system dependencies"
 apt-get install -y \
   python3 python3-venv python3-pip \
-  openvpn easy-rsa sqlite3 \
+  openvpn easy-rsa sqlite3 certbot \
   "linux-headers-$(uname -r)" openvpn-dco-dkms \
   iproute2 iptables iptables-persistent \
   openssl
