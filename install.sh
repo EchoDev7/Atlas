@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 # Atlas VPN Panel - One-Line Installer (Ubuntu/Debian)
 
@@ -36,20 +36,45 @@ if ! command -v apt-get >/dev/null 2>&1; then
   fail "This installer supports Ubuntu/Debian only (apt-get is required)."
 fi
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="/opt/Atlas"
+REPO_URL="${ATLAS_REPO_URL:-https://github.com/EchoDev7/Atlas.git}"
+PROJECT_ROOT="${INSTALL_DIR}"
 VENV_PATH="${PROJECT_ROOT}/.venv"
 SERVICE_FILE="/etc/systemd/system/atlas-backend.service"
 OPENVPN_SERVER_DIR="/etc/openvpn/server"
 EASYRSA_SRC="/usr/share/easy-rsa"
 
-step "Installing system dependencies"
+step "Installing bootstrap dependencies"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
+apt-get install -y git curl ca-certificates
+ok "Bootstrap dependencies installed"
+
+step "Preparing Atlas repository in ${INSTALL_DIR}"
+if [[ -d "${INSTALL_DIR}/.git" ]]; then
+  git -C "${INSTALL_DIR}" fetch --all --prune
+  git -C "${INSTALL_DIR}" checkout main
+  git -C "${INSTALL_DIR}" pull --ff-only origin main
+  ok "Repository updated in ${INSTALL_DIR}"
+elif [[ -d "${INSTALL_DIR}" && -n "$(ls -A "${INSTALL_DIR}" 2>/dev/null)" ]]; then
+  fail "${INSTALL_DIR} exists and is not a git repository. Clean it and run installer again."
+else
+  mkdir -p "/opt"
+  rm -rf "${INSTALL_DIR}"
+  git clone "${REPO_URL}" "${INSTALL_DIR}"
+  ok "Repository cloned to ${INSTALL_DIR}"
+fi
+
+cd "${INSTALL_DIR}" || fail "Failed to enter ${INSTALL_DIR}"
+PROJECT_ROOT="$(pwd)"
+VENV_PATH="${PROJECT_ROOT}/.venv"
+
+step "Installing system dependencies"
 apt-get install -y \
   python3 python3-venv python3-pip \
   openvpn easy-rsa sqlite3 \
   iproute2 iptables iptables-persistent \
-  curl ca-certificates openssl git
+  openssl
 ok "OS dependencies installed"
 
 step "Preparing environment file"
