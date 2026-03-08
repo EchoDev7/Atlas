@@ -240,7 +240,7 @@ After=network.target
 Type=simple
 WorkingDirectory=${PROJECT_ROOT}
 Environment=PYTHONPATH=${PROJECT_ROOT}
-ExecStart=${VENV_PATH}/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+ExecStart=${VENV_PATH}/bin/python -m backend.run
 Restart=always
 RestartSec=3
 User=root

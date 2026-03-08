@@ -33,6 +33,7 @@ fi
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PATH="${PROJECT_ROOT}/.venv"
+SERVICE_FILE="/etc/systemd/system/atlas-backend.service"
 
 step "Updating source code from GitHub"
 if [[ ! -d "${PROJECT_ROOT}/.git" ]]; then
@@ -63,8 +64,29 @@ print("Database schema is up to date")
 PY
 ok "Database migration completed without data wipe"
 
-step "Restarting services"
+step "Ensuring atlas-backend.service uses dynamic HTTP/HTTPS runner"
+cat > "${SERVICE_FILE}" <<EOF
+[Unit]
+Description=Atlas FastAPI Backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${PROJECT_ROOT}
+Environment=PYTHONPATH=${PROJECT_ROOT}
+ExecStart=${VENV_PATH}/bin/python -m backend.run
+Restart=always
+RestartSec=3
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
 systemctl daemon-reload
+ok "atlas-backend.service updated"
+
+step "Restarting services"
 if systemctl cat atlas-backend.service >/dev/null 2>&1; then
   systemctl restart atlas-backend.service
   ok "atlas-backend.service restarted"
