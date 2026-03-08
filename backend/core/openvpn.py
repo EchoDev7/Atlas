@@ -1834,7 +1834,16 @@ if __name__ == "__main__":
 
         result = self.pki_manager.build_client(client_name)
         if not result.get("success"):
-            logger.warning("Client certificate creation failed for %s: %s", client_name, result.get("message"))
+            cert_path_raw = str(result.get("cert_path") or "").strip()
+            key_path_raw = str(result.get("key_path") or "").strip()
+            if cert_path_raw and key_path_raw and Path(cert_path_raw).exists() and Path(key_path_raw).exists():
+                logger.warning(
+                    "Client certificate provisioning returned success=False but files exist for %s; treating as success",
+                    client_name,
+                )
+                result["success"] = True
+            else:
+                logger.warning("Client certificate creation failed for %s: %s", client_name, result.get("message"))
         return result
     
     def revoke_client_certificate(self, client_name: str) -> Dict[str, any]:

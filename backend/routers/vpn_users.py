@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, asc, desc, func, or_
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
+from pathlib import Path
 import logging
 
 from backend.database import get_db
@@ -543,8 +544,15 @@ async def create_user(
         try:
             # Create certificate
             cert_result = openvpn_manager.create_client_certificate(username)
+            cert_success = bool(cert_result.get("success"))
+            if not cert_success:
+                cert_path = str(cert_result.get("cert_path") or "").strip()
+                key_path = str(cert_result.get("key_path") or "").strip()
+                cert_success = bool(
+                    cert_path and key_path and Path(cert_path).exists() and Path(key_path).exists()
+                )
 
-            if cert_result.get("success"):
+            if cert_success:
                 # Create config record
                 openvpn_config = VPNConfig(
                     user_id=new_user.id,
@@ -740,7 +748,15 @@ async def download_config(
             created_missing_config = False
             if not config:
                 cert_result = openvpn_manager.create_client_certificate(user.username)
-                if cert_result.get("success"):
+                cert_success = bool(cert_result.get("success"))
+                if not cert_success:
+                    cert_path = str(cert_result.get("cert_path") or "").strip()
+                    key_path = str(cert_result.get("key_path") or "").strip()
+                    cert_success = bool(
+                        cert_path and key_path and Path(cert_path).exists() and Path(key_path).exists()
+                    )
+
+                if cert_success:
                     created_missing_config = True
                 else:
                     cert_error = cert_result.get("message") or "unknown error"

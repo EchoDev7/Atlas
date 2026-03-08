@@ -3,6 +3,7 @@ import os
 import platform
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -87,7 +88,7 @@ class PKIManager:
                 check=check,
                 env=env,
             )
-            return True, result.stdout, result.stderr
+            return result.returncode == 0, result.stdout, result.stderr
         except subprocess.CalledProcessError as exc:
             return False, exc.stdout or "", exc.stderr or str(exc)
         except FileNotFoundError as exc:
@@ -227,9 +228,34 @@ class PKIManager:
 
         cert_path = self.client_certs_dir / f"{username}.crt"
         key_path = self.client_keys_dir / f"{username}.key"
+
+        # File-system preflight confirmation for successful provisioning.
+        # Easy-RSA can emit informative logs on stderr even when return code is zero.
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            if cert_path.exists() and key_path.exists():
+                break
+            time.sleep(0.1)
+
+        if not cert_path.exists() or not key_path.exists():
+            missing_paths = []
+            if not cert_path.exists():
+                missing_paths.append(str(cert_path))
+            if not key_path.exists():
+                missing_paths.append(str(key_path))
+            return {
+                "success": False,
+                "message": "build-client-full completed but expected PKI files are missing: " + ", ".join(missing_paths),
+                "client_name": username,
+                "cert_path": str(cert_path),
+                "key_path": str(key_path),
+                "ca_path": str(self.ca_cert_path),
+                "ta_key_path": str(self.ta_key_path),
+            }
+
         self._chmod_if_exists(key_path, 0o600)
         return {
-            "success": cert_path.exists() and key_path.exists(),
+            "success": True,
             "message": f"Client certificate created for {username}",
             "client_name": username,
             "cert_path": str(cert_path),
