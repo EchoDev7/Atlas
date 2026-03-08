@@ -144,6 +144,8 @@ export EASYRSA_REQ_CN="Atlas_VPN_CA"
     ./easyrsa build-ca nopass
   fi
 
+  unset EASYRSA_REQ_CN
+
   if [[ ! -f "pki/issued/server.crt" || ! -f "pki/private/server.key" ]]; then
     ./easyrsa build-server-full server nopass
   fi
