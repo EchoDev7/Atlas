@@ -63,10 +63,10 @@ What installer does:
 
 ## Updating to Latest Version
 
-From project root:
+From project root (or from anywhere using absolute path):
 
 ```bash
-sudo bash update.sh
+sudo bash /opt/Atlas/update.sh
 ```
 
 `update.sh` performs:
