@@ -130,8 +130,8 @@ if [[ ! -x "${OPENVPN_SERVER_DIR}/easyrsa" ]]; then
 fi
 
 mkdir -p "${OPENVPN_SERVER_DIR}/pki"
+unset EASYRSA_REQ_CN
 export EASYRSA_BATCH=1
-export EASYRSA_REQ_CN="Atlas_VPN_CA"
 
 (
   cd "${OPENVPN_SERVER_DIR}" || exit 1
@@ -141,7 +141,7 @@ export EASYRSA_REQ_CN="Atlas_VPN_CA"
   fi
 
   if [[ ! -f "pki/ca.crt" ]]; then
-    ./easyrsa build-ca nopass
+    EASYRSA_REQ_CN="Atlas_VPN_CA" ./easyrsa build-ca nopass
   fi
 
   unset EASYRSA_REQ_CN
