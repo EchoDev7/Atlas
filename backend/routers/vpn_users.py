@@ -743,8 +743,10 @@ async def download_config(
                 if cert_result.get("success"):
                     created_missing_config = True
                 else:
-                    logger.warning(
-                        f"Auto-provision certificate step failed for {user.username}: {cert_result.get('message', 'unknown error')}"
+                    cert_error = cert_result.get("message") or "unknown error"
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"OpenVPN certificate provisioning failed for '{user.username}': {cert_error}",
                     )
 
             # Generate config with username/password auth
@@ -781,7 +783,7 @@ async def download_config(
             if isinstance(e, HTTPException):
                 raise
             logger.error(f"Error generating OpenVPN config: {e}")
-            raise HTTPException(status_code=500, detail="Failed to generate config")
+            raise HTTPException(status_code=500, detail=f"Failed to generate config: {str(e)}")
     
     else:
         raise HTTPException(status_code=400, detail=f"Protocol {protocol} not yet supported")
@@ -828,7 +830,7 @@ async def get_config(
             )
         except Exception as e:
             logger.error(f"Error generating config: {e}")
-            raise HTTPException(status_code=500, detail="Failed to generate config")
+            raise HTTPException(status_code=500, detail=f"Failed to generate config: {str(e)}")
     
     else:
         raise HTTPException(status_code=400, detail=f"Protocol {protocol} not yet supported")

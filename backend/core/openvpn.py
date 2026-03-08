@@ -1854,28 +1854,53 @@ if __name__ == "__main__":
             logger.warning("Client certificate revoke failed for %s: %s", client_name, result.get("message"))
         return result
     
-    def _get_client_materials(self, client_name: str) -> Tuple[str, str, str, str]:
-        """Return CA cert, client cert, client key, and TLS auth/crypt key content."""
+    def _resolve_tls_key_path(self) -> Path:
+        """Resolve preferred TLS shared key path (tls-crypt first, then legacy ta.key)."""
+        if self.config.TLS_CRYPT_KEY.exists():
+            return self.config.TLS_CRYPT_KEY
+        return self.config.TA_KEY
+
+    def _preflight_client_pki_materials(self, client_name: str, tls_mode: str = "tls-crypt") -> Dict[str, Path]:
+        """Validate required PKI files before config generation and return resolved paths."""
         cert_path = self.config.CLIENT_CERTS_DIR / f"{client_name}.crt"
         key_path = self.config.CLIENT_KEYS_DIR / f"{client_name}.key"
-        tls_key_path = self.config.TLS_CRYPT_KEY if self.config.TLS_CRYPT_KEY.exists() else self.config.TA_KEY
+
+        required_paths: Dict[str, Path] = {
+            "ca_cert": self.config.CA_CERT,
+            "client_cert": cert_path,
+            "client_key": key_path,
+        }
+
+        normalized_tls_mode = str(tls_mode or "tls-crypt").strip().lower()
+        if normalized_tls_mode in {"tls-crypt", "tls-auth"}:
+            required_paths["tls_key"] = self._resolve_tls_key_path()
+
         missing = [
-            str(path)
-            for path in [self.config.CA_CERT, cert_path, key_path, tls_key_path]
+            f"{label}={path}"
+            for label, path in required_paths.items()
             if not path.exists()
         ]
         if missing:
             raise FileNotFoundError(
-                "Missing OpenVPN PKI material(s): " + ", ".join(missing)
+                f"OpenVPN PKI preflight failed for client '{client_name}'. "
+                f"Missing required file(s): {', '.join(missing)}"
             )
+        return required_paths
+
+    def _get_client_materials(self, client_name: str, tls_mode: str = "tls-crypt") -> Tuple[str, str, str, str]:
+        """Return CA cert, client cert, client key, and TLS auth/crypt key content."""
+        material_paths = self._preflight_client_pki_materials(client_name, tls_mode=tls_mode)
         with open(self.config.CA_CERT, 'r') as f:
             ca_cert = f.read()
-        with open(cert_path, 'r') as f:
+        with open(material_paths["client_cert"], 'r') as f:
             client_cert = f.read()
-        with open(key_path, 'r') as f:
+        with open(material_paths["client_key"], 'r') as f:
             client_key = f.read()
-        with open(tls_key_path, 'r') as f:
-            ta_key = f.read()
+        ta_key = ""
+        tls_key_path = material_paths.get("tls_key")
+        if tls_key_path is not None:
+            with open(tls_key_path, 'r') as f:
+                ta_key = f.read()
         return ca_cert, client_cert, client_key, ta_key
 
     def _get_base_config(
@@ -2285,7 +2310,7 @@ if __name__ == "__main__":
         if enable_auth_nocache:
             lines.append("auth-nocache")
         
-        ca_cert, client_cert, client_key, ta_key = self._get_client_materials(client_name)
+        ca_cert, client_cert, client_key, ta_key = self._get_client_materials(client_name, tls_mode=tls_mode)
         self._append_certificate_blocks(
             lines,
             ca_cert=ca_cert,
@@ -2850,7 +2875,7 @@ if __name__ == "__main__":
         server_port: Optional[int] = None,
         protocol: Optional[str] = None,
         os_type: str = "default"
-    ) -> Optional[str]:
+    ) -> str:
         """
         Generate .ovpn configuration file for client.
         
@@ -2933,11 +2958,17 @@ if __name__ == "__main__":
             )
 
             if not resolved_server_address:
-                logger.error("Client config generation failed: missing server address in GeneralSettings")
-                return None
+                raise ValueError(
+                    "Client config generation failed: missing server address "
+                    "(GeneralSettings.server_address/public_ipv4_address)"
+                )
 
             resolved_server_port = int(server_port if server_port is not None else (openvpn_settings.get("port") or 1194))
             resolved_protocol = str(protocol or openvpn_settings.get("protocol") or "udp").strip().lower()
+            tls_mode = str(openvpn_settings.get("tls_mode") or "tls-crypt").strip().lower()
+
+            # Preflight required PKI material presence before any builder is executed.
+            self._preflight_client_pki_materials(client_name, tls_mode=tls_mode)
 
             builder = builder_registry.get(normalized_os)
             if builder:
@@ -2963,7 +2994,7 @@ if __name__ == "__main__":
             )
         except Exception as e:
             logger.error(f"Config generation failed for os={normalized_os}: {e}")
-            return None
+            raise
 
     @staticmethod
     def _extract_remote_hostname(value: str) -> str:
