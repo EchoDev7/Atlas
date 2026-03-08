@@ -190,6 +190,46 @@ print("Atlas DB + PKI + OpenVPN server config ready")
 PY
 ok "Database and OpenVPN configuration initialized"
 
+step "Configuring dual-stack network forwarding and NAT"
+MAIN_INTERFACE="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')"
+if [[ -z "${MAIN_INTERFACE}" ]]; then
+  MAIN_INTERFACE="$(ip -6 route show default 2>/dev/null | awk '/default/ {print $5; exit}')"
+fi
+if [[ -z "${MAIN_INTERFACE}" ]]; then
+  fail "Could not detect main network interface for NAT"
+fi
+
+OPENVPN_IPV4_SUBNET="${OPENVPN_IPV4_SUBNET:-10.8.0.0/24}"
+
+if grep -qE '^\s*#?\s*net\.ipv4\.ip_forward\s*=' /etc/sysctl.conf; then
+  sed -ri 's|^\s*#?\s*net\.ipv4\.ip_forward\s*=.*|net.ipv4.ip_forward=1|' /etc/sysctl.conf
+else
+  echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+fi
+
+if grep -qE '^\s*#?\s*net\.ipv6\.conf\.all\.forwarding\s*=' /etc/sysctl.conf; then
+  sed -ri 's|^\s*#?\s*net\.ipv6\.conf\.all\.forwarding\s*=.*|net.ipv6.conf.all.forwarding=1|' /etc/sysctl.conf
+else
+  echo 'net.ipv6.conf.all.forwarding=1' >> /etc/sysctl.conf
+fi
+
+sysctl -p >/dev/null
+
+# Ensure persistence tooling is available on minimal Ubuntu/Debian images.
+apt-get install -y iptables-persistent netfilter-persistent
+
+if ! iptables -t nat -C POSTROUTING -s "${OPENVPN_IPV4_SUBNET}" -o "${MAIN_INTERFACE}" -j MASQUERADE >/dev/null 2>&1; then
+  iptables -t nat -A POSTROUTING -s "${OPENVPN_IPV4_SUBNET}" -o "${MAIN_INTERFACE}" -j MASQUERADE
+fi
+
+modprobe ip6table_nat >/dev/null 2>&1 || true
+if ! ip6tables -t nat -C POSTROUTING -o "${MAIN_INTERFACE}" -j MASQUERADE >/dev/null 2>&1; then
+  ip6tables -t nat -A POSTROUTING -o "${MAIN_INTERFACE}" -j MASQUERADE
+fi
+
+netfilter-persistent save
+ok "IPv4/IPv6 forwarding and NAT configured on ${MAIN_INTERFACE}"
+
 step "Creating systemd service: atlas-backend.service"
 cat > "${SERVICE_FILE}" <<EOF
 [Unit]
