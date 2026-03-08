@@ -130,29 +130,41 @@ if [[ ! -x "${OPENVPN_SERVER_DIR}/easyrsa" ]]; then
 fi
 
 mkdir -p "${OPENVPN_SERVER_DIR}/pki"
-if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/index.txt" ]]; then
-  EASYRSA_BATCH=1 EASYRSA_REQ_CN="Atlas-CA" "${OPENVPN_SERVER_DIR}/easyrsa" init-pki >/dev/null 2>&1
+export EASYRSA_BATCH=1
+export EASYRSA_REQ_CN="Atlas_VPN_CA"
+
+(
+  cd "${OPENVPN_SERVER_DIR}" || exit 1
+
+  if [[ ! -f "pki/index.txt" ]]; then
+    ./easyrsa init-pki
+  fi
+
+  if [[ ! -f "pki/ca.crt" ]]; then
+    ./easyrsa build-ca nopass
+  fi
+
+  if [[ ! -f "pki/issued/server.crt" || ! -f "pki/private/server.key" ]]; then
+    ./easyrsa build-server-full server nopass
+  fi
+
+  if [[ ! -f "pki/dh.pem" ]]; then
+    ./easyrsa gen-dh
+  fi
+
+  if [[ ! -f "pki/tls-crypt.key" ]]; then
+    openvpn --genkey secret pki/tls-crypt.key \
+      || openvpn --genkey --secret pki/tls-crypt.key \
+      || exit 1
+  fi
+)
+
+if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/tls-crypt.key" ]]; then
+  fail "Failed to generate tls-crypt key at ${OPENVPN_SERVER_DIR}/pki/tls-crypt.key"
 fi
 
-if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/ca.crt" ]]; then
-  EASYRSA_BATCH=1 EASYRSA_REQ_CN="Atlas-CA" "${OPENVPN_SERVER_DIR}/easyrsa" build-ca nopass >/dev/null 2>&1
-fi
-
-if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/issued/server.crt" || ! -f "${OPENVPN_SERVER_DIR}/pki/private/server.key" ]]; then
-  EASYRSA_BATCH=1 EASYRSA_REQ_CN="Atlas-CA" "${OPENVPN_SERVER_DIR}/easyrsa" build-server-full server nopass >/dev/null 2>&1
-fi
-
-if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/dh.pem" ]]; then
-  EASYRSA_BATCH=1 EASYRSA_REQ_CN="Atlas-CA" "${OPENVPN_SERVER_DIR}/easyrsa" gen-dh >/dev/null 2>&1
-fi
-
-if [[ ! -f "${OPENVPN_SERVER_DIR}/ta.key" ]]; then
-  openvpn --genkey secret "${OPENVPN_SERVER_DIR}/ta.key" >/dev/null 2>&1 \
-    || openvpn --genkey --secret "${OPENVPN_SERVER_DIR}/ta.key" >/dev/null 2>&1 \
-    || fail "Failed to generate tls-crypt key (ta.key)"
-fi
-
-chmod 600 "${OPENVPN_SERVER_DIR}/ta.key" "${OPENVPN_SERVER_DIR}/pki/private/server.key" "${OPENVPN_SERVER_DIR}/pki/dh.pem" 2>/dev/null || true
+cp -f "${OPENVPN_SERVER_DIR}/pki/tls-crypt.key" "${OPENVPN_SERVER_DIR}/ta.key"
+chmod 600 "${OPENVPN_SERVER_DIR}/pki/tls-crypt.key" "${OPENVPN_SERVER_DIR}/ta.key" "${OPENVPN_SERVER_DIR}/pki/private/server.key" "${OPENVPN_SERVER_DIR}/pki/dh.pem" 2>/dev/null || true
 ok "OpenVPN server PKI materials are ready"
 
 step "Initializing Atlas database and OpenVPN assets"
