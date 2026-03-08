@@ -73,6 +73,7 @@ step "Installing system dependencies"
 apt-get install -y \
   python3 python3-venv python3-pip \
   openvpn easy-rsa sqlite3 \
+  "linux-headers-$(uname -r)" openvpn-dco-dkms \
   iproute2 iptables iptables-persistent \
   openssl
 ok "OS dependencies installed"
@@ -122,6 +123,37 @@ if [[ -d "${EASYRSA_SRC}" ]]; then
 else
   warn "Easy-RSA source directory not found at ${EASYRSA_SRC}"
 fi
+
+step "Ensuring OpenVPN server PKI materials"
+if [[ ! -x "${OPENVPN_SERVER_DIR}/easyrsa" ]]; then
+  fail "Easy-RSA executable not found at ${OPENVPN_SERVER_DIR}/easyrsa"
+fi
+
+mkdir -p "${OPENVPN_SERVER_DIR}/pki"
+if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/index.txt" ]]; then
+  EASYRSA_BATCH=1 EASYRSA_REQ_CN="Atlas-CA" "${OPENVPN_SERVER_DIR}/easyrsa" init-pki >/dev/null 2>&1
+fi
+
+if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/ca.crt" ]]; then
+  EASYRSA_BATCH=1 EASYRSA_REQ_CN="Atlas-CA" "${OPENVPN_SERVER_DIR}/easyrsa" build-ca nopass >/dev/null 2>&1
+fi
+
+if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/issued/server.crt" || ! -f "${OPENVPN_SERVER_DIR}/pki/private/server.key" ]]; then
+  EASYRSA_BATCH=1 EASYRSA_REQ_CN="Atlas-CA" "${OPENVPN_SERVER_DIR}/easyrsa" build-server-full server nopass >/dev/null 2>&1
+fi
+
+if [[ ! -f "${OPENVPN_SERVER_DIR}/pki/dh.pem" ]]; then
+  EASYRSA_BATCH=1 EASYRSA_REQ_CN="Atlas-CA" "${OPENVPN_SERVER_DIR}/easyrsa" gen-dh >/dev/null 2>&1
+fi
+
+if [[ ! -f "${OPENVPN_SERVER_DIR}/ta.key" ]]; then
+  openvpn --genkey secret "${OPENVPN_SERVER_DIR}/ta.key" >/dev/null 2>&1 \
+    || openvpn --genkey --secret "${OPENVPN_SERVER_DIR}/ta.key" >/dev/null 2>&1 \
+    || fail "Failed to generate tls-crypt key (ta.key)"
+fi
+
+chmod 600 "${OPENVPN_SERVER_DIR}/ta.key" "${OPENVPN_SERVER_DIR}/pki/private/server.key" "${OPENVPN_SERVER_DIR}/pki/dh.pem" 2>/dev/null || true
+ok "OpenVPN server PKI materials are ready"
 
 step "Initializing Atlas database and OpenVPN assets"
 PYTHONPATH="${PROJECT_ROOT}" "${VENV_PATH}/bin/python" - <<'PY'
@@ -183,9 +215,9 @@ else
   warn "OpenVPN systemd unit not detected automatically. Configure manually if needed."
 fi
 
-PUBLIC_IP="$(curl -s --max-time 5 ifconfig.me || true)"
+PUBLIC_IP="$(curl -4 -s --max-time 5 ifconfig.me || true)"
 if [[ -z "${PUBLIC_IP}" ]]; then
-  PUBLIC_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  PUBLIC_IP="$(hostname -I 2>/dev/null | tr ' ' '\n' | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {print; exit}')"
 fi
 if [[ -z "${PUBLIC_IP}" ]]; then
   PUBLIC_IP="<PUBLIC_IP>"
@@ -197,9 +229,9 @@ echo -e "${GREEN}${BOLD}║                 ✅ Atlas VPN Panel installed succes
 echo -e "${GREEN}${BOLD}╠══════════════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${BLUE}${BOLD}║ Access URL:${NC}            http://${PUBLIC_IP}:8000"
 echo -e "${BLUE}${BOLD}║ Default Credentials:${NC}   Username: admin | Password: admin123"
-echo -e "${YELLOW}${BOLD}║ Security Warning:${NC}      حتماً بلافاصله بعد از ورود، رمز عبور را از بخش تنظیمات تغییر دهید!"
+echo -e "${YELLOW}${BOLD}║ Security Warning:${NC}      Change the default password immediately after first login."
 echo -e "${BLUE}${BOLD}║ Useful Commands:${NC}"
-echo -e "${BLUE}║   - دیدن وضعیت:${NC} systemctl status atlas-backend"
-echo -e "${BLUE}║   - دیدن لاگ‌ها:${NC} journalctl -u atlas-backend -f"
-echo -e "${BLUE}║   - آپدیت پنل:${NC} cd /opt/Atlas && sudo bash update.sh"
+echo -e "${BLUE}║   - Service status:${NC} systemctl status atlas-backend"
+echo -e "${BLUE}║   - Live logs:${NC} journalctl -u atlas-backend -f"
+echo -e "${BLUE}║   - Update panel:${NC} cd /opt/Atlas && sudo bash update.sh"
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════════════════╝${NC}"

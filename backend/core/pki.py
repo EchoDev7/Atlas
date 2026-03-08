@@ -34,6 +34,9 @@ class PKIManager:
         self.openvpn_crl_path = Path(openvpn_crl_path)
         self.client_certs_dir = Path(client_certs_dir)
         self.client_keys_dir = Path(client_keys_dir)
+        self.server_cert_path = self.pki_dir / "issued" / "server.crt"
+        self.server_key_path = self.pki_dir / "private" / "server.key"
+        self.dh_params_path = self.pki_dir / "dh.pem"
         self.is_production = bool(is_production)
 
     def _chmod_if_exists(self, path: Path, mode: int) -> None:
@@ -73,6 +76,7 @@ class PKIManager:
         try:
             env = dict(os.environ)
             env["EASYRSA_BATCH"] = "1"
+            env.setdefault("EASYRSA_REQ_CN", "Atlas-CA")
 
             result = subprocess.run(
                 command,
@@ -109,7 +113,7 @@ class PKIManager:
         return {"success": True, "crl_path": str(self.openvpn_crl_path)}
 
     def ensure_ready(self) -> Dict[str, Any]:
-        """Auto-init PKI (init-pki/build-ca/ta.key) if missing; never crash in dev."""
+        """Auto-init PKI and server materials if missing; never crash in dev."""
         if not self._is_supported_runtime():
             logger.warning("PKI skipped: non-production or non-Linux runtime")
             return {
@@ -129,7 +133,11 @@ class PKIManager:
 
         ca_exists = self.ca_cert_path.exists()
         ta_exists = self.ta_key_path.exists()
-        if ca_exists and ta_exists:
+        server_cert_exists = self.server_cert_path.exists()
+        server_key_exists = self.server_key_path.exists()
+        dh_exists = self.dh_params_path.exists()
+
+        if ca_exists and ta_exists and server_cert_exists and server_key_exists and dh_exists:
             crl_result = self._ensure_crl_available(easyrsa_cmd)
             if not crl_result.get("success"):
                 return crl_result
@@ -143,22 +151,42 @@ class PKIManager:
         self.easyrsa_dir.mkdir(parents=True, exist_ok=True)
         self.ta_key_path.parent.mkdir(parents=True, exist_ok=True)
 
-        ok, out, err = self._run_command([*easyrsa_cmd, "init-pki"], cwd=self.easyrsa_dir, check=False)
-        if not ok:
-            return {"success": False, "message": f"init-pki failed: {err or out}"}
-
-        ok, out, err = self._run_command([*easyrsa_cmd, "build-ca", "nopass"], cwd=self.easyrsa_dir, check=False)
-        if not ok:
-            return {"success": False, "message": f"build-ca failed: {err or out}"}
-
-        ok, out, err = self._run_command(["openvpn", "--genkey", "secret", str(self.ta_key_path)], check=False)
-        if not ok:
-            # Fallback syntax supported by older OpenVPN versions
-            ok, out, err = self._run_command(["openvpn", "--genkey", "--secret", str(self.ta_key_path)], check=False)
+        index_file = self.pki_dir / "index.txt"
+        if not index_file.exists():
+            ok, out, err = self._run_command([*easyrsa_cmd, "init-pki"], cwd=self.easyrsa_dir, check=False)
             if not ok:
-                return {"success": False, "message": f"ta.key generation failed: {err or out}"}
+                return {"success": False, "message": f"init-pki failed: {err or out}"}
+
+        if not ca_exists:
+            ok, out, err = self._run_command([*easyrsa_cmd, "build-ca", "nopass"], cwd=self.easyrsa_dir, check=False)
+            if not ok:
+                return {"success": False, "message": f"build-ca failed: {err or out}"}
+
+        if not (server_cert_exists and server_key_exists):
+            ok, out, err = self._run_command(
+                [*easyrsa_cmd, "build-server-full", "server", "nopass"],
+                cwd=self.easyrsa_dir,
+                check=False,
+            )
+            if not ok:
+                return {"success": False, "message": f"build-server-full failed: {err or out}"}
+
+        if not dh_exists:
+            ok, out, err = self._run_command([*easyrsa_cmd, "gen-dh"], cwd=self.easyrsa_dir, check=False)
+            if not ok:
+                return {"success": False, "message": f"gen-dh failed: {err or out}"}
+
+        if not ta_exists:
+            ok, out, err = self._run_command(["openvpn", "--genkey", "secret", str(self.ta_key_path)], check=False)
+            if not ok:
+                # Fallback syntax supported by older OpenVPN versions
+                ok, out, err = self._run_command(["openvpn", "--genkey", "--secret", str(self.ta_key_path)], check=False)
+                if not ok:
+                    return {"success": False, "message": f"ta.key generation failed: {err or out}"}
 
         self._chmod_if_exists(self.ta_key_path, 0o600)
+        self._chmod_if_exists(self.server_key_path, 0o600)
+        self._chmod_if_exists(self.dh_params_path, 0o600)
 
         crl_result = self._ensure_crl_available(easyrsa_cmd)
         if not crl_result.get("success"):
@@ -169,6 +197,9 @@ class PKIManager:
             "message": "PKI initialized",
             "auto_initialized": True,
             "ca_created": self.ca_cert_path.exists(),
+            "server_cert_created": self.server_cert_path.exists(),
+            "server_key_created": self.server_key_path.exists(),
+            "dh_created": self.dh_params_path.exists(),
             "ta_key_created": self.ta_key_path.exists(),
             "crl_path": crl_result.get("crl_path"),
         }
