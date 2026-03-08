@@ -252,7 +252,11 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now atlas-backend.service
-ok "atlas-backend.service enabled and started"
+if systemctl is-active --quiet atlas-backend.service; then
+  ok "atlas-backend.service enabled and started"
+else
+  fail "atlas-backend.service failed health check (not active)"
+fi
 
 step "Starting OpenVPN service"
 OPENVPN_UNIT=""
@@ -264,7 +268,11 @@ fi
 
 if [[ -n "${OPENVPN_UNIT}" ]]; then
   systemctl enable --now "${OPENVPN_UNIT}"
-  ok "${OPENVPN_UNIT} enabled and started"
+  if systemctl is-active --quiet "${OPENVPN_UNIT}"; then
+    ok "${OPENVPN_UNIT} enabled and started"
+  else
+    fail "${OPENVPN_UNIT} failed health check (not active)"
+  fi
 else
   warn "OpenVPN systemd unit not detected automatically. Configure manually if needed."
 fi
@@ -287,5 +295,5 @@ echo -e "${YELLOW}${BOLD}║ Security Warning:${NC}      Change the default pass
 echo -e "${BLUE}${BOLD}║ Useful Commands:${NC}"
 echo -e "${BLUE}║   - Service status:${NC} systemctl status atlas-backend"
 echo -e "${BLUE}║   - Live logs:${NC} journalctl -u atlas-backend -f"
-echo -e "${BLUE}║   - Update panel:${NC} cd /opt/Atlas && sudo bash update.sh"
+echo -e "${BLUE}║   - Update panel:${NC} sudo bash /opt/Atlas/update.sh"
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════════════════╝${NC}"
