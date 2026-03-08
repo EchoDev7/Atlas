@@ -35,6 +35,7 @@ BACKEND_SERVICE_CANDIDATES = (
     "atlas-panel-backend",
     "atlas",
 )
+LETSENCRYPT_LIVE_DIR = Path("/etc/letsencrypt/live")
 
 
 class ServiceActionRequest(BaseModel):
@@ -47,6 +48,31 @@ def _tls_key_candidates() -> tuple[Path, ...]:
         OpenVPNConfig.OPENVPN_SERVER_DIR / "ta.key",
         OpenVPNConfig.OPENVPN_SERVER_DIR / "tc.key",
     )
+
+
+def _collect_active_ssl_certificates(live_dir: Path) -> list[dict[str, str]]:
+    certificates: list[dict[str, str]] = []
+    if not live_dir.exists() or not live_dir.is_dir():
+        return certificates
+
+    for domain_dir in sorted(live_dir.iterdir(), key=lambda path: path.name.lower()):
+        if not domain_dir.is_dir() or domain_dir.name.startswith("."):
+            continue
+
+        fullchain_path = (domain_dir / "fullchain.pem").absolute()
+        privkey_path = (domain_dir / "privkey.pem").absolute()
+        if not fullchain_path.is_file() or not privkey_path.is_file():
+            continue
+
+        certificates.append(
+            {
+                "domain_name": domain_dir.name,
+                "certificate_path": str(fullchain_path),
+                "private_key_path": str(privkey_path),
+            }
+        )
+
+    return certificates
 
 
 def _apply_secure_permissions(path: Path, mode: int, warnings: list[str], context: str) -> None:
@@ -199,6 +225,12 @@ def _restore_openvpn_server_payload(source_root: Path, warnings: list[str]) -> b
     _harden_restored_private_materials(server_target, warnings)
 
     return restored_any
+
+
+@router.get("/ssl/certs")
+def list_active_ssl_certificates(current_user: Admin = Depends(get_current_user)):
+    _ = current_user
+    return {"certificates": _collect_active_ssl_certificates(LETSENCRYPT_LIVE_DIR)}
 
 
 @router.get("/backup")

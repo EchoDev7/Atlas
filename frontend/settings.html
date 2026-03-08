@@ -464,6 +464,45 @@
                                 <textarea x-model="generalForm.custom_ssl_private_key" rows="6" placeholder="-----BEGIN PRIVATE KEY-----" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
                             </label>
                         </div>
+
+                        <div class="rounded-2xl border overflow-hidden" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-white'">
+                            <div class="px-4 py-3 border-b flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                                <h3 class="text-sm font-semibold" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">Active SSL Certificates</h3>
+                                <button type="button"
+                                        @click="loadActiveSslCertificates()"
+                                        :disabled="sslCertificatesLoading || loading"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        :class="darkMode ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-100 text-slate-800 hover:bg-slate-200'">
+                                    Refresh
+                                </button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full text-sm">
+                                    <thead :class="darkMode ? 'bg-slate-800/70 text-slate-300' : 'bg-slate-50 text-slate-700'">
+                                        <tr>
+                                            <th class="px-4 py-3 text-left font-semibold">Domain Name</th>
+                                            <th class="px-4 py-3 text-left font-semibold">Certificate Path</th>
+                                            <th class="px-4 py-3 text-left font-semibold">Private Key Path</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr x-show="sslCertificatesLoading">
+                                            <td colspan="3" class="px-4 py-4" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Loading active SSL certificates...</td>
+                                        </tr>
+                                        <template x-for="cert in sslCertificates" :key="`${cert.domain_name}-${cert.certificate_path}`">
+                                            <tr class="border-t" :class="darkMode ? 'border-slate-800' : 'border-slate-100'">
+                                                <td class="px-4 py-3 font-medium" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="cert.domain_name"></td>
+                                                <td class="px-4 py-3 font-mono text-xs break-all" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="cert.certificate_path"></td>
+                                                <td class="px-4 py-3 font-mono text-xs break-all" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="cert.private_key_path"></td>
+                                            </tr>
+                                        </template>
+                                        <tr x-show="!sslCertificatesLoading && sslCertificates.length === 0">
+                                            <td colspan="3" class="px-4 py-4" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">No active certificates found in /etc/letsencrypt/live</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
 
                     <div x-show="activeGeneralSection === 'system'" class="space-y-4">
@@ -1419,6 +1458,8 @@
                 },
                 sslIssuing: false,
                 sslCustomDomainsInput: '',
+                sslCertificatesLoading: false,
+                sslCertificates: [],
                 terminalModalOpen: false,
                 terminalLogs: [],
                 auditLogs: [],
@@ -2090,10 +2131,44 @@
                             this.form.ipv6_network = '';
                             this.form.ipv6_prefix = null;
                         }
+                        await this.loadActiveSslCertificates();
                     } catch (error) {
                         this.showToast(error.message || 'Failed to load settings', 'error');
                     } finally {
                         this.loading = false;
+                    }
+                },
+
+                async loadActiveSslCertificates() {
+                    this.sslCertificatesLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/system/ssl/certs', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            throw new Error('Failed to load active SSL certificates');
+                        }
+
+                        const payload = await response.json();
+                        const certificates = Array.isArray(payload.certificates) ? payload.certificates : [];
+                        this.sslCertificates = certificates.map((item) => ({
+                            domain_name: item.domain_name || '',
+                            certificate_path: item.certificate_path || '',
+                            private_key_path: item.private_key_path || '',
+                        }));
+                    } catch (error) {
+                        this.sslCertificates = [];
+                        this.showToast(error.message || 'Failed to load active SSL certificates', 'error');
+                    } finally {
+                        this.sslCertificatesLoading = false;
                     }
                 },
 
@@ -2421,6 +2496,7 @@
                         }
 
                         this.showToast('SSL request completed successfully', 'success');
+                        await this.loadActiveSslCertificates();
                     } catch (error) {
                         this.appendTerminalLine(`>>> Error: ${error.message || 'SSL issuance failed.'}`);
                         this.showToast(error.message || 'Failed to issue SSL certificate', 'error');
