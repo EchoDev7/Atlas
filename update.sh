@@ -74,7 +74,7 @@ After=network.target
 Type=simple
 WorkingDirectory=${PROJECT_ROOT}
 Environment=PYTHONPATH=${PROJECT_ROOT}
-ExecStart=${VENV_PATH}/bin/python -m backend.run
+ExecStart=${VENV_PATH}/bin/python3 ${PROJECT_ROOT}/backend/run.py
 Restart=always
 RestartSec=3
 User=root
