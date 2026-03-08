@@ -1896,13 +1896,26 @@ if __name__ == "__main__":
             )
         return required_paths
 
+    @staticmethod
+    def _extract_strict_pem_certificate(raw_cert_content: str, cert_path: Path) -> str:
+        """Extract only the PEM certificate block and drop any surrounding metadata/text."""
+        cert_text = (raw_cert_content or "").strip()
+        pem_match = re.search(
+            r"-----BEGIN CERTIFICATE-----\s+.*?\s+-----END CERTIFICATE-----",
+            cert_text,
+            flags=re.DOTALL,
+        )
+        if not pem_match:
+            raise ValueError(f"Invalid client certificate format (missing PEM block) in {cert_path}")
+        return pem_match.group(0).strip()
+
     def _get_client_materials(self, client_name: str, tls_mode: str = "tls-crypt") -> Tuple[str, str, str, str]:
         """Return CA cert, client cert, client key, and TLS auth/crypt key content."""
         material_paths = self._preflight_client_pki_materials(client_name, tls_mode=tls_mode)
         with open(self.config.CA_CERT, 'r') as f:
             ca_cert = f.read()
         with open(material_paths["client_cert"], 'r') as f:
-            client_cert = f.read()
+            client_cert = self._extract_strict_pem_certificate(f.read(), material_paths["client_cert"])
         with open(material_paths["client_key"], 'r') as f:
             client_key = f.read()
         ta_key = ""
