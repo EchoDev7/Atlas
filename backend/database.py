@@ -180,6 +180,39 @@ def init_db():
                     )
                 )
 
+            if "resolv_retry_mode" in openvpn_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE openvpn_settings
+                        SET resolv_retry_mode = 'infinite'
+                        WHERE resolv_retry_mode IS NULL OR TRIM(resolv_retry_mode) = ''
+                        """
+                    )
+                )
+
+            if "persist_key" in openvpn_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE openvpn_settings
+                        SET persist_key = 1
+                        WHERE persist_key IS NULL
+                        """
+                    )
+                )
+
+            if "persist_tun" in openvpn_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE openvpn_settings
+                        SET persist_tun = 1
+                        WHERE persist_tun IS NULL
+                        """
+                    )
+                )
+
             if "mtu" in openvpn_column_names and "tun_mtu" in openvpn_column_names:
                 connection.execute(
                     text("UPDATE openvpn_settings SET tun_mtu = COALESCE(tun_mtu, mtu)")
@@ -292,7 +325,7 @@ def init_db():
                             data_ciphers, tls_version_min, tls_mode, auth_digest, reneg_sec,
                             tun_mtu, mssfix, sndbuf, rcvbuf, fast_io, explicit_exit_notify, tcp_nodelay,
                             keepalive_ping, keepalive_timeout, inactive_timeout, management_port, verbosity,
-                            enable_auth_nocache, enable_dns_leak_protection,
+                            enable_auth_nocache, resolv_retry_mode, persist_key, persist_tun, enable_dns_leak_protection,
                             custom_directives, advanced_client_push,
                             obfuscation_mode, proxy_server, proxy_address, proxy_port, spoofed_host, socks_server, socks_port, stunnel_port, sni_domain, cdn_domain, ws_path, ws_port,
                             created_at, updated_at
@@ -304,7 +337,7 @@ def init_db():
                             'AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305', '1.2', 'tls-crypt', 'SHA256', 3600,
                             1500, 1450, 393216, 393216, 0, 1, 0,
                             10, 120, 300, 5555, 3,
-                            1, 1,
+                            1, 'infinite', 1, 1, 1,
                             NULL, NULL,
                             'standard', NULL, NULL, 8080, 'speedtest.net', NULL, NULL, 443, NULL, NULL, '/stream', 8080,
                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
