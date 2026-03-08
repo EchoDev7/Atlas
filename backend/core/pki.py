@@ -73,11 +73,13 @@ class PKIManager:
         cwd: Optional[Path] = None,
         input_text: Optional[str] = None,
         check: bool = True,
+        env_overrides: Optional[Dict[str, str]] = None,
     ) -> Tuple[bool, str, str]:
         try:
             env = dict(os.environ)
             env["EASYRSA_BATCH"] = "1"
-            env.setdefault("EASYRSA_REQ_CN", "Atlas-CA")
+            if env_overrides:
+                env.update(env_overrides)
 
             result = subprocess.run(
                 command,
@@ -88,6 +90,11 @@ class PKIManager:
                 check=check,
                 env=env,
             )
+
+            stderr_text = (result.stderr or "").strip()
+            if "No Easy-RSA 'vars' configuration file exists" in stderr_text:
+                logger.warning("Easy-RSA vars file is missing; proceeding based on return code")
+
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.CalledProcessError as exc:
             return False, exc.stdout or "", exc.stderr or str(exc)
@@ -159,7 +166,12 @@ class PKIManager:
                 return {"success": False, "message": f"init-pki failed: {err or out}"}
 
         if not ca_exists:
-            ok, out, err = self._run_command([*easyrsa_cmd, "build-ca", "nopass"], cwd=self.easyrsa_dir, check=False)
+            ok, out, err = self._run_command(
+                [*easyrsa_cmd, "build-ca", "nopass"],
+                cwd=self.easyrsa_dir,
+                check=False,
+                env_overrides={"EASYRSA_REQ_CN": "Atlas-CA"},
+            )
             if not ok:
                 return {"success": False, "message": f"build-ca failed: {err or out}"}
 
