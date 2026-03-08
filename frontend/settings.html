@@ -65,15 +65,15 @@
                 </div>
 
                 <div class="flex items-center space-x-2 sm:space-x-4">
-                    <a href="/dashboard.html" class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
+                    <a href="/dashboard" class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
                        :class="darkMode ? 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50' : 'text-slate-600 hover:text-cyan-600 hover:bg-slate-100'">
                         Dashboard
                     </a>
-                    <a href="/templates/clients.html" class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
+                    <a href="/clients" class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
                        :class="darkMode ? 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50' : 'text-slate-600 hover:text-cyan-600 hover:bg-slate-100'">
                         Clients
                     </a>
-                    <a href="/settings.html" class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
+                    <a href="/settings" class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
                        :class="darkMode ? 'text-cyan-400 bg-slate-800/50' : 'text-cyan-600 bg-cyan-50'">
                         <span class="inline-flex items-center gap-1">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1515,7 +1515,7 @@
 
                         if (response.status === 401) {
                             localStorage.removeItem('access_token');
-                            window.location.href = '/templates/login.html';
+                            window.location.href = '/login';
                             return;
                         }
 
@@ -1608,7 +1608,7 @@
 
                         if (response.status === 401) {
                             localStorage.removeItem('access_token');
-                            window.location.href = '/templates/login.html';
+                            window.location.href = '/login';
                             return;
                         }
 
@@ -1677,7 +1677,7 @@
 
                         if (response.status === 401) {
                             localStorage.removeItem('access_token');
-                            window.location.href = '/templates/login.html';
+                            window.location.href = '/login';
                             return;
                         }
 
@@ -1731,7 +1731,7 @@
 
                         if (response.status === 401) {
                             localStorage.removeItem('access_token');
-                            window.location.href = '/templates/login.html';
+                            window.location.href = '/login';
                             return;
                         }
 
@@ -1780,7 +1780,7 @@
 
                         if (response.status === 401) {
                             localStorage.removeItem('access_token');
-                            window.location.href = '/templates/login.html';
+                            window.location.href = '/login';
                             return;
                         }
 
@@ -1813,7 +1813,7 @@
                 async init() {
                     const token = localStorage.getItem('access_token');
                     if (!token) {
-                        window.location.href = '/templates/login.html';
+                        window.location.href = '/login';
                         return;
                     }
 
@@ -1903,7 +1903,7 @@
 
                         if (response.status === 401) {
                             localStorage.removeItem('access_token');
-                            window.location.href = '/templates/login.html';
+                            window.location.href = '/login';
                             return;
                         }
 
@@ -2004,7 +2004,7 @@
 
                         if (generalResponse.status === 401 || openvpnResponse.status === 401) {
                             localStorage.removeItem('access_token');
-                            window.location.href = '/templates/login.html';
+                            window.location.href = '/login';
                             return;
                         }
 
@@ -2076,9 +2076,6 @@
                         if (this.form.obfuscation_mode !== 'standard') {
                             this.form.protocol = 'tcp';
                             this.form.port = 443;
-                            if ((this.form.obfuscation_mode === 'http_proxy_basic' || this.form.obfuscation_mode === 'http_proxy_advanced') && !(this.form.proxy_server || '').trim()) {
-                                this.form.proxy_server = (this.generalForm.server_address || '').trim();
-                            }
                         }
                         this.form.proxy_address = this.form.proxy_server || '';
                         this.syncProtocolSpecificSettings();
@@ -2291,7 +2288,7 @@
 
                         if (response.status === 401) {
                             localStorage.removeItem('access_token');
-                            window.location.href = '/templates/login.html';
+                            window.location.href = '/login';
                             return;
                         }
 
@@ -2528,7 +2525,7 @@
 
                 logout() {
                     localStorage.removeItem('access_token');
-                    window.location.href = '/templates/login.html';
+                    window.location.href = '/login';
                 },
             };
         }

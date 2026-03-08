@@ -125,7 +125,7 @@
                 
                 <!-- Navigation Links -->
                 <div class="flex items-center space-x-2 sm:space-x-4">
-                    <a href="/dashboard.html" 
+                    <a href="/dashboard" 
                        class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
                        :class="darkMode ? 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50' : 'text-slate-600 hover:text-cyan-600 hover:bg-slate-100'">
                         <span class="flex items-center space-x-1">
@@ -135,12 +135,12 @@
                             <span>Dashboard</span>
                         </span>
                     </a>
-                    <a href="/templates/clients.html" 
+                    <a href="/clients" 
                        class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
                        :class="darkMode ? 'text-cyan-400 bg-slate-800/50' : 'text-cyan-600 bg-cyan-50'">
                         Clients
                     </a>
-                    <a href="/settings.html"
+                    <a href="/settings"
                        class="px-3 py-2 rounded-lg text-sm sm:text-base font-medium theme-transition"
                        :class="darkMode ? 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50' : 'text-slate-600 hover:text-cyan-600 hover:bg-slate-100'">
                         <span class="flex items-center space-x-1">
@@ -1357,7 +1357,7 @@
                     // Check authentication
                     const token = localStorage.getItem('access_token');
                     if (!token) {
-                        window.location.href = '/templates/login.html';
+                        window.location.href = '/login';
                         return;
                     }
                     
@@ -1481,7 +1481,7 @@
                         if (!response.ok) {
                             if (response.status === 401) {
                                 localStorage.removeItem('access_token');
-                                window.location.href = '/templates/login.html';
+                                window.location.href = '/login';
                                 return;
                             }
                             throw new Error('Failed to load users');
@@ -1521,7 +1521,7 @@
                         if (!response.ok) {
                             if (response.status === 401) {
                                 localStorage.removeItem('access_token');
-                                window.location.href = '/templates/login.html';
+                                window.location.href = '/login';
                             }
                             return false;
                         }
@@ -2062,7 +2062,7 @@
                 
                 logout() {
                     localStorage.removeItem('access_token');
-                    window.location.href = '/templates/login.html';
+                    window.location.href = '/login';
                 },
                 
                 formatDate(dateString) {

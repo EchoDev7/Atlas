@@ -2,7 +2,7 @@
 # Phase 0: skeleton only — no operational logic yet
 
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -196,6 +196,57 @@ app.include_router(dashboard.router, prefix=settings.API_PREFIX)
 app.include_router(system.router, prefix=settings.API_PREFIX)
 
 frontend_path = Path(__file__).parent.parent / "frontend"
+
+
+@app.get("/", include_in_schema=False)
+def root_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/login", status_code=307)
+
+
+@app.get("/login", include_in_schema=False)
+def login_page() -> FileResponse:
+    return FileResponse(frontend_path / "templates" / "login.html")
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard_page() -> FileResponse:
+    return FileResponse(frontend_path / "dashboard.html")
+
+
+@app.get("/clients", include_in_schema=False)
+def clients_page() -> FileResponse:
+    return FileResponse(frontend_path / "templates" / "clients.html")
+
+
+@app.get("/settings", include_in_schema=False)
+def settings_page() -> FileResponse:
+    return FileResponse(frontend_path / "settings.html")
+
+
+@app.get("/dashboard.html", include_in_schema=False)
+def dashboard_legacy_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/dashboard", status_code=307)
+
+
+@app.get("/clients.html", include_in_schema=False)
+def clients_legacy_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/clients", status_code=307)
+
+
+@app.get("/settings.html", include_in_schema=False)
+def settings_legacy_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/settings", status_code=307)
+
+
+@app.get("/templates/login.html", include_in_schema=False)
+def login_legacy_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/login", status_code=307)
+
+
+@app.get("/templates/clients.html", include_in_schema=False)
+def clients_template_legacy_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/clients", status_code=307)
+
 app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
 
 

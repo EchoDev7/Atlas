@@ -1,3 +1,6 @@
+import ipaddress
+from urllib.request import urlopen
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -13,6 +16,24 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+
+def _detect_public_ipv4() -> str | None:
+    endpoints = (
+        "https://api.ipify.org",
+        "https://ifconfig.me/ip",
+        "https://ipv4.icanhazip.com",
+    )
+    for endpoint in endpoints:
+        try:
+            with urlopen(endpoint, timeout=3) as response:  # nosec B310
+                candidate = response.read().decode("utf-8", errors="ignore").strip()
+            parsed = ipaddress.ip_address(candidate)
+            if parsed.version == 4:
+                return candidate
+        except Exception:
+            continue
+    return None
 
 
 def get_db():
@@ -350,6 +371,7 @@ def init_db():
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='general_settings'")
         ).fetchone()
         if general_settings_table_exists:
+            detected_public_ipv4 = _detect_public_ipv4()
             general_columns = connection.execute(text("PRAGMA table_info(general_settings)")).fetchall()
             general_column_names = {col[1] for col in general_columns}
 
@@ -399,6 +421,21 @@ def init_db():
                         """
                     )
                 )
+
+                if detected_public_ipv4:
+                    connection.execute(
+                        text(
+                            """
+                            UPDATE general_settings
+                            SET public_ipv4_address = :detected_public_ipv4,
+                                server_address = :detected_public_ipv4,
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE (public_ipv4_address IS NULL OR TRIM(public_ipv4_address) = '')
+                               OR (server_address IS NULL OR TRIM(server_address) = '')
+                            """
+                        ),
+                        {"detected_public_ipv4": detected_public_ipv4},
+                    )
 
             if {"panel_https_port", "subscription_https_port"}.issubset(general_column_names):
                 connection.execute(
@@ -469,8 +506,8 @@ def init_db():
                             updated_at
                         ) VALUES (
                             1,
-                            NULL,
-                            NULL,
+                            :detected_public_ipv4,
+                            :detected_public_ipv4,
                             NULL,
                             1,
                             'eth0',
@@ -495,7 +532,8 @@ def init_db():
                             CURRENT_TIMESTAMP
                         )
                         """
-                    )
+                    ),
+                    {"detected_public_ipv4": detected_public_ipv4},
                 )
 
         audit_logs_table_exists = connection.execute(

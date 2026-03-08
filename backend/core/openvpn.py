@@ -52,6 +52,7 @@ class OpenVPNConfig:
     SERVER_CERT = PKI_DIR / "issued" / "server.crt"
     SERVER_KEY = PKI_DIR / "private" / "server.key"
     DH_PARAMS = PKI_DIR / "dh.pem"
+    TLS_CRYPT_KEY = PKI_DIR / "tls-crypt.key"
     TA_KEY = OPENVPN_SERVER_DIR / "ta.key"
     PKI_CRL = PKI_DIR / "crl.pem"
     CRL_FILE = OPENVPN_SERVER_DIR / "crl.pem"
@@ -1857,9 +1858,10 @@ if __name__ == "__main__":
         """Return CA cert, client cert, client key, and TLS auth/crypt key content."""
         cert_path = self.config.CLIENT_CERTS_DIR / f"{client_name}.crt"
         key_path = self.config.CLIENT_KEYS_DIR / f"{client_name}.key"
+        tls_key_path = self.config.TLS_CRYPT_KEY if self.config.TLS_CRYPT_KEY.exists() else self.config.TA_KEY
         missing = [
             str(path)
-            for path in [self.config.CA_CERT, cert_path, key_path, self.config.TA_KEY]
+            for path in [self.config.CA_CERT, cert_path, key_path, tls_key_path]
             if not path.exists()
         ]
         if missing:
@@ -1872,7 +1874,7 @@ if __name__ == "__main__":
             client_cert = f.read()
         with open(key_path, 'r') as f:
             client_key = f.read()
-        with open(self.config.TA_KEY, 'r') as f:
+        with open(tls_key_path, 'r') as f:
             ta_key = f.read()
         return ca_cert, client_cert, client_key, ta_key
 
@@ -3302,7 +3304,8 @@ if __name__ == "__main__":
                         push_lines.append(f'push "{directive}"')
 
             if tls_mode == "tls-crypt":
-                tls_mode_line = f"tls-crypt {self.config.TA_KEY}"
+                tls_key_path = self.config.TLS_CRYPT_KEY if self.config.TLS_CRYPT_KEY.exists() else self.config.TA_KEY
+                tls_mode_line = f"tls-crypt {tls_key_path}"
             elif tls_mode == "tls-auth":
                 tls_mode_line = f"tls-auth {self.config.TA_KEY} 0"
             else:
