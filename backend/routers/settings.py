@@ -665,12 +665,6 @@ def issue_ssl_certificate(
             detail="Panel HTTPS Port and Subscription HTTPS Port must be different",
         )
 
-    if settings.ssl_mode != "auto":
-        raise HTTPException(
-            status_code=400,
-            detail="SSL mode must be set to Auto (Let's Encrypt) before issuing certificates",
-        )
-
     letsencrypt_email = (settings.letsencrypt_email or "").strip()
     if not letsencrypt_email:
         raise HTTPException(
