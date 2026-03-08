@@ -37,6 +37,14 @@ Thumbs.db
 *.swp
 *.swo
 
+# Python tooling caches / reports
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.cache/
+
 # Certificates & keys (never commit)
 *.pem
 *.key
