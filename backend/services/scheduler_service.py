@@ -12,6 +12,7 @@ import re
 from backend.database import SessionLocal
 from backend.models.vpn_user import VPNUser, VPNConfig
 from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
+from backend.core.wireguard import WireGuardManager
 
 logger = logging.getLogger(__name__)
 BYTES_PER_GB = 1024 ** 3
@@ -27,6 +28,7 @@ class LimitEnforcementScheduler:
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.is_running = False
         self.openvpn_manager = OpenVPNManager()
+        self.wireguard_manager = WireGuardManager()
         self._runtime_usage_cache: Dict[str, Dict[str, int]] = {}
         self._kill_cooldown_until: Dict[str, datetime] = {}
         self._kill_cooldown_seconds = 45
@@ -54,6 +56,15 @@ class LimitEnforcementScheduler:
             trigger=IntervalTrigger(seconds=30),
             id='reconcile_openvpn_sessions',
             name='Reconcile OpenVPN active sessions',
+            replace_existing=True
+        )
+
+        # Reconcile WireGuard runtime counters and online status with restart-safe delta accounting.
+        self.scheduler.add_job(
+            self.reconcile_wireguard_sessions,
+            trigger=IntervalTrigger(seconds=20),
+            id='reconcile_wireguard_sessions',
+            name='Reconcile WireGuard runtime sessions',
             replace_existing=True
         )
 
@@ -210,6 +221,13 @@ class LimitEnforcementScheduler:
         )
         return runtime_stats
 
+    @staticmethod
+    def _has_active_wireguard_config(user: VPNUser) -> bool:
+        return any(
+            getattr(config, "protocol", "") == "wireguard" and bool(getattr(config, "is_active", False))
+            for config in list(getattr(user, "configs", []) or [])
+        )
+
     def _apply_runtime_disconnect_fallback_accounting(
         self,
         db: Session,
@@ -325,15 +343,24 @@ class LimitEnforcementScheduler:
                 previous_connections = int(user.current_connections or 0)
                 observed_connections = int(online_counts.get(user.username, 0))
 
+                desired_connections = observed_connections
+                if (
+                    observed_connections == 0
+                    and previous_connections > 0
+                    and self._has_active_wireguard_config(user)
+                ):
+                    # Avoid clobbering an active WireGuard runtime state.
+                    desired_connections = previous_connections
+
                 if previous_connections > 0 and observed_connections == 0:
                     stale_fixed += 1
 
-                if previous_connections != observed_connections:
-                    user.current_connections = observed_connections
+                if previous_connections != desired_connections:
+                    user.current_connections = desired_connections
                     updated_users += 1
 
                 user.is_connection_limit_exceeded = (
-                    observed_connections > user.effective_max_concurrent_connections
+                    desired_connections > user.effective_max_concurrent_connections
                 )
                 user.refresh_limit_flags(now)
 
@@ -349,6 +376,29 @@ class LimitEnforcementScheduler:
         except Exception as exc:
             logger.error("OpenVPN session reconciliation failed: %s", exc)
             db.rollback()
+        finally:
+            db.close()
+
+    async def reconcile_wireguard_sessions(self):
+        """Reconcile WireGuard runtime counters and online state using stateless delta accounting."""
+        db: Session = SessionLocal()
+        try:
+            sync_result = await self.wireguard_manager.sync_wireguard_stats(db)
+            if not sync_result.get("success"):
+                db.rollback()
+                logger.warning("WireGuard runtime sync skipped: %s", sync_result.get("message"))
+                return
+
+            db.commit()
+            logger.info(
+                "WireGuard reconcile complete: peers=%s updated=%s online=%s",
+                int(sync_result.get("processed_peers") or 0),
+                int(sync_result.get("updated_users") or 0),
+                int(sync_result.get("online_users") or 0),
+            )
+        except Exception as exc:
+            db.rollback()
+            logger.error("WireGuard session reconciliation failed: %s", exc)
         finally:
             db.close()
 

@@ -1,9 +1,12 @@
 import base64
+import asyncio
 import ipaddress
 import logging
 import re
 import subprocess
 import tempfile
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -24,6 +27,15 @@ class WireGuardManager:
     def __init__(self) -> None:
         self.config = WireGuardConfig()
         self.protocol_name = "wireguard"
+        # Runtime state cache for restart-safe delta accounting per peer public key.
+        self._last_seen_total_bytes: Dict[str, int] = {}
+
+    @staticmethod
+    def _safe_int(value: Any, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
 
     @staticmethod
     def _run_command(command: list[str], input_text: Optional[str] = None, check: bool = True) -> subprocess.CompletedProcess:
@@ -34,6 +46,125 @@ class WireGuardManager:
             text=True,
             check=check,
         )
+
+    async def _run_async_command(self, command: list[str], timeout_seconds: float = 6.0) -> tuple[int, str, str]:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.communicate()
+            return 124, "", "WireGuard runtime command timed out"
+
+        return process.returncode, (stdout or b"").decode(errors="ignore"), (stderr or b"").decode(errors="ignore")
+
+    async def sync_wireguard_stats(self, db: Any, online_window_seconds: int = 180) -> Dict[str, Any]:
+        """
+        Poll `wg show all dump` asynchronously and persist restart-safe traffic deltas.
+
+        Delta logic:
+        - current_total >= last_total => delta = current_total - last_total
+        - current_total < last_total  => delta = current_total (counter reset)
+        """
+        from backend.models.vpn_user import VPNUser
+
+        return_code, stdout, stderr = await self._run_async_command(["wg", "show", "all", "dump"])
+        if return_code != 0:
+            message = (stderr or stdout or "wg show all dump failed").strip()
+            return {"success": False, "message": message, "updated_users": 0, "processed_peers": 0}
+
+        users_by_public_key = {
+            (user.wg_public_key or "").strip(): user
+            for user in db.query(VPNUser).all()
+            if (user.wg_public_key or "").strip()
+        }
+
+        now_epoch = int(time.time())
+        now_utc = datetime.utcnow()
+        processed_peers = 0
+        updated_users = 0
+        online_users = 0
+
+        for raw_line in stdout.splitlines():
+            line = (raw_line or "").strip()
+            if not line:
+                continue
+
+            parts = line.split("\t")
+            # wg show all dump peer rows:
+            # interface, public_key, preshared_key, endpoint, allowed_ips,
+            # latest_handshake, transfer_rx, transfer_tx, persistent_keepalive
+            if len(parts) >= 9:
+                public_key = (parts[1] or "").strip()
+                latest_handshake = max(0, self._safe_int(parts[5], 0))
+                transfer_rx = max(0, self._safe_int(parts[6], 0))
+                transfer_tx = max(0, self._safe_int(parts[7], 0))
+            # Defensive fallback for interface-scoped dump rows:
+            # public_key, preshared_key, endpoint, allowed_ips, latest_handshake, transfer_rx, transfer_tx, keepalive
+            elif len(parts) >= 8:
+                public_key = (parts[0] or "").strip()
+                latest_handshake = max(0, self._safe_int(parts[4], 0))
+                transfer_rx = max(0, self._safe_int(parts[5], 0))
+                transfer_tx = max(0, self._safe_int(parts[6], 0))
+            else:
+                continue
+
+            if not public_key:
+                continue
+
+            user = users_by_public_key.get(public_key)
+            if user is None:
+                continue
+
+            processed_peers += 1
+            current_total = transfer_rx + transfer_tx
+            last_total = max(0, int(self._last_seen_total_bytes.get(public_key, 0)))
+
+            if current_total >= last_total:
+                delta = current_total - last_total
+            else:
+                # Interface restarted and counters reset.
+                delta = current_total
+
+            self._last_seen_total_bytes[public_key] = current_total
+
+            if delta > 0:
+                user.traffic_used_bytes = max(0, int(user.traffic_used_bytes or 0)) + int(delta)
+                user.total_bytes_received = max(0, int(user.total_bytes_received or 0)) + int(delta)
+                user.updated_at = now_utc
+                updated_users += 1
+
+            is_online = latest_handshake > 0 and (now_epoch - latest_handshake) <= int(online_window_seconds)
+            if is_online:
+                online_users += 1
+                user.last_connected_at = now_utc
+                if int(user.current_connections or 0) < 1:
+                    user.current_connections = 1
+                    updated_users += 1
+            else:
+                has_active_openvpn = any(
+                    cfg.protocol == "openvpn" and bool(cfg.is_active)
+                    for cfg in list(getattr(user, "configs", []) or [])
+                )
+                if not has_active_openvpn and int(user.current_connections or 0) != 0:
+                    user.current_connections = 0
+                    user.last_disconnected_at = now_utc
+                    updated_users += 1
+
+            user.refresh_limit_flags(now_utc)
+
+        db.flush()
+        return {
+            "success": True,
+            "message": "WireGuard runtime sync completed",
+            "processed_peers": processed_peers,
+            "updated_users": updated_users,
+            "online_users": online_users,
+        }
 
     @staticmethod
     def _validate_key_material(key: str) -> None:
