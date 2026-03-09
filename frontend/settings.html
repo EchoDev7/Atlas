@@ -2178,8 +2178,8 @@
                             auto_renew_ssl: generalData.auto_renew_ssl !== false,
                             custom_ssl_certificate: generalData.custom_ssl_certificate || '',
                             custom_ssl_private_key: generalData.custom_ssl_private_key || '',
-                            system_timezone: generalData.system_timezone || 'UTC',
-                            ntp_server: generalData.ntp_server || 'pool.ntp.org',
+                            system_timezone: generalData.system_timezone || this.generalForm.system_timezone || this.systemTimeCurrentTimezone || 'UTC',
+                            ntp_server: generalData.ntp_server || this.generalForm.ntp_server || this.systemTimeCurrentNtpServer || 'pool.ntp.org',
                         };
 
                         if (Number(this.generalForm.panel_https_port) === Number(this.generalForm.subscription_https_port)) {
@@ -2767,8 +2767,8 @@
                             auto_renew_ssl: updated.auto_renew_ssl !== false,
                             custom_ssl_certificate: updated.custom_ssl_certificate || '',
                             custom_ssl_private_key: updated.custom_ssl_private_key || '',
-                            system_timezone: updated.system_timezone || 'UTC',
-                            ntp_server: updated.ntp_server || 'pool.ntp.org',
+                            system_timezone: updated.system_timezone || this.systemTimeCurrentTimezone || this.generalForm.system_timezone || 'UTC',
+                            ntp_server: updated.ntp_server || this.systemTimeCurrentNtpServer || this.generalForm.ntp_server || 'pool.ntp.org',
                         };
 
                         if (!this.generalForm.global_ipv6_support) {

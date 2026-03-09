@@ -147,14 +147,27 @@ def _read_timezone_from_file() -> str | None:
     return candidate or None
 
 
-def _resolve_current_timezone_name(db: Session) -> str:
-    for candidate in (_read_timezone_from_timedatectl(), _read_timezone_from_file()):
-        if candidate:
-            return candidate
+def _normalize_timezone_candidate(candidate: str | None) -> str | None:
+    normalized = (candidate or "").strip()
+    if not normalized:
+        return None
+    try:
+        ZoneInfo(normalized)
+    except ZoneInfoNotFoundError:
+        return None
+    return normalized
 
+
+def _resolve_current_timezone_name(db: Session) -> str:
     settings_row = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
-    if settings_row and (settings_row.system_timezone or "").strip():
-        return settings_row.system_timezone.strip()
+    persisted_timezone = _normalize_timezone_candidate(settings_row.system_timezone if settings_row else None)
+    if persisted_timezone:
+        return persisted_timezone
+
+    for candidate in (_read_timezone_from_file(), _read_timezone_from_timedatectl()):
+        normalized = _normalize_timezone_candidate(candidate)
+        if normalized:
+            return normalized
 
     return "UTC"
 
@@ -484,6 +497,10 @@ def update_system_timezone(
     settings_row.ntp_server = requested_ntp_server
     settings_row.updated_at = datetime.utcnow()
     db.commit()
+    db.refresh(settings_row)
+
+    if (settings_row.system_timezone or "").strip() != requested_timezone:
+        raise HTTPException(status_code=500, detail="Failed to persist timezone setting")
 
     return {
         "message": f"Timezone updated to {requested_timezone} and NTP server set to {requested_ntp_server}",
