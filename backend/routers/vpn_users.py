@@ -140,6 +140,38 @@ def _sync_wireguard_users_runtime(db: Session) -> None:
         raise HTTPException(status_code=500, detail=sync_result.get("message", "Failed to synchronize WireGuard peers"))
 
 
+def _reinject_existing_wireguard_peer(db: Session, username: str, public_key: str, allocated_ip: str) -> None:
+    """Re-add an existing peer to live interface before full sync, without key regeneration."""
+    normalized_public_key = (public_key or "").strip()
+    normalized_ip = (allocated_ip or "").strip()
+    if not normalized_public_key or not normalized_ip:
+        return
+
+    settings = _get_wireguard_settings(db)
+    interface_name = (settings.interface_name or wireguard_manager.config.DEFAULT_INTERFACE).strip() or wireguard_manager.config.DEFAULT_INTERFACE
+    allowed_ips = normalized_ip if "/" in normalized_ip else f"{normalized_ip}/32"
+    command = [
+        "wg",
+        "set",
+        interface_name,
+        "peer",
+        normalized_public_key,
+        "allowed-ips",
+        allowed_ips,
+    ]
+    result = wireguard_manager._run_command(command, check=False)
+    if result.returncode != 0:
+        error_message = (result.stderr or result.stdout or "wg set failed").strip()
+        raise HTTPException(status_code=500, detail=f"Failed to re-inject WireGuard peer for {username}: {error_message}")
+
+    logger.info(
+        "Re-injected existing WireGuard peer for user=%s on interface=%s allowed_ips=%s",
+        username,
+        interface_name,
+        allowed_ips,
+    )
+
+
 def _ensure_wireguard_identity_for_user(db: Session, user: VPNUser) -> None:
     if (user.wg_private_key or "").strip() and (user.wg_public_key or "").strip() and (user.wg_allocated_ip or "").strip():
         return
@@ -696,6 +728,10 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    was_active_before = bool(user.is_active)
+    previous_wg_public_key = (user.wg_public_key or "").strip()
+    previous_wg_allocated_ip = (user.wg_allocated_ip or "").strip()
+
     # Guard rails for conflicting payloads
     if user_data.notes is not None and user_data.description is not None and user_data.notes != user_data.description:
         raise HTTPException(status_code=400, detail="Provide either notes or description, not conflicting values")
@@ -787,6 +823,13 @@ async def update_user(
 
     if should_resync_wireguard:
         try:
+            if (not was_active_before) and user.is_active and previous_wg_public_key and previous_wg_allocated_ip:
+                _reinject_existing_wireguard_peer(
+                    db=db,
+                    username=user.username,
+                    public_key=previous_wg_public_key,
+                    allocated_ip=previous_wg_allocated_ip,
+                )
             _sync_wireguard_users_runtime(db)
             db.commit()
         except HTTPException:

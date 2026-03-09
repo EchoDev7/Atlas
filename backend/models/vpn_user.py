@@ -141,7 +141,10 @@ class VPNUser(Base):
     
     @property
     def has_openvpn(self) -> bool:
-        """Check if user has OpenVPN config"""
+        """Check if user should be treated as OpenVPN-enabled (flag or actual config rows)."""
+        if getattr(self, "enable_openvpn", None) is True:
+            return True
+
         return any(
             c.protocol == "openvpn"
             and (
