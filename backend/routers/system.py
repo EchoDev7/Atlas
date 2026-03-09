@@ -7,9 +7,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
-import time
 import zipfile
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -48,7 +46,6 @@ class ServiceActionRequest(BaseModel):
 
 
 class TimezoneUpdateRequest(BaseModel):
-    timezone: str
     ntp_server: str = "pool.ntp.org"
 
 
@@ -96,26 +93,6 @@ def _get_or_create_general_settings(db: Session) -> GeneralSettings:
     return settings_row
 
 
-def _read_timezone_from_timedatectl() -> str | None:
-    if shutil.which("timedatectl") is None:
-        return None
-    try:
-        completed = subprocess.run(
-            ["timedatectl", "show", "--property=Timezone", "--value"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except Exception:
-        return None
-
-    if completed.returncode != 0:
-        return None
-
-    candidate = (completed.stdout or "").strip()
-    return candidate or None
-
-
 def _read_ntp_server_from_timesyncd_conf() -> str | None:
     conf_path = Path("/etc/systemd/timesyncd.conf")
     if not conf_path.exists() or not conf_path.is_file():
@@ -136,42 +113,6 @@ def _read_ntp_server_from_timesyncd_conf() -> str | None:
     return None
 
 
-def _read_timezone_from_file() -> str | None:
-    timezone_file = Path("/etc/timezone")
-    if not timezone_file.exists() or not timezone_file.is_file():
-        return None
-    try:
-        candidate = timezone_file.read_text(encoding="utf-8").strip()
-    except Exception:
-        return None
-    return candidate or None
-
-
-def _normalize_timezone_candidate(candidate: str | None) -> str | None:
-    normalized = (candidate or "").strip()
-    if not normalized:
-        return None
-    try:
-        ZoneInfo(normalized)
-    except ZoneInfoNotFoundError:
-        return None
-    return normalized
-
-
-def _resolve_current_timezone_name(db: Session) -> str:
-    settings_row = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
-    persisted_timezone = _normalize_timezone_candidate(settings_row.system_timezone if settings_row else None)
-    if persisted_timezone:
-        return persisted_timezone
-
-    for candidate in (_read_timezone_from_file(), _read_timezone_from_timedatectl()):
-        normalized = _normalize_timezone_candidate(candidate)
-        if normalized:
-            return normalized
-
-    return "UTC"
-
-
 def _resolve_current_ntp_server(db: Session) -> str:
     configured = _read_ntp_server_from_timesyncd_conf()
     if configured:
@@ -184,31 +125,13 @@ def _resolve_current_ntp_server(db: Session) -> str:
     return "pool.ntp.org"
 
 
-def _list_global_timezones() -> list[str]:
-    try:
-        zones = sorted(available_timezones())
-    except Exception:
-        zones = []
-    if "UTC" not in zones:
-        zones = ["UTC", *zones]
-    return zones
-
-
 def _build_system_time_payload(db: Session) -> dict[str, object]:
-    current_timezone = _resolve_current_timezone_name(db)
-    local_now = datetime.now().astimezone()
-    try:
-        zone = ZoneInfo(current_timezone)
-        current_server_time = local_now.astimezone(zone).isoformat()
-    except ZoneInfoNotFoundError:
-        current_timezone = "UTC"
-        current_server_time = local_now.astimezone(timezone.utc).isoformat()
+    current_server_time = datetime.now(timezone.utc).isoformat()
 
     return {
         "current_server_time": current_server_time,
-        "current_timezone": current_timezone,
+        "current_timezone": "UTC",
         "ntp_server": _resolve_current_ntp_server(db),
-        "available_timezones": _list_global_timezones(),
     }
 
 
@@ -280,7 +203,6 @@ def _apply_ntp_server_to_timesyncd(ntp_server: str) -> None:
 
     try:
         subprocess.run(["systemctl", "restart", "systemd-timesyncd"], capture_output=True, text=True, check=True)
-        subprocess.run(["timedatectl", "set-ntp", "true"], capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or "Failed to apply NTP synchronization settings").strip()
         raise HTTPException(status_code=500, detail=detail) from exc
@@ -460,50 +382,21 @@ def update_system_timezone(
     db: Session = Depends(get_db),
 ):
     _ = current_user
-    requested_timezone = (payload.timezone or "").strip()
     requested_ntp_server = _validate_ntp_server(payload.ntp_server)
-    valid_timezones = set(_list_global_timezones())
-
-    if not requested_timezone:
-        raise HTTPException(status_code=400, detail="Timezone value is required")
-    if requested_timezone not in valid_timezones:
-        raise HTTPException(status_code=400, detail="Invalid timezone value")
-    if shutil.which("timedatectl") is None:
-        raise HTTPException(status_code=503, detail="timedatectl is not available on this host")
     if shutil.which("systemctl") is None:
         raise HTTPException(status_code=503, detail="systemctl is not available on this host")
-
-    try:
-        subprocess.run(
-            ["timedatectl", "set-timezone", requested_timezone],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or "Failed to apply timezone using timedatectl").strip()
-        raise HTTPException(status_code=500, detail=detail) from exc
-
-    try:
-        time.tzset()
-    except AttributeError:
-        # tzset is not available on some non-POSIX platforms.
-        pass
 
     _apply_ntp_server_to_timesyncd(requested_ntp_server)
 
     settings_row = _get_or_create_general_settings(db)
-    settings_row.system_timezone = requested_timezone
+    settings_row.system_timezone = "UTC"
     settings_row.ntp_server = requested_ntp_server
     settings_row.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(settings_row)
 
-    if (settings_row.system_timezone or "").strip() != requested_timezone:
-        raise HTTPException(status_code=500, detail="Failed to persist timezone setting")
-
     return {
-        "message": f"Timezone updated to {requested_timezone} and NTP server set to {requested_ntp_server}",
+        "message": f"UTC synchronization updated with NTP server {requested_ntp_server}",
         **_build_system_time_payload(db),
     }
 

@@ -511,8 +511,8 @@
                              :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-white'">
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div>
-                                    <h3 class="text-lg font-bold theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">Server Time &amp; Timezone</h3>
-                                    <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Monitor current server time and switch timezone safely.</p>
+                                    <h3 class="text-lg font-bold theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">Server Time &amp; Synchronization</h3>
+                                    <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Monitor current server UTC time and manage NTP synchronization.</p>
                                 </div>
                                 <button type="button"
                                         @click="loadSystemTimeData()"
@@ -524,33 +524,8 @@
                             </div>
 
                             <div class="rounded-xl border px-4 py-3" :class="darkMode ? 'border-slate-700 bg-slate-800/40' : 'border-slate-200 bg-slate-50'">
-                                <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Current Server Time</p>
+                                <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Current Server Time (UTC)</p>
                                 <p class="mt-1 text-lg font-bold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="formattedServerTime"></p>
-                            </div>
-
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <label class="block">
-                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Search Timezone</span>
-                                    <input type="text"
-                                           x-model="timezoneSearch"
-                                           placeholder="Type to filter (e.g., Asia/Tehran)"
-                                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                </label>
-                                <label class="block">
-                                    <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                        <span>System Timezone</span>
-                                        <span x-show="generalForm.system_timezone === 'UTC'" class="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-                                              :class="darkMode ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700'">Recommended for Global Servers</span>
-                                    </span>
-                                    <select x-model="generalForm.system_timezone"
-                                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                        <template x-for="tz in filteredTimezones" :key="tz">
-                                            <option :value="tz" x-text="tz === 'UTC' ? 'UTC (Recommended for Global Servers)' : tz"></option>
-                                        </template>
-                                    </select>
-                                </label>
                             </div>
 
                             <label class="block">
@@ -1510,8 +1485,6 @@
                 systemTimeCurrent: null,
                 systemTimeCurrentTimezone: 'UTC',
                 systemTimeCurrentNtpServer: 'pool.ntp.org',
-                systemTimeAvailableTimezones: ['UTC'],
-                timezoneSearch: '',
                 systemClockTimer: null,
                 serviceActionLoading: false,
                 serviceLogsLoading: false,
@@ -1532,18 +1505,6 @@
                     return selected.includes('udp') ? 'udp' : 'tcp';
                 },
 
-                get filteredTimezones() {
-                    const keyword = (this.timezoneSearch || '').trim().toLowerCase();
-                    const all = Array.isArray(this.systemTimeAvailableTimezones) && this.systemTimeAvailableTimezones.length
-                        ? this.systemTimeAvailableTimezones
-                        : ['UTC'];
-                    if (!keyword) {
-                        return all;
-                    }
-                    const matched = all.filter((zone) => zone.toLowerCase().includes(keyword));
-                    return matched.length ? matched : all;
-                },
-
                 get formattedServerTime() {
                     if (!this.systemTimeCurrent) {
                         return 'Loading...';
@@ -1552,10 +1513,10 @@
                 },
 
                 formatServerClock(value) {
-                    const zone = (this.systemTimeCurrentTimezone || 'UTC').trim() || 'UTC';
+                    const zone = 'UTC';
                     const date = value instanceof Date ? value : new Date(value);
                     if (Number.isNaN(date.getTime())) {
-                        return `Invalid server time (${zone})`;
+                        return 'Invalid server time (UTC)';
                     }
                     try {
                         const formatter = new Intl.DateTimeFormat('en-GB', {
@@ -2178,7 +2139,7 @@
                             auto_renew_ssl: generalData.auto_renew_ssl !== false,
                             custom_ssl_certificate: generalData.custom_ssl_certificate || '',
                             custom_ssl_private_key: generalData.custom_ssl_private_key || '',
-                            system_timezone: generalData.system_timezone || this.generalForm.system_timezone || this.systemTimeCurrentTimezone || 'UTC',
+                            system_timezone: 'UTC',
                             ntp_server: generalData.ntp_server || this.generalForm.ntp_server || this.systemTimeCurrentNtpServer || 'pool.ntp.org',
                         };
 
@@ -2246,13 +2207,10 @@
                 },
 
                 applySystemTimePayload(payload) {
-                    this.systemTimeCurrentTimezone = payload.current_timezone || 'UTC';
+                    this.systemTimeCurrentTimezone = 'UTC';
                     this.systemTimeCurrentNtpServer = payload.ntp_server || 'pool.ntp.org';
-                    this.generalForm.system_timezone = payload.current_timezone || this.generalForm.system_timezone || 'UTC';
+                    this.generalForm.system_timezone = 'UTC';
                     this.generalForm.ntp_server = payload.ntp_server || this.generalForm.ntp_server || 'pool.ntp.org';
-                    this.systemTimeAvailableTimezones = Array.isArray(payload.available_timezones) && payload.available_timezones.length
-                        ? payload.available_timezones
-                        : ['UTC'];
 
                     const parsed = new Date(payload.current_server_time);
                     this.systemTimeCurrent = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
@@ -2656,22 +2614,20 @@
                     this.saving = true;
                     try {
                         const token = localStorage.getItem('access_token');
-                        const selectedTimezone = (this.generalForm.system_timezone || '').trim();
                         const selectedNtpServer = (this.generalForm.ntp_server || '').trim();
-                        const timezoneChanged = selectedTimezone && selectedTimezone !== this.systemTimeCurrentTimezone;
                         const ntpChanged = selectedNtpServer && selectedNtpServer !== this.systemTimeCurrentNtpServer;
-                        if (this.activeGeneralSection === 'system' && (timezoneChanged || ntpChanged)) {
+                        if (this.activeGeneralSection === 'system' && ntpChanged) {
                             const tzResponse = await fetch('/api/system/time/timezone', {
                                 method: 'PUT',
                                 headers: {
                                     Authorization: `Bearer ${token}`,
                                     'Content-Type': 'application/json',
                                 },
-                                body: JSON.stringify({ timezone: selectedTimezone, ntp_server: selectedNtpServer || 'pool.ntp.org' }),
+                                body: JSON.stringify({ ntp_server: selectedNtpServer || 'pool.ntp.org' }),
                             });
 
                             if (!tzResponse.ok) {
-                                let message = 'Failed to update timezone';
+                                let message = 'Failed to update NTP server';
                                 try {
                                     const error = await tzResponse.json();
                                     if (typeof error.detail === 'string') {
@@ -2686,7 +2642,7 @@
                             const tzPayload = await tzResponse.json();
                             this.applySystemTimePayload(tzPayload);
 
-                            this.showToast('Timezone updated successfully', 'success');
+                            this.showToast('NTP synchronization updated successfully', 'success');
                         }
 
                         const loginMaxFailedAttempts = this.normalizeLoginMaxFailedAttempts(this.generalForm.login_max_failed_attempts);
@@ -2716,7 +2672,7 @@
                             auto_renew_ssl: !!this.generalForm.auto_renew_ssl,
                             custom_ssl_certificate: this.generalForm.ssl_mode === 'custom' ? ((this.generalForm.custom_ssl_certificate || '').trim() || null) : null,
                             custom_ssl_private_key: this.generalForm.ssl_mode === 'custom' ? ((this.generalForm.custom_ssl_private_key || '').trim() || null) : null,
-                            system_timezone: (this.generalForm.system_timezone || '').trim(),
+                            system_timezone: 'UTC',
                             ntp_server: (this.generalForm.ntp_server || '').trim(),
                         };
 
@@ -2767,7 +2723,7 @@
                             auto_renew_ssl: updated.auto_renew_ssl !== false,
                             custom_ssl_certificate: updated.custom_ssl_certificate || '',
                             custom_ssl_private_key: updated.custom_ssl_private_key || '',
-                            system_timezone: updated.system_timezone || this.systemTimeCurrentTimezone || this.generalForm.system_timezone || 'UTC',
+                            system_timezone: 'UTC',
                             ntp_server: updated.ntp_server || this.systemTimeCurrentNtpServer || this.generalForm.ntp_server || 'pool.ntp.org',
                         };
 

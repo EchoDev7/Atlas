@@ -554,7 +554,7 @@ def update_general_settings(
     detected_wan = _detect_wan_interface()
 
     previous_ipv6_support = settings.global_ipv6_support
-    current_timezone = settings.system_timezone
+    current_timezone = "UTC"
     current_ntp_server = settings.ntp_server
     previous_panel_port = settings.panel_https_port
     previous_subscription_port = settings.subscription_https_port
@@ -591,7 +591,7 @@ def update_general_settings(
     settings.auto_renew_ssl = payload.auto_renew_ssl
     settings.custom_ssl_certificate = payload.custom_ssl_certificate
     settings.custom_ssl_private_key = payload.custom_ssl_private_key
-    settings.system_timezone = current_timezone
+    settings.system_timezone = "UTC"
     settings.ntp_server = current_ntp_server
     settings.updated_at = datetime.utcnow()
 
