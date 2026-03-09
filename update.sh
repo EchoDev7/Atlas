@@ -39,7 +39,7 @@ step "Ensuring critical system dependencies are installed"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y \
-  openvpn easy-rsa certbot \
+  openvpn easy-rsa wireguard wireguard-tools certbot \
   "linux-headers-$(uname -r)" openvpn-dco-dkms \
   iptables-persistent netfilter-persistent
 ok "Critical system dependencies verified"

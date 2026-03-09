@@ -16,6 +16,7 @@ from backend.database import get_db
 from backend.dependencies import get_current_user
 from backend.models.general_settings import GeneralSettings
 from backend.models.openvpn_settings import OpenVPNSettings
+from backend.models.wireguard_settings import WireGuardSettings
 from backend.models.user import Admin
 from backend.schemas.general_settings import (
     GeneralSettingsResponse,
@@ -23,6 +24,7 @@ from backend.schemas.general_settings import (
     SSLCertificateIssueRequest,
 )
 from backend.schemas.openvpn_settings import OpenVPNSettingsResponse, OpenVPNSettingsUpdate
+from backend.schemas.wireguard_settings import WireGuardSettingsResponse, WireGuardSettingsUpdate
 from backend.services.audit_service import extract_client_ip, record_audit_event
 
 router = APIRouter(prefix="/settings", tags=["Server Settings"])
@@ -356,6 +358,18 @@ def _get_or_create_openvpn_settings(db: Session) -> OpenVPNSettings:
     return settings
 
 
+def _get_or_create_wireguard_settings(db: Session) -> WireGuardSettings:
+    settings = db.query(WireGuardSettings).order_by(WireGuardSettings.id.asc()).first()
+    if settings:
+        return settings
+
+    settings = WireGuardSettings()
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return settings
+
+
 def _get_or_create_general_settings(db: Session) -> GeneralSettings:
     settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
     if settings:
@@ -445,6 +459,17 @@ def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
         cdn_domain=settings.cdn_domain,
         ws_path=settings.ws_path,
         ws_port=settings.ws_port,
+        created_at=settings.created_at,
+        updated_at=settings.updated_at,
+    )
+
+
+def _to_wireguard_response(settings: WireGuardSettings) -> WireGuardSettingsResponse:
+    return WireGuardSettingsResponse(
+        id=settings.id,
+        interface_name=settings.interface_name,
+        listen_port=settings.listen_port,
+        address_range=settings.address_range,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
@@ -714,6 +739,35 @@ def get_openvpn_settings(
     _ = current_user
     settings = _get_or_create_openvpn_settings(db)
     return _to_response(settings)
+
+
+@router.get("/wireguard", response_model=WireGuardSettingsResponse)
+def get_wireguard_settings(
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    settings = _get_or_create_wireguard_settings(db)
+    return _to_wireguard_response(settings)
+
+
+@router.put("/wireguard", response_model=WireGuardSettingsResponse)
+def update_wireguard_settings(
+    payload: WireGuardSettingsUpdate,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    settings = _get_or_create_wireguard_settings(db)
+
+    settings.interface_name = payload.interface_name
+    settings.listen_port = payload.listen_port
+    settings.address_range = payload.address_range
+    settings.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(settings)
+    return _to_wireguard_response(settings)
 
 
 @router.get("/openvpn/auth-assets/health")

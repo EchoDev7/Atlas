@@ -3,6 +3,7 @@ from backend.models.vpn_client import VPNClient, VPNProtocol, VPNClientStatus
 from backend.models.vpn_user import VPNUser, VPNConfig
 from backend.models.general_settings import GeneralSettings
 from backend.models.openvpn_settings import OpenVPNSettings
+from backend.models.wireguard_settings import WireGuardSettings
 from backend.models.audit_log import AuditLog
 
 __all__ = [
@@ -14,5 +15,6 @@ __all__ = [
     "VPNConfig",
     "GeneralSettings",
     "OpenVPNSettings",
+    "WireGuardSettings",
     "AuditLog",
 ]

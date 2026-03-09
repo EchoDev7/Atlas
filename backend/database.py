@@ -367,6 +367,51 @@ def init_db():
                     )
                 )
 
+        wireguard_settings_table_exists = connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='wireguard_settings'")
+        ).fetchone()
+        if wireguard_settings_table_exists:
+            wireguard_columns = connection.execute(text("PRAGMA table_info(wireguard_settings)")).fetchall()
+            wireguard_column_names = {col[1] for col in wireguard_columns}
+
+            wireguard_column_migrations = {
+                "interface_name": "ALTER TABLE wireguard_settings ADD COLUMN interface_name VARCHAR(32) NOT NULL DEFAULT 'wg0'",
+                "listen_port": "ALTER TABLE wireguard_settings ADD COLUMN listen_port INTEGER NOT NULL DEFAULT 51820",
+                "address_range": "ALTER TABLE wireguard_settings ADD COLUMN address_range VARCHAR(64) NOT NULL DEFAULT '10.9.0.0/24'",
+                "created_at": "ALTER TABLE wireguard_settings ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+                "updated_at": "ALTER TABLE wireguard_settings ADD COLUMN updated_at DATETIME",
+            }
+
+            for column_name, migration_sql in wireguard_column_migrations.items():
+                if column_name not in wireguard_column_names:
+                    connection.execute(text(migration_sql))
+
+            wireguard_row_count = connection.execute(
+                text("SELECT COUNT(*) FROM wireguard_settings")
+            ).scalar_one()
+            if wireguard_row_count == 0:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO wireguard_settings (
+                            id,
+                            interface_name,
+                            listen_port,
+                            address_range,
+                            created_at,
+                            updated_at
+                        ) VALUES (
+                            1,
+                            'wg0',
+                            51820,
+                            '10.9.0.0/24',
+                            CURRENT_TIMESTAMP,
+                            CURRENT_TIMESTAMP
+                        )
+                        """
+                    )
+                )
+
         general_settings_table_exists = connection.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='general_settings'")
         ).fetchone()
