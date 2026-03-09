@@ -2245,6 +2245,20 @@
                     }, 1000);
                 },
 
+                applySystemTimePayload(payload) {
+                    this.systemTimeCurrentTimezone = payload.current_timezone || 'UTC';
+                    this.systemTimeCurrentNtpServer = payload.ntp_server || 'pool.ntp.org';
+                    this.generalForm.system_timezone = payload.current_timezone || this.generalForm.system_timezone || 'UTC';
+                    this.generalForm.ntp_server = payload.ntp_server || this.generalForm.ntp_server || 'pool.ntp.org';
+                    this.systemTimeAvailableTimezones = Array.isArray(payload.available_timezones) && payload.available_timezones.length
+                        ? payload.available_timezones
+                        : ['UTC'];
+
+                    const parsed = new Date(payload.current_server_time);
+                    this.systemTimeCurrent = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+                    this.startSystemClock();
+                },
+
                 async loadSystemTimeData() {
                     this.systemTimeLoading = true;
                     try {
@@ -2264,17 +2278,7 @@
                         }
 
                         const payload = await response.json();
-                        this.systemTimeCurrentTimezone = payload.current_timezone || 'UTC';
-                        this.systemTimeCurrentNtpServer = payload.ntp_server || 'pool.ntp.org';
-                        this.generalForm.system_timezone = payload.current_timezone || this.generalForm.system_timezone || 'UTC';
-                        this.generalForm.ntp_server = payload.ntp_server || this.generalForm.ntp_server || 'pool.ntp.org';
-                        this.systemTimeAvailableTimezones = Array.isArray(payload.available_timezones) && payload.available_timezones.length
-                            ? payload.available_timezones
-                            : ['UTC'];
-
-                        const parsed = new Date(payload.current_server_time);
-                        this.systemTimeCurrent = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-                        this.startSystemClock();
+                        this.applySystemTimePayload(payload);
                     } catch (error) {
                         this.showToast(error.message || 'Failed to load system time information', 'error');
                     } finally {
@@ -2679,8 +2683,10 @@
                                 throw new Error(message);
                             }
 
+                            const tzPayload = await tzResponse.json();
+                            this.applySystemTimePayload(tzPayload);
+
                             this.showToast('Timezone updated successfully', 'success');
-                            await this.loadSystemTimeData();
                         }
 
                         const loginMaxFailedAttempts = this.normalizeLoginMaxFailedAttempts(this.generalForm.login_max_failed_attempts);

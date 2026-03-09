@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import zipfile
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
@@ -182,12 +183,13 @@ def _list_global_timezones() -> list[str]:
 
 def _build_system_time_payload(db: Session) -> dict[str, object]:
     current_timezone = _resolve_current_timezone_name(db)
+    local_now = datetime.now().astimezone()
     try:
         zone = ZoneInfo(current_timezone)
-        current_server_time = datetime.now(zone).isoformat()
+        current_server_time = local_now.astimezone(zone).isoformat()
     except ZoneInfoNotFoundError:
         current_timezone = "UTC"
-        current_server_time = datetime.now(timezone.utc).isoformat()
+        current_server_time = local_now.astimezone(timezone.utc).isoformat()
 
     return {
         "current_server_time": current_server_time,
@@ -468,6 +470,12 @@ def update_system_timezone(
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or "Failed to apply timezone using timedatectl").strip()
         raise HTTPException(status_code=500, detail=detail) from exc
+
+    try:
+        time.tzset()
+    except AttributeError:
+        # tzset is not available on some non-POSIX platforms.
+        pass
 
     _apply_ntp_server_to_timesyncd(requested_ntp_server)
 
