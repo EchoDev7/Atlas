@@ -125,5 +125,31 @@ else
   warn "OpenVPN service unit not found. Skipping OpenVPN restart."
 fi
 
+if compgen -G "/etc/wireguard/*.conf" >/dev/null 2>&1; then
+  restarted_wireguard=0
+  while IFS= read -r wg_conf_path; do
+    wg_iface="$(basename "${wg_conf_path}" .conf)"
+    wg_unit="wg-quick@${wg_iface}"
+
+    if systemctl cat "${wg_unit}" >/dev/null 2>&1; then
+      systemctl restart "${wg_unit}"
+      if systemctl is-active --quiet "${wg_unit}"; then
+        ok "${wg_unit} restarted"
+        restarted_wireguard=1
+      else
+        warn "${wg_unit} restart finished but service is not active"
+      fi
+    else
+      warn "${wg_unit} unit not found. Skipping ${wg_iface}."
+    fi
+  done < <(find /etc/wireguard -maxdepth 1 -type f -name "*.conf" | sort)
+
+  if [[ "${restarted_wireguard}" -eq 0 ]]; then
+    warn "No active WireGuard unit was restarted."
+  fi
+else
+  warn "No WireGuard interface config found under /etc/wireguard. Skipping WireGuard restart."
+fi
+
 step "Update completed"
 echo -e "${GREEN}${BOLD}Atlas VPN Panel is now updated to the latest main branch.${NC}"
