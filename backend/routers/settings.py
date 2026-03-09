@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.core.obfuscation_manager import ObfuscationManager
 from backend.core.openvpn import OpenVPNManager
+from backend.core.wireguard import WireGuardManager
 from backend.database import get_db
 from backend.dependencies import get_current_user
 from backend.models.general_settings import GeneralSettings
@@ -30,6 +31,7 @@ from backend.services.audit_service import extract_client_ip, record_audit_event
 router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_manager = OpenVPNManager()
 obfuscation_manager = ObfuscationManager()
+wireguard_manager = WireGuardManager()
 logger = logging.getLogger(__name__)
 RESOLVED_DROPIN_DIR = Path("/etc/systemd/resolved.conf.d")
 ATLAS_DNS_DROPIN_FILE = RESOLVED_DROPIN_DIR / "atlas-dns.conf"
@@ -470,6 +472,7 @@ def _to_wireguard_response(settings: WireGuardSettings) -> WireGuardSettingsResp
         interface_name=settings.interface_name,
         listen_port=settings.listen_port,
         address_range=settings.address_range,
+        server_public_key=settings.server_public_key,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
@@ -759,11 +762,45 @@ def update_wireguard_settings(
 ):
     _ = current_user
     settings = _get_or_create_wireguard_settings(db)
+    general_settings = _get_or_create_general_settings(db)
+
+    if not (settings.server_private_key or "").strip() or not (settings.server_public_key or "").strip():
+        try:
+            private_key, public_key = wireguard_manager.generate_server_keypair()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to generate WireGuard server keys: {exc}") from exc
+
+        settings.server_private_key = private_key
+        settings.server_public_key = public_key
+        settings.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(settings)
 
     settings.interface_name = payload.interface_name
     settings.listen_port = payload.listen_port
     settings.address_range = payload.address_range
     settings.updated_at = datetime.utcnow()
+
+    try:
+        wireguard_manager.write_server_config(
+            interface_name=settings.interface_name,
+            listen_port=settings.listen_port,
+            address_range=settings.address_range,
+            private_key=settings.server_private_key or "",
+            wan_interface=general_settings.wan_interface,
+        )
+        apply_result = wireguard_manager.apply_interface(settings.interface_name)
+        if not apply_result.get("success"):
+            raise HTTPException(status_code=500, detail=apply_result.get("message", "Failed to apply WireGuard interface"))
+    except HTTPException:
+        db.rollback()
+        raise
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to apply WireGuard settings: {exc}") from exc
 
     db.commit()
     db.refresh(settings)

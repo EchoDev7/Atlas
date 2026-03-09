@@ -838,7 +838,7 @@
                     <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">WireGuard Foundation Settings</h2>
                     <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Manage core WireGuard interface defaults independently from OpenVPN.</p>
 
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <label class="block">
                             <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Interface Name</span>
                             <input type="text" x-model="wireguardForm.interface_name" placeholder="wg0" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
@@ -850,6 +850,18 @@
                         <label class="block">
                             <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Address Range (CIDR)</span>
                             <input type="text" x-model="wireguardForm.address_range" placeholder="10.9.0.0/24" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        </label>
+                        <label class="block md:col-span-2 lg:col-span-1">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Server Public Key</span>
+                            <div class="mt-1 flex items-center gap-2">
+                                <input type="text" x-model="wireguardForm.server_public_key" readonly class="w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition cursor-not-allowed" :class="darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-500'">
+                                <button type="button"
+                                        @click="copyToClipboard(wireguardForm.server_public_key || '', 'WireGuard Server Public Key')"
+                                        class="px-3 py-2 rounded-lg text-xs font-semibold transition"
+                                        :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
+                                    Copy
+                                </button>
+                            </div>
                         </label>
                     </div>
                 </div>
@@ -1472,6 +1484,7 @@
                     interface_name: 'wg0',
                     listen_port: 51820,
                     address_range: '10.9.0.0/24',
+                    server_public_key: '',
                 },
                 generalForm: {
                     server_address: '',
@@ -2227,6 +2240,7 @@
                             interface_name: wireguardData.interface_name || 'wg0',
                             listen_port: Number(wireguardData.listen_port) || 51820,
                             address_range: wireguardData.address_range || '10.9.0.0/24',
+                            server_public_key: wireguardData.server_public_key || '',
                         };
                         if (this.form.obfuscation_mode !== 'standard') {
                             this.form.protocol = 'tcp';
@@ -2542,6 +2556,7 @@
                             interface_name: updated.interface_name || 'wg0',
                             listen_port: Number(updated.listen_port) || 51820,
                             address_range: updated.address_range || '10.9.0.0/24',
+                            server_public_key: updated.server_public_key || '',
                         };
 
                         this.showToast('WireGuard settings applied successfully', 'success');

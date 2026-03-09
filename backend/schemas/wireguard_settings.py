@@ -40,6 +40,7 @@ class WireGuardSettingsUpdate(WireGuardSettingsBase):
 
 class WireGuardSettingsResponse(WireGuardSettingsBase):
     id: int
+    server_public_key: str | None = None
     created_at: datetime
     updated_at: datetime | None
 
