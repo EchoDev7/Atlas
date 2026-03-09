@@ -589,7 +589,7 @@
 
                     <div x-show="activeGeneralSection === 'master_orchestrator'" class="space-y-4">
                         <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Master Orchestrator: Relay &amp; Tunneling</h2>
-                        <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Configure foreign-node relay credentials and run dummy command flows on both nodes.</p>
+                        <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Configure foreign-node relay credentials and run live shell commands on both nodes.</p>
 
                         <div class="rounded-2xl border p-4 sm:p-5 space-y-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-white'">
                             <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
@@ -3123,7 +3123,11 @@
                         return;
                     }
 
-                    const endpoint = node === 'local' ? '/api/system/tunnel/local/command' : '/api/system/tunnel/foreign/command';
+                    const endpoint = node === 'local' ? '/api/terminal/local' : '/api/terminal/foreign';
+                    const prompt = node === 'local' ? 'root@local:~#' : 'root@foreign:~#';
+                    this.appendTunnelTerminalLine(node, `${prompt} ${command}`);
+                    this.appendTunnelTerminalLine(node, '[running...]');
+
                     if (node === 'local') {
                         this.localTunnelCommandLoading = true;
                     } else {
@@ -3161,7 +3165,10 @@
                         }
 
                         const result = await response.json();
-                        this.appendTunnelTerminalLine(node, result.output || `[${node}] command executed`);
+                        const stdout = String(result.stdout || '').trim();
+                        const stderr = String(result.stderr || '').trim();
+                        const output = [stdout, stderr].filter(Boolean).join('\n');
+                        this.appendTunnelTerminalLine(node, output || '[no output]');
                         this.showToast(`${node === 'local' ? 'Local' : 'Foreign'} command executed`, 'success');
                         if (node === 'local') {
                             this.localTunnelCommand = '';
