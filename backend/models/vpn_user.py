@@ -142,12 +142,23 @@ class VPNUser(Base):
     @property
     def has_openvpn(self) -> bool:
         """Check if user has OpenVPN config"""
-        return any(c.protocol == "openvpn" and c.is_active for c in self.configs)
+        return any(
+            c.protocol == "openvpn"
+            and (
+                c.is_active
+                or (
+                    c.revoked_at is None
+                    and (bool(c.certificate_cn) or bool(c.certificate_serial))
+                )
+            )
+            for c in self.configs
+        )
     
     @property
     def has_wireguard(self) -> bool:
         """Check if user has WireGuard config"""
-        return any(c.protocol == "wireguard" and c.is_active for c in self.configs)
+        has_user_keys = bool((self.wg_public_key or "").strip() and (self.wg_allocated_ip or "").strip())
+        return has_user_keys or any(c.protocol == "wireguard" and c.is_active for c in self.configs)
     
     @property
     def has_singbox(self) -> bool:

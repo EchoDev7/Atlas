@@ -605,31 +605,35 @@ async def create_user(
     db.add(new_user)
     db.flush()  # Get user ID
     
-    # Unified user architecture: always provision both OpenVPN and WireGuard artifacts.
+    enable_openvpn = bool(user_data.enable_openvpn)
+    enable_wireguard = bool(user_data.enable_wireguard)
+    # Unified user architecture with selective protocol generation.
     try:
-        cert_result = openvpn_manager.create_client_certificate(username)
-        cert_success = bool(cert_result.get("success"))
-        if not cert_success:
-            cert_path = str(cert_result.get("cert_path") or "").strip()
-            key_path = str(cert_result.get("key_path") or "").strip()
-            cert_success = bool(cert_path and key_path and Path(cert_path).exists() and Path(key_path).exists())
+        if enable_openvpn:
+            cert_result = openvpn_manager.create_client_certificate(username)
+            cert_success = bool(cert_result.get("success"))
+            if not cert_success:
+                cert_path = str(cert_result.get("cert_path") or "").strip()
+                key_path = str(cert_result.get("key_path") or "").strip()
+                cert_success = bool(cert_path and key_path and Path(cert_path).exists() and Path(key_path).exists())
 
-        if not cert_success:
-            cert_error = cert_result.get("message") or "unknown error"
-            raise HTTPException(status_code=500, detail=f"OpenVPN certificate provisioning failed for '{username}': {cert_error}")
+            if not cert_success:
+                cert_error = cert_result.get("message") or "unknown error"
+                raise HTTPException(status_code=500, detail=f"OpenVPN certificate provisioning failed for '{username}': {cert_error}")
 
-        openvpn_config = VPNConfig(
-            user_id=new_user.id,
-            protocol="openvpn",
-            certificate_cn=username,
-            certificate_issued_at=datetime.utcnow(),
-            is_active=True,
-        )
-        db.add(openvpn_config)
+            openvpn_config = VPNConfig(
+                user_id=new_user.id,
+                protocol="openvpn",
+                certificate_cn=username,
+                certificate_issued_at=datetime.utcnow(),
+                is_active=True,
+            )
+            db.add(openvpn_config)
 
-        _ensure_wireguard_identity_for_user(db, new_user)
-        _ensure_wireguard_config_record(new_user, db)
-        _sync_wireguard_users_runtime(db)
+        if enable_wireguard:
+            _ensure_wireguard_identity_for_user(db, new_user)
+            _ensure_wireguard_config_record(new_user, db)
+            _sync_wireguard_users_runtime(db)
     except HTTPException:
         db.rollback()
         raise
@@ -741,16 +745,20 @@ async def update_user(
     
     user.updated_at = datetime.utcnow()
     
-    try:
-        _ensure_wireguard_identity_for_user(db, user)
-        _ensure_wireguard_config_record(user, db)
-        _sync_wireguard_users_runtime(db)
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to synchronize WireGuard state: {exc}") from exc
+    has_wireguard_material = bool(
+        any(config.protocol == "wireguard" and config.is_active for config in user.configs)
+        or ((user.wg_public_key or "").strip() and (user.wg_allocated_ip or "").strip())
+    )
+
+    if has_wireguard_material:
+        try:
+            _sync_wireguard_users_runtime(db)
+        except HTTPException:
+            db.rollback()
+            raise
+        except Exception as exc:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to synchronize WireGuard state: {exc}") from exc
 
     db.commit()
     _sync_openvpn_auth_db_snapshot()
@@ -828,30 +836,12 @@ async def download_config(
     
     if protocol == "openvpn":
         try:
+            config = next((c for c in user.configs if c.protocol == "openvpn" and c.is_active), None)
+            if not config:
+                raise HTTPException(status_code=404, detail="OpenVPN is not enabled for this user")
+
             # Pre-flight validation of required settings
             _validate_required_settings(db)
-            
-            # Find existing active OpenVPN config; auto-provision if missing
-            config = next((c for c in user.configs if c.protocol == "openvpn" and c.is_active), None)
-            created_missing_config = False
-            if not config:
-                cert_result = openvpn_manager.create_client_certificate(user.username)
-                cert_success = bool(cert_result.get("success"))
-                if not cert_success:
-                    cert_path = str(cert_result.get("cert_path") or "").strip()
-                    key_path = str(cert_result.get("key_path") or "").strip()
-                    cert_success = bool(
-                        cert_path and key_path and Path(cert_path).exists() and Path(key_path).exists()
-                    )
-
-                if cert_success:
-                    created_missing_config = True
-                else:
-                    cert_error = cert_result.get("message") or "unknown error"
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"OpenVPN certificate provisioning failed for '{user.username}': {cert_error}",
-                    )
 
             # Generate config with username/password auth
             config_content = openvpn_manager.generate_client_config(
@@ -861,20 +851,6 @@ async def download_config(
 
             if not config_content:
                 raise HTTPException(status_code=500, detail="Failed to generate config")
-
-            # Persist a missing OpenVPN config row only after successful config generation
-            if created_missing_config:
-                config = VPNConfig(
-                    user_id=user.id,
-                    protocol="openvpn",
-                    certificate_cn=user.username,
-                    certificate_issued_at=datetime.utcnow(),
-                    is_active=True
-                )
-                db.add(config)
-                db.commit()
-                _sync_openvpn_auth_db_snapshot()
-                db.refresh(user)
             
             return Response(
                 content=config_content,
@@ -891,12 +867,8 @@ async def download_config(
     
     if protocol == "wireguard":
         try:
-            _ensure_wireguard_identity_for_user(db, user)
-            _ensure_wireguard_config_record(user, db)
-            db.commit()
-            db.refresh(user)
-
-            _sync_wireguard_users_runtime(db)
+            if not (user.wg_private_key and user.wg_public_key and user.wg_allocated_ip):
+                raise HTTPException(status_code=404, detail="WireGuard is not enabled for this user")
             config_content = wireguard_manager.build_client_config_for_user(db, user)
             return Response(
                 content=config_content,
@@ -929,11 +901,12 @@ async def get_config(
         raise HTTPException(status_code=404, detail="User not found")
     
     config = next((c for c in user.configs if c.protocol == protocol and c.is_active), None)
-    if not config:
-        raise HTTPException(status_code=404, detail=f"No active {protocol} config found")
     
     if protocol == "openvpn":
         try:
+            if not config:
+                raise HTTPException(status_code=404, detail="OpenVPN is not enabled for this user")
+
             # Pre-flight validation of required settings
             _validate_required_settings(db)
             
@@ -959,6 +932,8 @@ async def get_config(
 
     if protocol == "wireguard":
         try:
+            if not (user.wg_private_key and user.wg_public_key and user.wg_allocated_ip):
+                raise HTTPException(status_code=404, detail="WireGuard is not enabled for this user")
             config_content = wireguard_manager.build_client_config_for_user(db, user)
             return VPNConfigFileResponse(
                 username=user.username,

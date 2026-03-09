@@ -854,6 +854,31 @@
                                   class="block w-full px-4 py-3 rounded-xl font-medium text-sm theme-transition focus:outline-none focus:ring-2 resize-none"
                                   :class="darkMode ? 'input-dark text-white placeholder-slate-500 focus:ring-cyan-500/50' : 'bg-white border-2 border-slate-200 focus:border-cyan-500 focus:ring-cyan-100 text-slate-900 placeholder-slate-400'"></textarea>
                     </div>
+
+                    <!-- Protocol Selection -->
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium theme-transition"
+                               :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                            Protocol Generation
+                        </label>
+                        <label class="flex items-center justify-between px-4 py-3 rounded-xl border theme-transition"
+                               :class="darkMode ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'">
+                            <span class="text-sm font-medium" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable OpenVPN</span>
+                            <input type="checkbox"
+                                   x-model="newClient.enable_openvpn"
+                                   class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                        </label>
+                        <label class="flex items-center justify-between px-4 py-3 rounded-xl border theme-transition"
+                               :class="darkMode ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'">
+                            <span class="text-sm font-medium" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable WireGuard</span>
+                            <input type="checkbox"
+                                   x-model="newClient.enable_wireguard"
+                                   class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                        </label>
+                        <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
+                            Select at least one protocol.
+                        </p>
+                    </div>
                     
                     <!-- Error Message -->
                     <div x-show="createError" x-transition class="p-3 rounded-lg glass-effect border text-sm"
@@ -1330,7 +1355,9 @@
                     description: '',
                     max_devices: 1,
                     data_limit_gb: '',
-                    expiry_date: ''
+                    expiry_date: '',
+                    enable_openvpn: true,
+                    enable_wireguard: true,
                 },
                 
                 // QR Code Modal
@@ -1602,6 +1629,12 @@
                     this.creating = true;
                     this.createError = '';
                     this.successMessage = '';
+
+                    if (!this.newClient.enable_openvpn && !this.newClient.enable_wireguard) {
+                        this.createError = 'Select at least one protocol before creating the user.';
+                        this.creating = false;
+                        return;
+                    }
                     
                     try {
                         const token = localStorage.getItem('access_token');
@@ -1614,8 +1647,8 @@
                             max_devices: this.newClient.max_devices ? parseInt(this.newClient.max_devices, 10) : 1,
                             data_limit_gb: this.newClient.data_limit_gb ? parseFloat(this.newClient.data_limit_gb) : null,
                             expiry_date: this.newClient.expiry_date ? new Date(this.newClient.expiry_date).toISOString() : null,
-                            create_openvpn: true,
-                            create_wireguard: true,
+                            enable_openvpn: !!this.newClient.enable_openvpn,
+                            enable_wireguard: !!this.newClient.enable_wireguard,
                         };
                         
                         const response = await fetch('/api/users', {
@@ -1655,7 +1688,16 @@
                         
                         // Success
                         this.showCreateModal = false;
-                        this.newClient = { username: '', password: '', description: '', max_devices: 1, data_limit_gb: '', expiry_date: '' };
+                        this.newClient = {
+                            username: '',
+                            password: '',
+                            description: '',
+                            max_devices: 1,
+                            data_limit_gb: '',
+                            expiry_date: '',
+                            enable_openvpn: true,
+                            enable_wireguard: true,
+                        };
                         this.successMessage = `User ${credentials.username} created successfully`;
                         await this.loadClients();
                     } catch (err) {

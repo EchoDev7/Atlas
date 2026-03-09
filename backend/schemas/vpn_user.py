@@ -41,9 +41,12 @@ class VPNUserCreate(BaseModel):
     max_devices: int = Field(1, ge=1, le=100, description="Maximum concurrent devices")
     max_concurrent_connections: Optional[int] = Field(None, ge=1, le=100, description="Maximum simultaneous connections")
     
-    # OpenVPN config creation
-    create_openvpn: bool = Field(True, description="Create OpenVPN config for this user")
-    create_wireguard: bool = Field(True, description="Create WireGuard config for this user")
+    # Protocol generation toggles
+    enable_openvpn: Optional[bool] = Field(None, description="Enable OpenVPN artifact generation")
+    enable_wireguard: Optional[bool] = Field(None, description="Enable WireGuard artifact generation")
+    # Backward-compatible aliases (deprecated)
+    create_openvpn: Optional[bool] = Field(None, description="Deprecated alias for enable_openvpn")
+    create_wireguard: Optional[bool] = Field(None, description="Deprecated alias for enable_wireguard")
     server_address: Optional[str] = Field(None, description="OpenVPN server address")
     server_port: int = Field(1194, description="OpenVPN server port")
     protocol_type: str = Field("udp", description="OpenVPN protocol (udp/tcp)")
@@ -73,6 +76,27 @@ class VPNUserCreate(BaseModel):
         access_expires_at = values.get("access_expires_at")
         if access_start_at and access_expires_at and access_start_at >= access_expires_at:
             raise ValueError("access_start_at must be earlier than access_expires_at")
+
+        enable_openvpn = values.get("enable_openvpn")
+        enable_wireguard = values.get("enable_wireguard")
+
+        if enable_openvpn is None:
+            legacy_openvpn = values.get("create_openvpn")
+            enable_openvpn = True if legacy_openvpn is None else bool(legacy_openvpn)
+        else:
+            enable_openvpn = bool(enable_openvpn)
+
+        if enable_wireguard is None:
+            legacy_wireguard = values.get("create_wireguard")
+            enable_wireguard = True if legacy_wireguard is None else bool(legacy_wireguard)
+        else:
+            enable_wireguard = bool(enable_wireguard)
+
+        if not enable_openvpn and not enable_wireguard:
+            raise ValueError("At least one protocol must be enabled")
+
+        values["enable_openvpn"] = enable_openvpn
+        values["enable_wireguard"] = enable_wireguard
 
         return values
 
