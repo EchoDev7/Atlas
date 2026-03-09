@@ -8,7 +8,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,12 @@ class WireGuardManager:
         # Counter reset (e.g. wg interface restart)
         return current_sanitized
 
-    async def sync_wireguard_stats(self, db: Any, online_window_seconds: int = 90) -> Dict[str, Any]:
+    async def sync_wireguard_stats(
+        self,
+        db: Any,
+        online_window_seconds: int = 90,
+        openvpn_online_usernames: Optional[Set[str]] = None,
+    ) -> Dict[str, Any]:
         """
         Poll `wg show all dump` asynchronously and persist restart-safe traffic deltas.
 
@@ -89,6 +94,11 @@ class WireGuardManager:
             (user.wg_public_key or "").strip(): user
             for user in db.query(VPNUser).all()
             if (user.wg_public_key or "").strip()
+        }
+        openvpn_online = {
+            str(username).strip()
+            for username in list(openvpn_online_usernames or set())
+            if str(username or "").strip()
         }
 
         now_epoch = int(time.time())
@@ -169,11 +179,9 @@ class WireGuardManager:
                     user.current_connections = 1
                     updated_users += 1
             else:
-                has_active_openvpn = any(
-                    cfg.protocol == "openvpn" and bool(cfg.is_active)
-                    for cfg in list(getattr(user, "configs", []) or [])
-                )
-                if not has_active_openvpn and int(user.current_connections or 0) != 0:
+                username = str(getattr(user, "username", "") or "").strip()
+                has_openvpn_runtime_online = username in openvpn_online
+                if not has_openvpn_runtime_online and int(user.current_connections or 0) != 0:
                     user.current_connections = 0
                     user.last_disconnected_at = now_utc
                     updated_users += 1

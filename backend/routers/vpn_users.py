@@ -111,6 +111,22 @@ def _sync_openvpn_auth_db_snapshot() -> None:
         logger.warning("Failed to sync OpenVPN auth DB snapshot: %s", exc)
 
 
+def _disconnect_user_across_protocols(username: str) -> Dict[str, Dict[str, Any]]:
+    """Best-effort kill switch for both OpenVPN and WireGuard runtime sessions."""
+    openvpn_result = openvpn_manager.kill_user(username)
+    wireguard_result = wireguard_manager.kill_user(username)
+    logger.warning(
+        "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s",
+        username,
+        bool(openvpn_result.get("success")),
+        bool(wireguard_result.get("success")),
+    )
+    return {
+        "openvpn": openvpn_result,
+        "wireguard": wireguard_result,
+    }
+
+
 def _get_wireguard_settings(db: Session) -> WireGuardSettings:
     settings = db.query(WireGuardSettings).order_by(WireGuardSettings.id.asc()).first()
     if not settings:
@@ -524,8 +540,7 @@ async def disconnect_user_sessions(
     if not result.get("success"):
         raise HTTPException(status_code=502, detail=result.get("message") or "Failed to disconnect user")
 
-    user.current_connections = 0
-    user.is_connection_limit_exceeded = False
+    user.refresh_limit_flags(datetime.utcnow())
     user.updated_at = datetime.utcnow()
     try:
         if protocol == "wireguard":
@@ -734,6 +749,14 @@ async def update_user(
         else:
             user.disabled_at = datetime.utcnow()
             user.disabled_reason = user.disabled_reason or "Disabled by admin"
+            user.current_connections = 0
+
+            kill_results = _disconnect_user_across_protocols(user.username)
+            if not kill_results["openvpn"].get("success") and not kill_results["wireguard"].get("success"):
+                logger.warning(
+                    "Disable-path kill-switch could not disconnect any protocol for %s",
+                    user.username,
+                )
 
             has_openvpn_config = any(config.protocol == "openvpn" for config in user.configs)
             if has_openvpn_config:
@@ -791,11 +814,14 @@ async def delete_user(
     # Revoke OpenVPN certificate/CRL when any OpenVPN config exists for the user.
     if any(config.protocol == "openvpn" for config in user.configs):
         try:
+            _disconnect_user_across_protocols(username)
             revoke_result = openvpn_manager.revoke_client_certificate(username)
             if not revoke_result.get("success"):
                 logger.warning("OpenVPN revoke skipped during delete for %s: %s", username, revoke_result.get("message"))
         except Exception as e:
             logger.error(f"Error revoking certificate for {username}: {e}")
+    else:
+        _disconnect_user_across_protocols(username)
     
     db.delete(user)
     try:
@@ -973,6 +999,7 @@ async def revoke_config(
     
     if protocol == "openvpn":
         try:
+            _disconnect_user_across_protocols(user.username)
             revoke_result = openvpn_manager.revoke_client_certificate(user.username)
             if not revoke_result.get("success"):
                 logger.error(f"Failed to revoke certificate: {revoke_result.get('message', 'unknown error')}")
