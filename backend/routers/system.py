@@ -599,6 +599,14 @@ def run_service_action(
         raise HTTPException(status_code=400, detail="Unsupported action. Use restart, stop, or start")
 
     target_alias = (payload.service_name or "").strip().lower()
+    if target_alias == "wireguard" and action in {"start", "restart"}:
+        sync_result = wireguard_manager.sync_users_to_wg0(db)
+        if not sync_result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"WireGuard sync failed before {action}: {sync_result.get('message', 'unknown error')}",
+            )
+
     service_unit = _resolve_service_unit(target_alias, db)
     _ensure_systemctl_available()
 
