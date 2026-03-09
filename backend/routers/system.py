@@ -18,6 +18,7 @@ from starlette.background import BackgroundTask
 
 from backend.config import settings
 from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
+from backend.core.wireguard import WireGuardManager
 from backend.database import engine, get_db
 from backend.models.general_settings import GeneralSettings
 from backend.models.wireguard_settings import WireGuardSettings
@@ -27,6 +28,7 @@ from backend.services.audit_service import extract_client_ip, record_audit_event
 
 router = APIRouter(prefix="/system", tags=["System"])
 openvpn_manager = OpenVPNManager()
+wireguard_manager = WireGuardManager()
 
 MAX_BACKUP_UPLOAD_BYTES = 512 * 1024 * 1024  # 512MB safety ceiling
 LOG_TAIL_LINES = 100
@@ -690,3 +692,89 @@ def read_service_logs(
         "logs": lines,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.get("/wireguard/diagnostics")
+def read_wireguard_diagnostics(
+    request: Request,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_systemctl_available()
+
+    wg_settings = db.query(WireGuardSettings).order_by(WireGuardSettings.id.asc()).first()
+    interface_name = (
+        (getattr(wg_settings, "interface_name", "") if wg_settings else "")
+        or DEFAULT_WIREGUARD_INTERFACE
+    ).strip() or DEFAULT_WIREGUARD_INTERFACE
+    address_range = (getattr(wg_settings, "address_range", "") if wg_settings else "").strip()
+    service_unit = _resolve_service_unit("wireguard", db)
+
+    checks = {
+        "default_route": ["ip", "route", "show", "default"],
+        "ip_forward": ["sysctl", "net.ipv4.ip_forward"],
+        "forward_rules": ["iptables", "-S", "FORWARD"],
+        "nat_rules": ["iptables", "-t", "nat", "-S", "POSTROUTING"],
+        "wg_show": ["wg", "show", interface_name],
+        "wg_dump": ["wg", "show", interface_name, "dump"],
+        "service_status": ["systemctl", "status", service_unit, "--no-pager", "-n", "25"],
+    }
+
+    command_results: dict[str, dict[str, object]] = {}
+    for key, cmd in checks.items():
+        try:
+            code, stdout, stderr = _run_system_subprocess(cmd, timeout_seconds=20)
+            command_results[key] = {
+                "return_code": code,
+                "stdout": stdout,
+                "stderr": stderr,
+            }
+        except subprocess.TimeoutExpired:
+            command_results[key] = {
+                "return_code": 124,
+                "stdout": "",
+                "stderr": "Command timed out",
+            }
+
+    nat_stdout = str(command_results.get("nat_rules", {}).get("stdout") or "")
+    nat_matches = []
+    if address_range:
+        nat_matches = [line for line in nat_stdout.splitlines() if address_range in line]
+
+    dump_stdout = str(command_results.get("wg_dump", {}).get("stdout") or "")
+    dump_lines = [line for line in dump_stdout.splitlines() if line.strip()]
+    peer_count = max(0, len(dump_lines) - 1) if dump_lines else 0
+
+    ip_forward_stdout = str(command_results.get("ip_forward", {}).get("stdout") or "")
+    ip_forward_enabled = "= 1" in ip_forward_stdout
+
+    payload = {
+        "success": True,
+        "service_unit": service_unit,
+        "interface_name": interface_name,
+        "address_range": address_range,
+        "summary": {
+            "ip_forward_enabled": ip_forward_enabled,
+            "peer_count": peer_count,
+            "nat_rule_matches_for_address_range": len(nat_matches),
+        },
+        "checks": command_results,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    record_audit_event(
+        action="system_wireguard_diagnostics_read",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="system_service",
+        resource_id="wireguard",
+        ip_address=extract_client_ip(request),
+        details={
+            "service_unit": service_unit,
+            "interface_name": interface_name,
+            "address_range": address_range,
+            "summary": payload["summary"],
+        },
+    )
+
+    return payload
