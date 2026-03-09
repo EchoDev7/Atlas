@@ -222,6 +222,36 @@ class WireGuardManager:
             raise ValueError("WireGuard interface name contains invalid characters")
         return normalized
 
+    @staticmethod
+    def _normalize_peer_allowed_ip(allocated_ip: str) -> Optional[str]:
+        candidate = (allocated_ip or "").strip()
+        if not candidate:
+            return None
+
+        try:
+            if "/" in candidate:
+                iface = ipaddress.ip_interface(candidate)
+                if iface.version == 4:
+                    return f"{iface.ip}/32"
+                return f"{iface.ip}/{iface.network.prefixlen}"
+
+            ip_obj = ipaddress.ip_address(candidate)
+            if ip_obj.version == 4:
+                return f"{ip_obj}/32"
+            return f"{ip_obj}/128"
+        except ValueError:
+            return None
+
+    def _ensure_ipv4_forwarding_enabled(self) -> Dict[str, Any]:
+        """Ensure IPv4 forwarding is enabled for WireGuard transit traffic."""
+        result = self._run_command(["sysctl", "-w", "net.ipv4.ip_forward=1"], check=False)
+        if result.returncode != 0:
+            return {
+                "success": False,
+                "message": (result.stderr or result.stdout or "failed to enable net.ipv4.ip_forward").strip(),
+            }
+        return {"success": True}
+
     def generate_server_keypair(self) -> Tuple[str, str]:
         """Generate WireGuard private/public key pair using wg(8)."""
         try:
@@ -334,6 +364,10 @@ class WireGuardManager:
         unit_name = self.config.SERVICE_TEMPLATE.format(interface=clean_interface)
 
         try:
+            forward_result = self._ensure_ipv4_forwarding_enabled()
+            if not forward_result.get("success"):
+                return forward_result
+
             enable_result = self._run_command(["systemctl", "enable", unit_name], check=False)
             if enable_result.returncode != 0:
                 return {
@@ -408,6 +442,10 @@ class WireGuardManager:
                 return True
         return False
 
+    @staticmethod
+    def _user_has_wireguard_identity(user: Any) -> bool:
+        return bool((getattr(user, "wg_public_key", "") or "").strip() and (getattr(user, "wg_allocated_ip", "") or "").strip())
+
     def _build_peer_sections(self, peers: list[dict[str, str]]) -> str:
         blocks: list[str] = []
         for peer in peers:
@@ -416,21 +454,28 @@ class WireGuardManager:
             if not public_key or not allocated_ip:
                 continue
             self._validate_key_material(public_key)
+            normalized_allowed_ip = self._normalize_peer_allowed_ip(allocated_ip)
+            if not normalized_allowed_ip:
+                continue
             blocks.append(
                 "\n".join(
                     [
                         "[Peer]",
                         f"PublicKey = {public_key}",
-                        f"AllowedIPs = {allocated_ip}/32",
+                        f"AllowedIPs = {normalized_allowed_ip}",
                     ]
                 )
             )
         return "\n\n".join(blocks)
 
-    def _reload_interface_smoothly(self, interface_name: str) -> Dict[str, Any]:
+    def _reload_interface_smoothly(self, interface_name: str, expected_peer_count: int = 0) -> Dict[str, Any]:
         """Try wg syncconf for smooth reload; fall back to systemd restart/start path."""
         clean_interface = self._validate_interface_name(interface_name or self.config.DEFAULT_INTERFACE)
         unit_name = self.config.SERVICE_TEMPLATE.format(interface=clean_interface)
+
+        forward_result = self._ensure_ipv4_forwarding_enabled()
+        if not forward_result.get("success"):
+            return forward_result
 
         is_active = self._run_command(["systemctl", "is-active", "--quiet", unit_name], check=False).returncode == 0
         if not is_active:
@@ -443,6 +488,16 @@ class WireGuardManager:
                 with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as temp_file:
                     temp_file.write(strip_result.stdout)
                     temp_path = temp_file.name
+
+                actual_peer_count = len(re.findall(r"(?m)^\[Peer\]\s*$", strip_result.stdout or ""))
+                if expected_peer_count > 0 and actual_peer_count < expected_peer_count:
+                    logger.warning(
+                        "WireGuard strip output peer mismatch for %s (expected=%s, actual=%s); falling back to service restart",
+                        clean_interface,
+                        expected_peer_count,
+                        actual_peer_count,
+                    )
+                    return self.apply_interface(clean_interface)
 
                 sync_result = self._run_command(["wg", "syncconf", clean_interface, temp_path], check=False)
                 if sync_result.returncode == 0:
@@ -484,7 +539,9 @@ class WireGuardManager:
         for user in users:
             if not bool(getattr(user, "is_enabled", False)):
                 continue
-            if not self._user_has_active_wireguard_config(user):
+            has_active_config = self._user_has_active_wireguard_config(user)
+            has_identity = self._user_has_wireguard_identity(user)
+            if not has_active_config and not has_identity:
                 continue
 
             user_public_key = (getattr(user, "wg_public_key", "") or "").strip()
@@ -508,7 +565,14 @@ class WireGuardManager:
         config_path.write_text(final_config, encoding="utf-8")
         config_path.chmod(0o600)
 
-        reload_result = self._reload_interface_smoothly(settings.interface_name)
+        persisted_config = config_path.read_text(encoding="utf-8")
+        if persisted_config != final_config:
+            return {
+                "success": False,
+                "message": f"WireGuard config write verification failed for {config_path}",
+            }
+
+        reload_result = self._reload_interface_smoothly(settings.interface_name, expected_peer_count=len(peers))
         if not reload_result.get("success"):
             return reload_result
 
