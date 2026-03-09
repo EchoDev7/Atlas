@@ -1,5 +1,6 @@
 import ipaddress
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -8,6 +9,7 @@ class WireGuardSettingsBase(BaseModel):
     interface_name: str = Field("wg0", min_length=1, max_length=32)
     listen_port: int = Field(51820, ge=1, le=65535)
     address_range: str = Field("10.9.0.0/24", min_length=9, max_length=64)
+    endpoint_address: Optional[str] = Field(default=None, max_length=255)
 
     @field_validator("interface_name")
     @classmethod
@@ -32,6 +34,14 @@ class WireGuardSettingsBase(BaseModel):
         if network.version != 4:
             raise ValueError("Address range must be an IPv4 CIDR network")
         return f"{network.network_address}/{network.prefixlen}"
+
+    @field_validator("endpoint_address")
+    @classmethod
+    def normalize_endpoint_address(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class WireGuardSettingsUpdate(WireGuardSettingsBase):

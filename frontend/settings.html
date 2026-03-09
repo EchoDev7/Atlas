@@ -851,6 +851,17 @@
                             <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Address Range (CIDR)</span>
                             <input type="text" x-model="wireguardForm.address_range" placeholder="10.9.0.0/24" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                         </label>
+                        <label class="block md:col-span-2 lg:col-span-2">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Endpoint Address (Domain or IP)</span>
+                            <input type="text"
+                                   x-model="wireguardForm.endpoint_address"
+                                   :placeholder="`Default: ${generalForm.public_ipv4_address || generalForm.server_address || 'Not set'}`"
+                                   class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                   :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            <p class="mt-1 text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
+                                Leave empty to use the default Server IP. Use a raw IP or a DNS-only domain (No Cloudflare Proxy) to ensure UDP traffic works.
+                            </p>
+                        </label>
                         <label class="block md:col-span-2 lg:col-span-1">
                             <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Server Public Key</span>
                             <div class="mt-1 flex items-center gap-2">
@@ -1484,6 +1495,7 @@
                     interface_name: 'wg0',
                     listen_port: 51820,
                     address_range: '10.9.0.0/24',
+                    endpoint_address: '',
                     server_public_key: '',
                 },
                 generalForm: {
@@ -2240,6 +2252,7 @@
                             interface_name: wireguardData.interface_name || 'wg0',
                             listen_port: Number(wireguardData.listen_port) || 51820,
                             address_range: wireguardData.address_range || '10.9.0.0/24',
+                            endpoint_address: wireguardData.endpoint_address || '',
                             server_public_key: wireguardData.server_public_key || '',
                         };
                         if (this.form.obfuscation_mode !== 'standard') {
@@ -2523,6 +2536,7 @@
                             interface_name: (this.wireguardForm.interface_name || '').trim() || 'wg0',
                             listen_port: Number(this.wireguardForm.listen_port) || 51820,
                             address_range: (this.wireguardForm.address_range || '').trim() || '10.9.0.0/24',
+                            endpoint_address: (this.wireguardForm.endpoint_address || '').trim() || null,
                         };
 
                         const response = await fetch('/api/settings/wireguard', {
@@ -2556,6 +2570,7 @@
                             interface_name: updated.interface_name || 'wg0',
                             listen_port: Number(updated.listen_port) || 51820,
                             address_range: updated.address_range || '10.9.0.0/24',
+                            endpoint_address: updated.endpoint_address || '',
                             server_public_key: updated.server_public_key || '',
                         };
 

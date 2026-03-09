@@ -381,6 +381,7 @@ def init_db():
                 "interface_name": "ALTER TABLE wireguard_settings ADD COLUMN interface_name VARCHAR(32) NOT NULL DEFAULT 'wg0'",
                 "listen_port": "ALTER TABLE wireguard_settings ADD COLUMN listen_port INTEGER NOT NULL DEFAULT 51820",
                 "address_range": "ALTER TABLE wireguard_settings ADD COLUMN address_range VARCHAR(64) NOT NULL DEFAULT '10.9.0.0/24'",
+                "endpoint_address": "ALTER TABLE wireguard_settings ADD COLUMN endpoint_address VARCHAR(255)",
                 "server_private_key": "ALTER TABLE wireguard_settings ADD COLUMN server_private_key VARCHAR(128)",
                 "server_public_key": "ALTER TABLE wireguard_settings ADD COLUMN server_public_key VARCHAR(128)",
                 "created_at": "ALTER TABLE wireguard_settings ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",

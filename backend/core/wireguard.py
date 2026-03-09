@@ -364,13 +364,15 @@ class WireGuardManager:
             raise ValueError("WireGuard settings not found")
 
         general_settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
-        endpoint_host = (
-            (getattr(general_settings, "server_address", "") if general_settings else "")
-            or (getattr(general_settings, "public_ipv4_address", "") if general_settings else "")
-        )
+        endpoint_host = (getattr(settings, "endpoint_address", "") or "").strip()
+        if not endpoint_host:
+            endpoint_host = (
+                (getattr(general_settings, "public_ipv4_address", "") if general_settings else "")
+                or (getattr(general_settings, "server_address", "") if general_settings else "")
+            )
         endpoint_host = (endpoint_host or "").strip()
         if not endpoint_host:
-            raise ValueError("Server endpoint is not configured. Set Server Address in General Settings first")
+            raise ValueError("Server endpoint is not configured. Set Endpoint Address or General Settings Server IP first")
 
         user_private_key = (getattr(user, "wg_private_key", "") or "").strip()
         user_allocated_ip = (getattr(user, "wg_allocated_ip", "") or "").strip()

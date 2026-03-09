@@ -14,6 +14,7 @@ class WireGuardSettings(Base):
     interface_name = Column(String(32), nullable=False, default="wg0")
     listen_port = Column(Integer, nullable=False, default=51820)
     address_range = Column(String(64), nullable=False, default="10.9.0.0/24")
+    endpoint_address = Column(String(255), nullable=True)
     server_private_key = Column(String(128), nullable=True)
     server_public_key = Column(String(128), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

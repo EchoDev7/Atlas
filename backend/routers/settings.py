@@ -472,6 +472,7 @@ def _to_wireguard_response(settings: WireGuardSettings) -> WireGuardSettingsResp
         interface_name=settings.interface_name,
         listen_port=settings.listen_port,
         address_range=settings.address_range,
+        endpoint_address=settings.endpoint_address,
         server_public_key=settings.server_public_key,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
@@ -779,6 +780,7 @@ def update_wireguard_settings(
     settings.interface_name = payload.interface_name
     settings.listen_port = payload.listen_port
     settings.address_range = payload.address_range
+    settings.endpoint_address = payload.endpoint_address
     settings.updated_at = datetime.utcnow()
 
     try:
