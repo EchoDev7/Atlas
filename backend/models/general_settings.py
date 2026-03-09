@@ -37,5 +37,12 @@ class GeneralSettings(Base):
     system_timezone = Column(String(64), nullable=False, default="UTC")
     ntp_server = Column(String(255), nullable=False, default="pool.ntp.org")
 
+    is_tunnel_enabled = Column(Boolean, nullable=False, default=False)
+    tunnel_mode = Column(String(32), nullable=False, default="direct")
+    foreign_server_ip = Column(String(255), nullable=True)
+    foreign_server_port = Column(Integer, nullable=False, default=22)
+    foreign_ssh_user = Column(String(64), nullable=False, default="root")
+    foreign_ssh_password = Column(String(255), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

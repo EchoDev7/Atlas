@@ -461,6 +461,12 @@ def init_db():
                 "custom_ssl_private_key": "ALTER TABLE general_settings ADD COLUMN custom_ssl_private_key TEXT",
                 "system_timezone": "ALTER TABLE general_settings ADD COLUMN system_timezone VARCHAR(64) NOT NULL DEFAULT 'UTC'",
                 "ntp_server": "ALTER TABLE general_settings ADD COLUMN ntp_server VARCHAR(255) NOT NULL DEFAULT 'pool.ntp.org'",
+                "is_tunnel_enabled": "ALTER TABLE general_settings ADD COLUMN is_tunnel_enabled BOOLEAN NOT NULL DEFAULT 0",
+                "tunnel_mode": "ALTER TABLE general_settings ADD COLUMN tunnel_mode VARCHAR(32) NOT NULL DEFAULT 'direct'",
+                "foreign_server_ip": "ALTER TABLE general_settings ADD COLUMN foreign_server_ip VARCHAR(255)",
+                "foreign_server_port": "ALTER TABLE general_settings ADD COLUMN foreign_server_port INTEGER NOT NULL DEFAULT 22",
+                "foreign_ssh_user": "ALTER TABLE general_settings ADD COLUMN foreign_ssh_user VARCHAR(64) NOT NULL DEFAULT 'root'",
+                "foreign_ssh_password": "ALTER TABLE general_settings ADD COLUMN foreign_ssh_password VARCHAR(255)",
                 "created_at": "ALTER TABLE general_settings ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
                 "updated_at": "ALTER TABLE general_settings ADD COLUMN updated_at DATETIME",
             }
@@ -565,6 +571,12 @@ def init_db():
                             custom_ssl_private_key,
                             system_timezone,
                             ntp_server,
+                            is_tunnel_enabled,
+                            tunnel_mode,
+                            foreign_server_ip,
+                            foreign_server_port,
+                            foreign_ssh_user,
+                            foreign_ssh_password,
                             created_at,
                             updated_at
                         ) VALUES (
@@ -591,6 +603,12 @@ def init_db():
                             NULL,
                             'UTC',
                             'pool.ntp.org',
+                            0,
+                            'direct',
+                            NULL,
+                            22,
+                            'root',
+                            NULL,
                             CURRENT_TIMESTAMP,
                             CURRENT_TIMESTAMP
                         )

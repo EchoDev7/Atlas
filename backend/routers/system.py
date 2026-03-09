@@ -17,6 +17,7 @@ from sqlalchemy.orm import close_all_sessions
 from starlette.background import BackgroundTask
 
 from backend.config import settings
+from backend.core.tunnels.manager import TunnelManager
 from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
 from backend.core.wireguard import WireGuardManager
 from backend.database import engine, get_db
@@ -24,11 +25,14 @@ from backend.models.general_settings import GeneralSettings
 from backend.models.wireguard_settings import WireGuardSettings
 from backend.dependencies import get_current_user
 from backend.models.user import Admin
+from backend.schemas.tunnel import TunnelCommandRequest
+from backend.schemas.tunnel_response import TunnelCommandResponse
 from backend.services.audit_service import extract_client_ip, record_audit_event
 
 router = APIRouter(prefix="/system", tags=["System"])
 openvpn_manager = OpenVPNManager()
 wireguard_manager = WireGuardManager()
+tunnel_manager = TunnelManager()
 
 MAX_BACKUP_UPLOAD_BYTES = 512 * 1024 * 1024  # 512MB safety ceiling
 LOG_TAIL_LINES = 100
@@ -51,6 +55,25 @@ class ServiceActionRequest(BaseModel):
 
 class NtpSyncUpdateRequest(BaseModel):
     ntp_server: str = "pool.ntp.org"
+
+
+def _execute_dummy_tunnel_command(settings_row: GeneralSettings, node: str, command: str) -> TunnelCommandResponse:
+    tunnel_manager.get_tunnel(settings_row)
+    mode = tunnel_manager.resolve_mode(settings_row)
+    normalized_command = command.strip()
+    output = (
+        f"[{node}] $ {normalized_command}\n"
+        f"mode={mode} | tunnel_enabled={bool(settings_row.is_tunnel_enabled)}\n"
+        "Dummy execution successful."
+    )
+    return TunnelCommandResponse(
+        success=True,
+        node=node,
+        mode=mode,
+        command=normalized_command,
+        output=output,
+        timestamp=datetime.utcnow(),
+    )
 
 
 def _tls_key_candidates() -> tuple[Path, ...]:
@@ -786,3 +809,52 @@ def read_wireguard_diagnostics(
     )
 
     return payload
+
+
+@router.post("/tunnel/local/command", response_model=TunnelCommandResponse)
+def run_local_tunnel_command(
+    payload: TunnelCommandRequest,
+    request: Request,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    settings_row = _get_or_create_general_settings(db)
+    response = _execute_dummy_tunnel_command(settings_row, node="local", command=payload.command)
+    record_audit_event(
+        action="system_tunnel_local_command",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="system_tunnel",
+        resource_id="local",
+        ip_address=extract_client_ip(request),
+        details={
+            "mode": response.mode,
+            "command": payload.command[:256],
+        },
+    )
+    return response
+
+
+@router.post("/tunnel/foreign/command", response_model=TunnelCommandResponse)
+def run_foreign_tunnel_command(
+    payload: TunnelCommandRequest,
+    request: Request,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    settings_row = _get_or_create_general_settings(db)
+    response = _execute_dummy_tunnel_command(settings_row, node="foreign", command=payload.command)
+    record_audit_event(
+        action="system_tunnel_foreign_command",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="system_tunnel",
+        resource_id="foreign",
+        ip_address=extract_client_ip(request),
+        details={
+            "mode": response.mode,
+            "foreign_server_ip": settings_row.foreign_server_ip,
+            "command": payload.command[:256],
+        },
+    )
+    return response

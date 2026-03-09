@@ -514,6 +514,12 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         custom_ssl_private_key=settings.custom_ssl_private_key,
         system_timezone=settings.system_timezone,
         ntp_server=settings.ntp_server,
+        is_tunnel_enabled=settings.is_tunnel_enabled,
+        tunnel_mode=settings.tunnel_mode,
+        foreign_server_ip=settings.foreign_server_ip,
+        foreign_server_port=settings.foreign_server_port,
+        foreign_ssh_user=settings.foreign_ssh_user,
+        foreign_ssh_password=settings.foreign_ssh_password,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
@@ -622,6 +628,12 @@ def update_general_settings(
     settings.custom_ssl_private_key = payload.custom_ssl_private_key
     settings.system_timezone = "UTC"
     settings.ntp_server = current_ntp_server
+    settings.is_tunnel_enabled = payload.is_tunnel_enabled
+    settings.tunnel_mode = payload.tunnel_mode
+    settings.foreign_server_ip = payload.foreign_server_ip
+    settings.foreign_server_port = payload.foreign_server_port
+    settings.foreign_ssh_user = payload.foreign_ssh_user
+    settings.foreign_ssh_password = payload.foreign_ssh_password
     settings.updated_at = datetime.utcnow()
 
     dns_apply_result = _apply_system_dns_servers(

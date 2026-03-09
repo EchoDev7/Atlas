@@ -32,6 +32,13 @@ class GeneralSettingsBase(BaseModel):
     system_timezone: str = Field("UTC", min_length=1, max_length=64)
     ntp_server: str = Field("pool.ntp.org", min_length=1, max_length=255)
 
+    is_tunnel_enabled: bool = Field(False)
+    tunnel_mode: Literal["direct", "dnstt", "gost", "xray"] = Field("direct")
+    foreign_server_ip: Optional[str] = Field(default=None, max_length=255)
+    foreign_server_port: int = Field(22, ge=1, le=65535)
+    foreign_ssh_user: str = Field("root", min_length=1, max_length=64)
+    foreign_ssh_password: Optional[str] = Field(default=None, max_length=255)
+
     @field_validator("public_ipv4_address")
     @classmethod
     def validate_public_ipv4_address(cls, value: Optional[str]) -> Optional[str]:
@@ -60,7 +67,7 @@ class GeneralSettingsBase(BaseModel):
             raise ValueError("Public IPv6 address must be a valid IPv6 address") from exc
         return normalized
 
-    @field_validator("wan_interface", "admin_allowed_ips", "system_timezone", "ntp_server")
+    @field_validator("wan_interface", "admin_allowed_ips", "system_timezone", "ntp_server", "foreign_ssh_user")
     @classmethod
     def normalize_required_text(cls, value: str) -> str:
         normalized = value.strip()
@@ -80,7 +87,29 @@ class GeneralSettingsBase(BaseModel):
             raise ValueError("Server DNS must be a valid IPv4 or IPv6 address") from exc
         return normalized
 
-    @field_validator("server_address", "panel_domain", "subscription_domain", "custom_ssl_certificate", "custom_ssl_private_key", "letsencrypt_email")
+    @field_validator("foreign_server_ip")
+    @classmethod
+    def validate_foreign_server_ip(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        try:
+            ipaddress.ip_address(normalized)
+        except ValueError as exc:
+            raise ValueError("Foreign server IP must be a valid IPv4 or IPv6 address") from exc
+        return normalized
+
+    @field_validator(
+        "server_address",
+        "panel_domain",
+        "subscription_domain",
+        "custom_ssl_certificate",
+        "custom_ssl_private_key",
+        "letsencrypt_email",
+        "foreign_ssh_password",
+    )
     @classmethod
     def normalize_optional_text(cls, value: Optional[str]) -> Optional[str]:
         if value is None:

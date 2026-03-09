@@ -587,6 +587,77 @@
                         </div>
                     </div>
 
+                    <div x-show="activeGeneralSection === 'master_orchestrator'" class="space-y-4">
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">Master Orchestrator: Relay &amp; Tunneling</h2>
+                        <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Configure foreign-node relay credentials and run dummy command flows on both nodes.</p>
+
+                        <div class="rounded-2xl border p-4 sm:p-5 space-y-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-white'">
+                            <div class="rounded-xl border px-4 py-3 flex items-center justify-between" :class="darkMode ? 'border-slate-700' : 'border-slate-300'">
+                                <div>
+                                    <p class="text-sm font-semibold theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">Enable Relay &amp; Tunneling</p>
+                                    <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Toggle master orchestrator tunnel subsystem.</p>
+                                </div>
+                                <button type="button" @click="generalForm.is_tunnel_enabled = !generalForm.is_tunnel_enabled" class="px-3 py-1.5 rounded-lg text-xs font-semibold" :class="generalForm.is_tunnel_enabled ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')" x-text="generalForm.is_tunnel_enabled ? 'ON' : 'OFF'"></button>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Tunnel Mode</span>
+                                    <select x-model="generalForm.tunnel_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                        <option value="direct">Direct (Dummy)</option>
+                                        <option value="dnstt">DNSTT (Planned)</option>
+                                        <option value="gost">GOST (Planned)</option>
+                                        <option value="xray">Xray (Planned)</option>
+                                    </select>
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign Server IP</span>
+                                    <input type="text" x-model="generalForm.foreign_server_ip" placeholder="203.0.113.10" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign SSH Port</span>
+                                    <input type="number" min="1" max="65535" x-model.number="generalForm.foreign_server_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign SSH User</span>
+                                    <input type="text" x-model="generalForm.foreign_ssh_user" placeholder="root" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                                <label class="block md:col-span-2">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign SSH Password</span>
+                                    <input type="password" x-model="generalForm.foreign_ssh_password" placeholder="••••••••" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                            <div class="rounded-2xl border p-4" :class="darkMode ? 'border-cyan-500/40 bg-cyan-500/5' : 'border-cyan-200 bg-cyan-50/50'">
+                                <h3 class="text-sm font-bold uppercase tracking-wide mb-2" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'">Local Node Terminal</h3>
+                                <div x-ref="localTunnelTerminal" class="rounded-xl border border-slate-800 bg-black h-56 overflow-y-auto px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-emerald-300">
+                                    <template x-for="(line, index) in localTunnelTerminalLines" :key="`local-terminal-${index}`">
+                                        <div x-text="line"></div>
+                                    </template>
+                                </div>
+                                <div class="mt-3 flex gap-2">
+                                    <input type="text" x-model="localTunnelCommand" @keydown.enter.prevent="sendTunnelCommand('local')" placeholder="systemctl status atlas-backend" class="flex-1 rounded-xl border px-3 py-2.5 text-sm theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <button type="button" @click="sendTunnelCommand('local')" :disabled="localTunnelCommandLoading" class="px-4 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed" :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'" x-text="localTunnelCommandLoading ? 'Running...' : 'Send'"></button>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border p-4" :class="darkMode ? 'border-violet-500/40 bg-violet-500/5' : 'border-violet-200 bg-violet-50/50'">
+                                <h3 class="text-sm font-bold uppercase tracking-wide mb-2" :class="darkMode ? 'text-violet-300' : 'text-violet-700'">Foreign Exit Node Terminal</h3>
+                                <div x-ref="foreignTunnelTerminal" class="rounded-xl border border-slate-800 bg-black h-56 overflow-y-auto px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-emerald-300">
+                                    <template x-for="(line, index) in foreignTunnelTerminalLines" :key="`foreign-terminal-${index}`">
+                                        <div x-text="line"></div>
+                                    </template>
+                                </div>
+                                <div class="mt-3 flex gap-2">
+                                    <input type="text" x-model="foreignTunnelCommand" @keydown.enter.prevent="sendTunnelCommand('foreign')" placeholder="journalctl -u gost -n 50" class="flex-1 rounded-xl border px-3 py-2.5 text-sm theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <button type="button" @click="sendTunnelCommand('foreign')" :disabled="foreignTunnelCommandLoading" class="px-4 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed" :class="darkMode ? 'bg-violet-500 hover:bg-violet-400' : 'bg-violet-600 hover:bg-violet-700'" x-text="foreignTunnelCommandLoading ? 'Running...' : 'Send'"></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div x-show="activeGeneralSection === 'server_ops'" class="space-y-4">
                         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div>
@@ -1478,6 +1549,7 @@
                     { key: 'security', label: 'Security' },
                     { key: 'domain_ssl', label: 'Domain & SSL' },
                     { key: 'system', label: 'System' },
+                    { key: 'master_orchestrator', label: 'Master Orchestrator' },
                     { key: 'server_ops', label: 'Server Operations' },
                     { key: 'audit_logs', label: 'Audit Logs' },
                 ],
@@ -1574,7 +1646,19 @@
                     custom_ssl_private_key: '',
                     system_timezone: 'UTC',
                     ntp_server: 'pool.ntp.org',
+                    is_tunnel_enabled: false,
+                    tunnel_mode: 'direct',
+                    foreign_server_ip: '',
+                    foreign_server_port: 22,
+                    foreign_ssh_user: 'root',
+                    foreign_ssh_password: '',
                 },
+                localTunnelTerminalLines: ['[local] master orchestrator terminal ready'],
+                foreignTunnelTerminalLines: ['[foreign] exit node terminal ready'],
+                localTunnelCommand: '',
+                foreignTunnelCommand: '',
+                localTunnelCommandLoading: false,
+                foreignTunnelCommandLoading: false,
                 adminPasswordForm: {
                     current_password: '',
                     new_password: '',
@@ -2309,6 +2393,12 @@
                             custom_ssl_private_key: generalData.custom_ssl_private_key || '',
                             system_timezone: 'UTC',
                             ntp_server: generalData.ntp_server || this.generalForm.ntp_server || this.systemTimeCurrentNtpServer || 'pool.ntp.org',
+                            is_tunnel_enabled: !!generalData.is_tunnel_enabled,
+                            tunnel_mode: generalData.tunnel_mode || 'direct',
+                            foreign_server_ip: generalData.foreign_server_ip || '',
+                            foreign_server_port: Number(generalData.foreign_server_port) || 22,
+                            foreign_ssh_user: generalData.foreign_ssh_user || 'root',
+                            foreign_ssh_password: generalData.foreign_ssh_password || '',
                         };
 
                         if (Number(this.generalForm.panel_https_port) === Number(this.generalForm.subscription_https_port)) {
@@ -2908,6 +2998,12 @@
                             custom_ssl_private_key: this.generalForm.ssl_mode === 'custom' ? ((this.generalForm.custom_ssl_private_key || '').trim() || null) : null,
                             system_timezone: 'UTC',
                             ntp_server: (this.generalForm.ntp_server || '').trim(),
+                            is_tunnel_enabled: !!this.generalForm.is_tunnel_enabled,
+                            tunnel_mode: (this.generalForm.tunnel_mode || 'direct').trim() || 'direct',
+                            foreign_server_ip: (this.generalForm.foreign_server_ip || '').trim() || null,
+                            foreign_server_port: Number(this.generalForm.foreign_server_port) || 22,
+                            foreign_ssh_user: (this.generalForm.foreign_ssh_user || '').trim() || 'root',
+                            foreign_ssh_password: (this.generalForm.foreign_ssh_password || '').trim() || null,
                         };
 
                         const response = await fetch('/api/settings/general', {
@@ -2959,6 +3055,12 @@
                             custom_ssl_private_key: updated.custom_ssl_private_key || '',
                             system_timezone: 'UTC',
                             ntp_server: updated.ntp_server || this.systemTimeCurrentNtpServer || this.generalForm.ntp_server || 'pool.ntp.org',
+                            is_tunnel_enabled: !!updated.is_tunnel_enabled,
+                            tunnel_mode: updated.tunnel_mode || 'direct',
+                            foreign_server_ip: updated.foreign_server_ip || '',
+                            foreign_server_port: Number(updated.foreign_server_port) || 22,
+                            foreign_ssh_user: updated.foreign_ssh_user || 'root',
+                            foreign_ssh_password: updated.foreign_ssh_password || '',
                         };
 
                         if (!this.generalForm.global_ipv6_support) {
@@ -2991,6 +3093,91 @@
                             node.scrollTop = node.scrollHeight;
                         }
                     });
+                },
+
+                appendTunnelTerminalLine(node, line) {
+                    const normalizedLine = String(line);
+                    if (node === 'local') {
+                        this.localTunnelTerminalLines = [...this.localTunnelTerminalLines, normalizedLine];
+                        this.$nextTick(() => {
+                            const target = this.$refs.localTunnelTerminal;
+                            if (target) {
+                                target.scrollTop = target.scrollHeight;
+                            }
+                        });
+                        return;
+                    }
+                    this.foreignTunnelTerminalLines = [...this.foreignTunnelTerminalLines, normalizedLine];
+                    this.$nextTick(() => {
+                        const target = this.$refs.foreignTunnelTerminal;
+                        if (target) {
+                            target.scrollTop = target.scrollHeight;
+                        }
+                    });
+                },
+
+                async sendTunnelCommand(node) {
+                    const command = (node === 'local' ? this.localTunnelCommand : this.foreignTunnelCommand || '').trim();
+                    if (!command) {
+                        this.showToast('Please enter a command', 'error');
+                        return;
+                    }
+
+                    const endpoint = node === 'local' ? '/api/system/tunnel/local/command' : '/api/system/tunnel/foreign/command';
+                    if (node === 'local') {
+                        this.localTunnelCommandLoading = true;
+                    } else {
+                        this.foreignTunnelCommandLoading = true;
+                    }
+
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ command }),
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Tunnel command failed';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const result = await response.json();
+                        this.appendTunnelTerminalLine(node, result.output || `[${node}] command executed`);
+                        this.showToast(`${node === 'local' ? 'Local' : 'Foreign'} command executed`, 'success');
+                        if (node === 'local') {
+                            this.localTunnelCommand = '';
+                        } else {
+                            this.foreignTunnelCommand = '';
+                        }
+                    } catch (error) {
+                        this.appendTunnelTerminalLine(node, `error: ${error.message || 'command failed'}`);
+                        this.showToast(error.message || 'Tunnel command failed', 'error');
+                    } finally {
+                        if (node === 'local') {
+                            this.localTunnelCommandLoading = false;
+                        } else {
+                            this.foreignTunnelCommandLoading = false;
+                        }
+                    }
                 },
 
                 closeTerminalModal() {
