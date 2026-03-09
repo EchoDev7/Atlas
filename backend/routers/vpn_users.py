@@ -772,26 +772,30 @@ async def update_user(
     user.refresh_limit_flags(datetime.utcnow())
     
     user.updated_at = datetime.utcnow()
-    
-    has_wireguard_material = bool(
-        any(config.protocol == "wireguard" and config.is_active for config in user.configs)
-        or ((user.wg_public_key or "").strip() and (user.wg_allocated_ip or "").strip())
+
+    should_resync_wireguard = bool(
+        user.is_active
+        and (
+            user.has_wireguard
+            or (user.wg_public_key or "").strip()
+        )
     )
 
-    if has_wireguard_material:
+    db.commit()
+    _sync_openvpn_auth_db_snapshot()
+    db.refresh(user)
+
+    if should_resync_wireguard:
         try:
             _sync_wireguard_users_runtime(db)
+            db.commit()
         except HTTPException:
             db.rollback()
             raise
         except Exception as exc:
             db.rollback()
-            raise HTTPException(status_code=500, detail=f"Failed to synchronize WireGuard state: {exc}") from exc
+            raise HTTPException(status_code=500, detail=f"User updated but failed to re-sync WireGuard state: {exc}") from exc
 
-    db.commit()
-    _sync_openvpn_auth_db_snapshot()
-    db.refresh(user)
-    
     logger.info(f"User {user.username} updated by admin {current_user.username}")
     
     return user
