@@ -27,8 +27,9 @@ class WireGuardManager:
     def __init__(self) -> None:
         self.config = WireGuardConfig()
         self.protocol_name = "wireguard"
-        # Runtime state cache for restart-safe delta accounting per peer public key.
-        self._last_seen_total_bytes: Dict[str, int] = {}
+        # Runtime state cache for restart-safe per-direction delta accounting.
+        self._last_seen_rx_bytes: Dict[str, int] = {}
+        self._last_seen_tx_bytes: Dict[str, int] = {}
 
     @staticmethod
     def _safe_int(value: Any, default: int = 0) -> int:
@@ -62,13 +63,20 @@ class WireGuardManager:
 
         return process.returncode, (stdout or b"").decode(errors="ignore"), (stderr or b"").decode(errors="ignore")
 
-    async def sync_wireguard_stats(self, db: Any, online_window_seconds: int = 180) -> Dict[str, Any]:
+    @staticmethod
+    def _compute_counter_delta(current_value: int, last_value: int) -> int:
+        current_sanitized = max(0, int(current_value or 0))
+        last_sanitized = max(0, int(last_value or 0))
+        if current_sanitized >= last_sanitized:
+            return current_sanitized - last_sanitized
+        # Counter reset (e.g. wg interface restart)
+        return current_sanitized
+
+    async def sync_wireguard_stats(self, db: Any, online_window_seconds: int = 90) -> Dict[str, Any]:
         """
         Poll `wg show all dump` asynchronously and persist restart-safe traffic deltas.
 
-        Delta logic:
-        - current_total >= last_total => delta = current_total - last_total
-        - current_total < last_total  => delta = current_total (counter reset)
+        Delta logic is applied independently for transfer_rx and transfer_tx.
         """
         from backend.models.vpn_user import VPNUser
 
@@ -121,24 +129,32 @@ class WireGuardManager:
                 continue
 
             processed_peers += 1
-            current_total = transfer_rx + transfer_tx
-            last_total = max(0, int(self._last_seen_total_bytes.get(public_key, 0)))
+            previous_rx = self._last_seen_rx_bytes.get(public_key, 0)
+            previous_tx = self._last_seen_tx_bytes.get(public_key, 0)
+            rx_delta = self._compute_counter_delta(transfer_rx, previous_rx)
+            tx_delta = self._compute_counter_delta(transfer_tx, previous_tx)
+            total_delta = rx_delta + tx_delta
 
-            if current_total >= last_total:
-                delta = current_total - last_total
-            else:
-                # Interface restarted and counters reset.
-                delta = current_total
+            self._last_seen_rx_bytes[public_key] = transfer_rx
+            self._last_seen_tx_bytes[public_key] = transfer_tx
 
-            self._last_seen_total_bytes[public_key] = current_total
-
-            if delta > 0:
-                user.traffic_used_bytes = max(0, int(user.traffic_used_bytes or 0)) + int(delta)
-                user.total_bytes_received = max(0, int(user.total_bytes_received or 0)) + int(delta)
+            if total_delta > 0:
+                # Keep parity with OpenVPN accounting fields:
+                # transfer_rx => download => total_bytes_received
+                # transfer_tx => upload   => total_bytes_sent
+                user.total_bytes_received = max(0, int(user.total_bytes_received or 0)) + int(rx_delta)
+                user.total_bytes_sent = max(0, int(user.total_bytes_sent or 0)) + int(tx_delta)
+                user.traffic_used_bytes = max(0, int(user.traffic_used_bytes or 0)) + int(total_delta)
                 user.updated_at = now_utc
                 updated_users += 1
 
-            is_online = latest_handshake > 0 and (now_epoch - latest_handshake) <= int(online_window_seconds)
+            handshake_unix_time = int(latest_handshake)
+            # Exact online check requested:
+            # current_unix_time - handshake_unix_time <= 90
+            is_online = (
+                handshake_unix_time > 0
+                and (int(now_epoch) - handshake_unix_time) <= int(online_window_seconds)
+            )
             if is_online:
                 online_users += 1
                 user.last_connected_at = now_utc
