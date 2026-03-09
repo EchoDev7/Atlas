@@ -552,25 +552,13 @@
                                     </select>
                                 </label>
                             </div>
-                        </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                    <span>System Timezone</span>
-                                    <span class="relative" @mouseenter="showTooltip('system_timezone')" @mouseleave="hideTooltip('system_timezone')">
-                                        <button type="button" @click.stop="toggleTooltip('system_timezone')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'system_timezone'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Accurate time is critical for VPN cryptography.</div>
-                                    </span>
-                                </span>
-                                <input type="text" x-model="generalForm.system_timezone" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-300 text-slate-700'">
-                            </label>
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                                     <span>NTP Server</span>
                                     <span class="relative" @mouseenter="showTooltip('ntp_server')" @mouseleave="hideTooltip('ntp_server')">
                                         <button type="button" @click.stop="toggleTooltip('ntp_server')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
-                                        <div x-cloak x-show="openTooltip === 'ntp_server'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Time synchronization server.</div>
+                                        <div x-cloak x-show="openTooltip === 'ntp_server'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Used for time synchronization via systemd-timesyncd (NTP=).</div>
                                     </span>
                                 </span>
                                 <input type="text" x-model="generalForm.ntp_server" placeholder="pool.ntp.org" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
@@ -1521,6 +1509,7 @@
                 systemTimeLoading: false,
                 systemTimeCurrent: null,
                 systemTimeCurrentTimezone: 'UTC',
+                systemTimeCurrentNtpServer: 'pool.ntp.org',
                 systemTimeAvailableTimezones: ['UTC'],
                 timezoneSearch: '',
                 systemClockTimer: null,
@@ -2242,7 +2231,9 @@
 
                         const payload = await response.json();
                         this.systemTimeCurrentTimezone = payload.current_timezone || 'UTC';
+                        this.systemTimeCurrentNtpServer = payload.ntp_server || 'pool.ntp.org';
                         this.generalForm.system_timezone = payload.current_timezone || this.generalForm.system_timezone || 'UTC';
+                        this.generalForm.ntp_server = payload.ntp_server || this.generalForm.ntp_server || 'pool.ntp.org';
                         this.systemTimeAvailableTimezones = Array.isArray(payload.available_timezones) && payload.available_timezones.length
                             ? payload.available_timezones
                             : ['UTC'];
@@ -2628,14 +2619,17 @@
                     try {
                         const token = localStorage.getItem('access_token');
                         const selectedTimezone = (this.generalForm.system_timezone || '').trim();
-                        if (this.activeGeneralSection === 'system' && selectedTimezone && selectedTimezone !== this.systemTimeCurrentTimezone) {
+                        const selectedNtpServer = (this.generalForm.ntp_server || '').trim();
+                        const timezoneChanged = selectedTimezone && selectedTimezone !== this.systemTimeCurrentTimezone;
+                        const ntpChanged = selectedNtpServer && selectedNtpServer !== this.systemTimeCurrentNtpServer;
+                        if (this.activeGeneralSection === 'system' && (timezoneChanged || ntpChanged)) {
                             const tzResponse = await fetch('/api/system/time/timezone', {
                                 method: 'PUT',
                                 headers: {
                                     Authorization: `Bearer ${token}`,
                                     'Content-Type': 'application/json',
                                 },
-                                body: JSON.stringify({ timezone: selectedTimezone }),
+                                body: JSON.stringify({ timezone: selectedTimezone, ntp_server: selectedNtpServer || 'pool.ntp.org' }),
                             });
 
                             if (!tzResponse.ok) {

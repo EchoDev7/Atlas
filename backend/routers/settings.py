@@ -554,7 +554,8 @@ def update_general_settings(
     detected_wan = _detect_wan_interface()
 
     previous_ipv6_support = settings.global_ipv6_support
-    previous_timezone = settings.system_timezone
+    current_timezone = settings.system_timezone
+    current_ntp_server = settings.ntp_server
     previous_panel_port = settings.panel_https_port
     previous_subscription_port = settings.subscription_https_port
     previous_admin_allowed_ips = settings.admin_allowed_ips or ""
@@ -590,8 +591,8 @@ def update_general_settings(
     settings.auto_renew_ssl = payload.auto_renew_ssl
     settings.custom_ssl_certificate = payload.custom_ssl_certificate
     settings.custom_ssl_private_key = payload.custom_ssl_private_key
-    settings.system_timezone = payload.system_timezone
-    settings.ntp_server = payload.ntp_server
+    settings.system_timezone = current_timezone
+    settings.ntp_server = current_ntp_server
     settings.updated_at = datetime.utcnow()
 
     dns_apply_result = _apply_system_dns_servers(
@@ -609,8 +610,8 @@ def update_general_settings(
     sync_result = openvpn_manager.sync_system_general_settings(
         old_global_ipv6_support=previous_ipv6_support,
         new_global_ipv6_support=settings.global_ipv6_support,
-        old_timezone=previous_timezone,
-        new_timezone=settings.system_timezone,
+        old_timezone=current_timezone,
+        new_timezone=current_timezone,
         old_panel_https_port=previous_panel_port,
         new_panel_https_port=settings.panel_https_port,
         old_subscription_https_port=previous_subscription_port,

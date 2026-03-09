@@ -48,6 +48,7 @@ class ServiceActionRequest(BaseModel):
 
 class TimezoneUpdateRequest(BaseModel):
     timezone: str
+    ntp_server: str = "pool.ntp.org"
 
 
 def _tls_key_candidates() -> tuple[Path, ...]:
@@ -114,6 +115,26 @@ def _read_timezone_from_timedatectl() -> str | None:
     return candidate or None
 
 
+def _read_ntp_server_from_timesyncd_conf() -> str | None:
+    conf_path = Path("/etc/systemd/timesyncd.conf")
+    if not conf_path.exists() or not conf_path.is_file():
+        return None
+
+    try:
+        lines = conf_path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return None
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.lower().startswith("ntp="):
+            candidate = stripped.split("=", 1)[1].strip()
+            return candidate or None
+    return None
+
+
 def _read_timezone_from_file() -> str | None:
     timezone_file = Path("/etc/timezone")
     if not timezone_file.exists() or not timezone_file.is_file():
@@ -135,6 +156,18 @@ def _resolve_current_timezone_name(db: Session) -> str:
         return settings_row.system_timezone.strip()
 
     return "UTC"
+
+
+def _resolve_current_ntp_server(db: Session) -> str:
+    configured = _read_ntp_server_from_timesyncd_conf()
+    if configured:
+        return configured
+
+    settings_row = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+    if settings_row and (settings_row.ntp_server or "").strip():
+        return settings_row.ntp_server.strip()
+
+    return "pool.ntp.org"
 
 
 def _list_global_timezones() -> list[str]:
@@ -159,8 +192,83 @@ def _build_system_time_payload(db: Session) -> dict[str, object]:
     return {
         "current_server_time": current_server_time,
         "current_timezone": current_timezone,
+        "ntp_server": _resolve_current_ntp_server(db),
         "available_timezones": _list_global_timezones(),
     }
+
+
+def _validate_ntp_server(value: str) -> str:
+    normalized = (value or "").strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="NTP server value is required")
+    if any(ch.isspace() for ch in normalized):
+        raise HTTPException(status_code=400, detail="NTP server must not contain spaces")
+    if len(normalized) > 255:
+        raise HTTPException(status_code=400, detail="NTP server value is too long")
+    return normalized
+
+
+def _apply_ntp_server_to_timesyncd(ntp_server: str) -> None:
+    conf_path = Path("/etc/systemd/timesyncd.conf")
+    lines: list[str] = []
+
+    if conf_path.exists() and conf_path.is_file():
+        try:
+            lines = conf_path.read_text(encoding="utf-8").splitlines()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to read {conf_path}: {exc}") from exc
+
+    in_time_section = False
+    time_section_found = False
+    ntp_line_written = False
+    output_lines: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if in_time_section and not ntp_line_written:
+                output_lines.append(f"NTP={ntp_server}")
+                ntp_line_written = True
+
+            section_name = stripped[1:-1].strip().lower()
+            in_time_section = section_name == "time"
+            if in_time_section:
+                time_section_found = True
+
+            output_lines.append(line)
+            continue
+
+        if in_time_section and stripped and not stripped.startswith("#") and stripped.lower().startswith("ntp="):
+            output_lines.append(f"NTP={ntp_server}")
+            ntp_line_written = True
+            continue
+
+        output_lines.append(line)
+
+    if not time_section_found:
+        if output_lines and output_lines[-1].strip():
+            output_lines.append("")
+        output_lines.append("[Time]")
+        output_lines.append(f"NTP={ntp_server}")
+        ntp_line_written = True
+    elif in_time_section and not ntp_line_written:
+        output_lines.append(f"NTP={ntp_server}")
+        ntp_line_written = True
+
+    if not ntp_line_written:
+        output_lines.append(f"NTP={ntp_server}")
+
+    try:
+        conf_path.write_text("\n".join(output_lines) + "\n", encoding="utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to write {conf_path}: {exc}") from exc
+
+    try:
+        subprocess.run(["systemctl", "restart", "systemd-timesyncd"], capture_output=True, text=True, check=True)
+        subprocess.run(["timedatectl", "set-ntp", "true"], capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "Failed to apply NTP synchronization settings").strip()
+        raise HTTPException(status_code=500, detail=detail) from exc
 
 
 def _apply_secure_permissions(path: Path, mode: int, warnings: list[str], context: str) -> None:
@@ -338,6 +446,7 @@ def update_system_timezone(
 ):
     _ = current_user
     requested_timezone = (payload.timezone or "").strip()
+    requested_ntp_server = _validate_ntp_server(payload.ntp_server)
     valid_timezones = set(_list_global_timezones())
 
     if not requested_timezone:
@@ -346,6 +455,8 @@ def update_system_timezone(
         raise HTTPException(status_code=400, detail="Invalid timezone value")
     if shutil.which("timedatectl") is None:
         raise HTTPException(status_code=503, detail="timedatectl is not available on this host")
+    if shutil.which("systemctl") is None:
+        raise HTTPException(status_code=503, detail="systemctl is not available on this host")
 
     try:
         subprocess.run(
@@ -358,13 +469,16 @@ def update_system_timezone(
         detail = (exc.stderr or exc.stdout or "Failed to apply timezone using timedatectl").strip()
         raise HTTPException(status_code=500, detail=detail) from exc
 
+    _apply_ntp_server_to_timesyncd(requested_ntp_server)
+
     settings_row = _get_or_create_general_settings(db)
     settings_row.system_timezone = requested_timezone
+    settings_row.ntp_server = requested_ntp_server
     settings_row.updated_at = datetime.utcnow()
     db.commit()
 
     return {
-        "message": f"Timezone updated to {requested_timezone}",
+        "message": f"Timezone updated to {requested_timezone} and NTP server set to {requested_ntp_server}",
         **_build_system_time_payload(db),
     }
 
