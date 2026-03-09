@@ -255,8 +255,16 @@ class WireGuardManager:
     def _ensure_runtime_firewall_rules(self, interface_name: str, address_range: str, wan_interface: Optional[str] = None) -> Dict[str, Any]:
         """Ensure FORWARD and NAT masquerade rules exist even when using wg syncconf."""
         clean_interface = self._validate_interface_name(interface_name or self.config.DEFAULT_INTERFACE)
-        external_interface = self._validate_interface_name(wan_interface or self._detect_wan_interface())
+        external_interface = self._resolve_effective_wan_interface(wan_interface)
         network = ipaddress.ip_network((address_range or "").strip(), strict=False)
+
+        nat_check_cmd = ["iptables", "-t", "nat", "-C", "POSTROUTING", "-s", network.with_prefixlen]
+        nat_add_cmd = ["iptables", "-t", "nat", "-A", "POSTROUTING", "-s", network.with_prefixlen]
+        if external_interface:
+            nat_check_cmd.extend(["-o", external_interface])
+            nat_add_cmd.extend(["-o", external_interface])
+        nat_check_cmd.extend(["-j", "MASQUERADE"])
+        nat_add_cmd.extend(["-j", "MASQUERADE"])
 
         checks_and_adds = [
             (
@@ -268,32 +276,8 @@ class WireGuardManager:
                 ["iptables", "-A", "FORWARD", "-o", clean_interface, "-j", "ACCEPT"],
             ),
             (
-                [
-                    "iptables",
-                    "-t",
-                    "nat",
-                    "-C",
-                    "POSTROUTING",
-                    "-s",
-                    network.with_prefixlen,
-                    "-o",
-                    external_interface,
-                    "-j",
-                    "MASQUERADE",
-                ],
-                [
-                    "iptables",
-                    "-t",
-                    "nat",
-                    "-A",
-                    "POSTROUTING",
-                    "-s",
-                    network.with_prefixlen,
-                    "-o",
-                    external_interface,
-                    "-j",
-                    "MASQUERADE",
-                ],
+                nat_check_cmd,
+                nat_add_cmd,
             ),
         ]
 
@@ -345,6 +329,29 @@ class WireGuardManager:
             pass
         return "eth0"
 
+    def _resolve_effective_wan_interface(self, wan_interface: Optional[str] = None) -> Optional[str]:
+        """Return a usable WAN interface name, or None if none can be reliably resolved."""
+        requested = (wan_interface or "").strip()
+        candidates: list[str] = []
+        if requested:
+            candidates.append(requested)
+
+        detected = (self._detect_wan_interface() or "").strip()
+        if detected and detected not in candidates:
+            candidates.append(detected)
+
+        for candidate in candidates:
+            try:
+                clean_candidate = self._validate_interface_name(candidate)
+            except ValueError:
+                continue
+
+            probe = self._run_command(["ip", "link", "show", clean_candidate], check=False)
+            if probe.returncode == 0:
+                return clean_candidate
+
+        return None
+
     @staticmethod
     def _compute_interface_address(address_range: str) -> str:
         network = ipaddress.ip_network((address_range or "").strip(), strict=False)
@@ -366,18 +373,27 @@ class WireGuardManager:
 
         network = ipaddress.ip_network((address_range or "").strip(), strict=False)
         interface_address = self._compute_interface_address(address_range)
-        external_interface = self._validate_interface_name(wan_interface or self._detect_wan_interface())
+        external_interface = self._resolve_effective_wan_interface(wan_interface)
+
+        if external_interface:
+            nat_check = f"iptables -t nat -C POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE"
+            nat_add = f"iptables -t nat -A POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE"
+            nat_delete = f"iptables -t nat -D POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE"
+        else:
+            nat_check = f"iptables -t nat -C POSTROUTING -s {network.with_prefixlen} -j MASQUERADE"
+            nat_add = f"iptables -t nat -A POSTROUTING -s {network.with_prefixlen} -j MASQUERADE"
+            nat_delete = f"iptables -t nat -D POSTROUTING -s {network.with_prefixlen} -j MASQUERADE"
+            logger.warning("WireGuard WAN interface could not be resolved; applying generic MASQUERADE rule")
 
         post_up = (
             f"iptables -C FORWARD -i %i -j ACCEPT || iptables -A FORWARD -i %i -j ACCEPT; "
             f"iptables -C FORWARD -o %i -j ACCEPT || iptables -A FORWARD -o %i -j ACCEPT; "
-            f"iptables -t nat -C POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE || "
-            f"iptables -t nat -A POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE"
+            f"{nat_check} || {nat_add}"
         )
         post_down = (
             f"iptables -D FORWARD -i %i -j ACCEPT; "
             f"iptables -D FORWARD -o %i -j ACCEPT; "
-            f"iptables -t nat -D POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE"
+            f"{nat_delete}"
         )
 
         return (
