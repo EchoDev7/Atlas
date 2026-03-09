@@ -68,6 +68,9 @@ def init_db():
             "max_concurrent_connections": "ALTER TABLE vpn_users ADD COLUMN max_concurrent_connections INTEGER NOT NULL DEFAULT 1",
             "current_connections": "ALTER TABLE vpn_users ADD COLUMN current_connections INTEGER NOT NULL DEFAULT 0",
             "is_connection_limit_exceeded": "ALTER TABLE vpn_users ADD COLUMN is_connection_limit_exceeded BOOLEAN NOT NULL DEFAULT 0",
+            "wg_private_key": "ALTER TABLE vpn_users ADD COLUMN wg_private_key VARCHAR(128)",
+            "wg_public_key": "ALTER TABLE vpn_users ADD COLUMN wg_public_key VARCHAR(128)",
+            "wg_allocated_ip": "ALTER TABLE vpn_users ADD COLUMN wg_allocated_ip VARCHAR(64)",
         }
         for column_name, migration_sql in vpn_user_column_migrations.items():
             if column_name not in column_names:

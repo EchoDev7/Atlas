@@ -43,6 +43,7 @@ class VPNUserCreate(BaseModel):
     
     # OpenVPN config creation
     create_openvpn: bool = Field(True, description="Create OpenVPN config for this user")
+    create_wireguard: bool = Field(True, description="Create WireGuard config for this user")
     server_address: Optional[str] = Field(None, description="OpenVPN server address")
     server_port: int = Field(1194, description="OpenVPN server port")
     protocol_type: str = Field("udp", description="OpenVPN protocol (udp/tcp)")
@@ -153,6 +154,8 @@ class VPNUserResponse(BaseModel):
     has_openvpn: bool
     has_wireguard: bool
     has_singbox: bool
+    wg_public_key: Optional[str] = None
+    wg_allocated_ip: Optional[str] = None
     
     class Config:
         from_attributes = True

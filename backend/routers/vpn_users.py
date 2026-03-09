@@ -27,10 +27,12 @@ from backend.schemas.vpn_user import (
     PasswordResetResponse
 )
 from backend.core.openvpn import OpenVPNManager, validate_openvpn_readiness
+from backend.core.wireguard import WireGuardManager
 from backend.services.scheduler_service import get_scheduler
 from backend.services.protocols.registry import protocol_registry
 from backend.models.general_settings import GeneralSettings
 from backend.models.openvpn_settings import OpenVPNSettings
+from backend.models.wireguard_settings import WireGuardSettings
 from backend.services.auth_service import get_password_hash
 from backend.services.audit_service import extract_client_ip, record_audit_event
 
@@ -40,6 +42,7 @@ router = APIRouter(prefix="/users", tags=["VPN Users"])
 
 # Initialize OpenVPN manager
 openvpn_manager = OpenVPNManager()
+wireguard_manager = WireGuardManager()
 
 # Fallback runtime accounting cache keyed by username.
 # It captures the latest active-session counters to preserve traffic totals
@@ -106,6 +109,60 @@ def _sync_openvpn_auth_db_snapshot() -> None:
             logger.warning("OpenVPN auth DB sync warning: %s", sync_result.get("message"))
     except Exception as exc:
         logger.warning("Failed to sync OpenVPN auth DB snapshot: %s", exc)
+
+
+def _get_wireguard_settings(db: Session) -> WireGuardSettings:
+    settings = db.query(WireGuardSettings).order_by(WireGuardSettings.id.asc()).first()
+    if not settings:
+        raise HTTPException(status_code=400, detail="WireGuard server settings are not configured")
+    return settings
+
+
+def _sync_wireguard_users_runtime(db: Session) -> None:
+    sync_result = wireguard_manager.sync_users_to_wg0(db)
+    if not sync_result.get("success"):
+        raise HTTPException(status_code=500, detail=sync_result.get("message", "Failed to synchronize WireGuard peers"))
+
+
+def _ensure_wireguard_identity_for_user(db: Session, user: VPNUser) -> None:
+    if (user.wg_private_key or "").strip() and (user.wg_public_key or "").strip() and (user.wg_allocated_ip or "").strip():
+        return
+
+    settings = _get_wireguard_settings(db)
+    existing_ips = [
+        str(ip_value)
+        for (ip_value,) in db.query(VPNUser.wg_allocated_ip)
+        .filter(VPNUser.id != user.id)
+        .filter(VPNUser.wg_allocated_ip.isnot(None))
+        .all()
+    ]
+
+    private_key, public_key, allocated_ip = wireguard_manager.generate_user_identity(
+        address_range=settings.address_range,
+        existing_allocated_ips=existing_ips,
+    )
+    user.wg_private_key = private_key
+    user.wg_public_key = public_key
+    user.wg_allocated_ip = allocated_ip
+
+
+def _ensure_wireguard_config_record(user: VPNUser, db: Session) -> VPNConfig:
+    existing = next((c for c in user.configs if c.protocol == "wireguard" and c.is_active), None)
+    if existing:
+        existing.wireguard_public_key = user.wg_public_key
+        existing.wireguard_allowed_ips = f"{user.wg_allocated_ip}/32" if user.wg_allocated_ip else None
+        existing.updated_at = datetime.utcnow()
+        return existing
+
+    wireguard_config = VPNConfig(
+        user_id=user.id,
+        protocol="wireguard",
+        wireguard_public_key=user.wg_public_key,
+        wireguard_allowed_ips=f"{user.wg_allocated_ip}/32" if user.wg_allocated_ip else None,
+        is_active=True,
+    )
+    db.add(wireguard_config)
+    return wireguard_config
 
 
 def _get_openvpn_runtime_stats() -> Tuple[Dict[str, Dict[str, int]], bool]:
@@ -465,7 +522,16 @@ async def disconnect_user_sessions(
     user.current_connections = 0
     user.is_connection_limit_exceeded = False
     user.updated_at = datetime.utcnow()
-    db.commit()
+    try:
+        if protocol == "wireguard":
+            _sync_wireguard_users_runtime(db)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to synchronize protocol revocation: {exc}") from exc
     _sync_openvpn_auth_db_snapshot()
 
     logger.info(
@@ -539,36 +605,38 @@ async def create_user(
     db.add(new_user)
     db.flush()  # Get user ID
     
-    # Create OpenVPN config if requested
-    if user_data.create_openvpn:
-        try:
-            # Create certificate
-            cert_result = openvpn_manager.create_client_certificate(username)
-            cert_success = bool(cert_result.get("success"))
-            if not cert_success:
-                cert_path = str(cert_result.get("cert_path") or "").strip()
-                key_path = str(cert_result.get("key_path") or "").strip()
-                cert_success = bool(
-                    cert_path and key_path and Path(cert_path).exists() and Path(key_path).exists()
-                )
+    # Unified user architecture: always provision both OpenVPN and WireGuard artifacts.
+    try:
+        cert_result = openvpn_manager.create_client_certificate(username)
+        cert_success = bool(cert_result.get("success"))
+        if not cert_success:
+            cert_path = str(cert_result.get("cert_path") or "").strip()
+            key_path = str(cert_result.get("key_path") or "").strip()
+            cert_success = bool(cert_path and key_path and Path(cert_path).exists() and Path(key_path).exists())
 
-            if cert_success:
-                # Create config record
-                openvpn_config = VPNConfig(
-                    user_id=new_user.id,
-                    protocol="openvpn",
-                    certificate_cn=username,
-                    certificate_issued_at=datetime.utcnow()
-                )
-                db.add(openvpn_config)
-                logger.info(f"OpenVPN config created for user {username}")
-            else:
-                logger.warning(
-                    f"Failed to create OpenVPN certificate for {username}: {cert_result.get('message', 'unknown error')}"
-                )
-        
-        except Exception as e:
-            logger.error(f"Error creating OpenVPN config: {e}")
+        if not cert_success:
+            cert_error = cert_result.get("message") or "unknown error"
+            raise HTTPException(status_code=500, detail=f"OpenVPN certificate provisioning failed for '{username}': {cert_error}")
+
+        openvpn_config = VPNConfig(
+            user_id=new_user.id,
+            protocol="openvpn",
+            certificate_cn=username,
+            certificate_issued_at=datetime.utcnow(),
+            is_active=True,
+        )
+        db.add(openvpn_config)
+
+        _ensure_wireguard_identity_for_user(db, new_user)
+        _ensure_wireguard_config_record(new_user, db)
+        _sync_wireguard_users_runtime(db)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.error("Error creating unified VPN artifacts: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to provision VPN user artifacts: {exc}") from exc
     
     db.commit()
     _sync_openvpn_auth_db_snapshot()
@@ -673,6 +741,17 @@ async def update_user(
     
     user.updated_at = datetime.utcnow()
     
+    try:
+        _ensure_wireguard_identity_for_user(db, user)
+        _ensure_wireguard_config_record(user, db)
+        _sync_wireguard_users_runtime(db)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to synchronize WireGuard state: {exc}") from exc
+
     db.commit()
     _sync_openvpn_auth_db_snapshot()
     db.refresh(user)
@@ -706,7 +785,16 @@ async def delete_user(
             logger.error(f"Error revoking certificate for {username}: {e}")
     
     db.delete(user)
-    db.commit()
+    try:
+        db.flush()
+        _sync_wireguard_users_runtime(db)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to synchronize WireGuard peers after delete: {exc}") from exc
     _sync_openvpn_auth_db_snapshot()
 
     record_audit_event(
@@ -801,8 +889,29 @@ async def download_config(
             logger.error(f"Error generating OpenVPN config: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate config: {str(e)}")
     
-    else:
-        raise HTTPException(status_code=400, detail=f"Protocol {protocol} not yet supported")
+    if protocol == "wireguard":
+        try:
+            _ensure_wireguard_identity_for_user(db, user)
+            _ensure_wireguard_config_record(user, db)
+            db.commit()
+            db.refresh(user)
+
+            _sync_wireguard_users_runtime(db)
+            config_content = wireguard_manager.build_client_config_for_user(db, user)
+            return Response(
+                content=config_content,
+                media_type="text/plain",
+                headers={
+                    "Content-Disposition": f"attachment; filename={user.username}.conf"
+                },
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("Error generating WireGuard config for user %s: %s", user.username, exc)
+            raise HTTPException(status_code=500, detail=f"Failed to generate WireGuard config: {exc}") from exc
+
+    raise HTTPException(status_code=400, detail=f"Protocol {protocol} not yet supported")
 
 
 @router.get("/{user_id}/configs/{protocol}", response_model=VPNConfigFileResponse)
@@ -847,9 +956,22 @@ async def get_config(
         except Exception as e:
             logger.error(f"Error generating config: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate config: {str(e)}")
-    
-    else:
-        raise HTTPException(status_code=400, detail=f"Protocol {protocol} not yet supported")
+
+    if protocol == "wireguard":
+        try:
+            config_content = wireguard_manager.build_client_config_for_user(db, user)
+            return VPNConfigFileResponse(
+                username=user.username,
+                protocol=protocol,
+                config_content=config_content,
+                qr_code=None,
+                created_at=datetime.utcnow(),
+            )
+        except Exception as exc:
+            logger.error("Error generating WireGuard config payload for user %s: %s", user.username, exc)
+            raise HTTPException(status_code=500, detail=f"Failed to generate WireGuard config: {exc}") from exc
+
+    raise HTTPException(status_code=400, detail=f"Protocol {protocol} not yet supported")
 
 
 @router.post("/{user_id}/configs/{protocol}/revoke", response_model=VPNUserResponse)
@@ -876,12 +998,27 @@ async def revoke_config(
                 logger.error(f"Failed to revoke certificate: {revoke_result.get('message', 'unknown error')}")
         except Exception as e:
             logger.error(f"Error revoking certificate: {e}")
+
+    if protocol == "wireguard":
+        user.wg_private_key = None
+        user.wg_public_key = None
+        user.wg_allocated_ip = None
     
     config.is_active = False
     config.revoked_at = datetime.utcnow()
     config.revoked_reason = revoke_data.reason or "Revoked by admin"
-    
-    db.commit()
+
+    try:
+        if protocol == "wireguard":
+            _sync_wireguard_users_runtime(db)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to synchronize protocol revocation: {exc}") from exc
+
     _sync_openvpn_auth_db_snapshot()
     db.refresh(user)
     

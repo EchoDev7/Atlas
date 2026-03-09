@@ -20,6 +20,9 @@ class VPNUser(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), unique=True, index=True, nullable=False)
     password = Column(String(255), nullable=False)  # Hashed password for auth-user-pass
+    wg_private_key = Column(String(128), nullable=True)
+    wg_public_key = Column(String(128), nullable=True)
+    wg_allocated_ip = Column(String(64), nullable=True)
     
     # Limits and restrictions
     data_limit_gb = Column(Float, nullable=True)  # Data limit in GB (None = unlimited)

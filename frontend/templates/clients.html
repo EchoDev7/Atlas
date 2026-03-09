@@ -508,12 +508,13 @@
                                             </svg>
                                         </button>
 
-                                        <!-- Download Config Dropdown -->
+                                        <!-- Download OpenVPN Config Dropdown -->
                                         <div class="relative" @click.away="downloadOpen = false">
                                             <button @click="downloadOpen = !downloadOpen"
                                                     class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
                                                     :class="darkMode ? 'text-cyan-400 hover:bg-slate-700/50' : 'text-cyan-600 hover:bg-cyan-50'"
-                                                    title="Download Config">
+                                                    title="Download OpenVPN Config"
+                                                    x-show="client.has_openvpn">
                                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                                                 </svg>
@@ -530,27 +531,27 @@
                                                  class="absolute right-0 mt-2 w-48 rounded-xl shadow-2xl z-50 glass-effect border theme-transition"
                                                  :class="darkMode ? 'bg-slate-800/95 border-slate-700/50' : 'bg-white/95 border-slate-200/50'">
                                                 <div class="py-2">
-                                                    <button @click.prevent="downloadConfig(client.id, 'windows'); downloadOpen = false"
+                                                    <button @click.prevent="downloadOpenVPNConfig(client.id, 'windows'); downloadOpen = false"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>🪟</span><span>Download for Windows</span>
                                                     </button>
-                                                    <button @click.prevent="downloadConfig(client.id, 'mac'); downloadOpen = false"
+                                                    <button @click.prevent="downloadOpenVPNConfig(client.id, 'mac'); downloadOpen = false"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>🖥️</span><span>Download for macOS</span>
                                                     </button>
-                                                    <button @click.prevent="downloadConfig(client.id, 'ios'); downloadOpen = false"
+                                                    <button @click.prevent="downloadOpenVPNConfig(client.id, 'ios'); downloadOpen = false"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>📱</span><span>Download for iOS</span>
                                                     </button>
-                                                    <button @click.prevent="downloadConfig(client.id, 'android'); downloadOpen = false"
+                                                    <button @click.prevent="downloadOpenVPNConfig(client.id, 'android'); downloadOpen = false"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>🤖</span><span>Download for Android</span>
                                                     </button>
-                                                    <button @click.prevent="downloadConfig(client.id, 'linux'); downloadOpen = false"
+                                                    <button @click.prevent="downloadOpenVPNConfig(client.id, 'linux'); downloadOpen = false"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>🐧</span><span>Download for Linux / Router</span>
@@ -558,6 +559,17 @@
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <!-- Download WireGuard Config -->
+                                        <button @click="downloadWireGuardConfig(client.id)"
+                                                x-show="client.has_wireguard"
+                                                class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
+                                                :class="darkMode ? 'text-violet-400 hover:bg-slate-700/50' : 'text-violet-600 hover:bg-violet-50'"
+                                                title="Download WireGuard Config">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                            </svg>
+                                        </button>
                                         
                                         <!-- QR Code Dropdown -->
                                         <div class="relative" @click.away="qrOpen = false">
@@ -1602,7 +1614,8 @@
                             max_devices: this.newClient.max_devices ? parseInt(this.newClient.max_devices, 10) : 1,
                             data_limit_gb: this.newClient.data_limit_gb ? parseFloat(this.newClient.data_limit_gb) : null,
                             expiry_date: this.newClient.expiry_date ? new Date(this.newClient.expiry_date).toISOString() : null,
-                            create_openvpn: true
+                            create_openvpn: true,
+                            create_wireguard: true,
                         };
                         
                         const response = await fetch('/api/users', {
@@ -1729,7 +1742,7 @@
                     }
                 },
 
-                async downloadConfig(userId, osType) {
+                async downloadOpenVPNConfig(userId, osType) {
                     this.error = '';
                     
                     try {
@@ -1783,10 +1796,68 @@
                             document.body.removeChild(a);
                         });
                         
-                        this.successMessage = `Config downloaded successfully for ${safeUsername}`;
+                        this.successMessage = `OpenVPN config downloaded successfully for ${safeUsername}`;
                     } catch (err) {
-                        this.error = err.message || 'Failed to download config';
-                        console.error('Download config error:', err);
+                        this.error = err.message || 'Failed to download OpenVPN config';
+                        console.error('Download OpenVPN config error:', err);
+                    }
+                },
+
+                async downloadWireGuardConfig(userId) {
+                    this.error = '';
+
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            throw new Error('Not authenticated. Please log in again.');
+                        }
+
+                        const client = this.clients.find((item) => item.id === userId);
+                        const safeUsername = client?.username || `user_${userId}`;
+                        const response = await fetch(`/api/users/${userId}/configs/wireguard/download`, {
+                            method: 'GET',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+
+                        if (!response.ok) {
+                            let errorMessage = 'Failed to download WireGuard config';
+                            try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.detail || errorMessage;
+                            } catch (_) {
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            }
+                            throw new Error(errorMessage);
+                        }
+
+                        const blob = await response.blob();
+                        if (!blob || blob.size === 0) {
+                            throw new Error('Empty WireGuard config file received');
+                        }
+
+                        const disposition = response.headers.get('Content-Disposition') || response.headers.get('content-disposition') || '';
+                        const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+                        const rawHeaderFilename = (filenameMatch && (filenameMatch[1] || filenameMatch[2])) || '';
+                        const headerFilename = rawHeaderFilename ? decodeURIComponent(rawHeaderFilename) : '';
+
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.style.display = 'none';
+                        a.download = headerFilename || `${safeUsername}.conf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        requestAnimationFrame(() => {
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                        });
+
+                        this.successMessage = `WireGuard config downloaded successfully for ${safeUsername}`;
+                    } catch (err) {
+                        this.error = err.message || 'Failed to download WireGuard config';
+                        console.error('Download WireGuard config error:', err);
                     }
                 },
 
