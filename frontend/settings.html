@@ -1548,8 +1548,42 @@
                     if (!this.systemTimeCurrent) {
                         return 'Loading...';
                     }
-                    const value = this.systemTimeCurrent.toLocaleString();
-                    return `${value} (${this.systemTimeCurrentTimezone || 'UTC'})`;
+                    return this.formatServerClock(this.systemTimeCurrent);
+                },
+
+                formatServerClock(value) {
+                    const zone = (this.systemTimeCurrentTimezone || 'UTC').trim() || 'UTC';
+                    const date = value instanceof Date ? value : new Date(value);
+                    if (Number.isNaN(date.getTime())) {
+                        return `Invalid server time (${zone})`;
+                    }
+                    try {
+                        const formatter = new Intl.DateTimeFormat('en-GB', {
+                            timeZone: zone,
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false,
+                            timeZoneName: 'short',
+                        });
+                        return formatter.format(date);
+                    } catch (_) {
+                        const fallback = new Intl.DateTimeFormat('en-GB', {
+                            timeZone: 'UTC',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false,
+                            timeZoneName: 'short',
+                        });
+                        return fallback.format(date);
+                    }
                 },
 
                 isProtocolForcedByObfuscation() {
