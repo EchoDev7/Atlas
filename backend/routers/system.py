@@ -8,16 +8,19 @@ import subprocess
 import tarfile
 import tempfile
 import zipfile
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 from sqlalchemy.orm import close_all_sessions
 from starlette.background import BackgroundTask
 
 from backend.config import settings
 from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
-from backend.database import engine
+from backend.database import engine, get_db
+from backend.models.general_settings import GeneralSettings
 from backend.dependencies import get_current_user
 from backend.models.user import Admin
 from backend.services.audit_service import extract_client_ip, record_audit_event
@@ -41,6 +44,10 @@ LETSENCRYPT_LIVE_DIR = Path("/etc/letsencrypt/live")
 class ServiceActionRequest(BaseModel):
     service_name: str
     action: str
+
+
+class TimezoneUpdateRequest(BaseModel):
+    timezone: str
 
 
 def _tls_key_candidates() -> tuple[Path, ...]:
@@ -73,6 +80,87 @@ def _collect_active_ssl_certificates(live_dir: Path) -> list[dict[str, str]]:
         )
 
     return certificates
+
+
+def _get_or_create_general_settings(db: Session) -> GeneralSettings:
+    settings_row = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+    if settings_row:
+        return settings_row
+
+    settings_row = GeneralSettings()
+    db.add(settings_row)
+    db.commit()
+    db.refresh(settings_row)
+    return settings_row
+
+
+def _read_timezone_from_timedatectl() -> str | None:
+    if shutil.which("timedatectl") is None:
+        return None
+    try:
+        completed = subprocess.run(
+            ["timedatectl", "show", "--property=Timezone", "--value"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return None
+
+    if completed.returncode != 0:
+        return None
+
+    candidate = (completed.stdout or "").strip()
+    return candidate or None
+
+
+def _read_timezone_from_file() -> str | None:
+    timezone_file = Path("/etc/timezone")
+    if not timezone_file.exists() or not timezone_file.is_file():
+        return None
+    try:
+        candidate = timezone_file.read_text(encoding="utf-8").strip()
+    except Exception:
+        return None
+    return candidate or None
+
+
+def _resolve_current_timezone_name(db: Session) -> str:
+    for candidate in (_read_timezone_from_timedatectl(), _read_timezone_from_file()):
+        if candidate:
+            return candidate
+
+    settings_row = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+    if settings_row and (settings_row.system_timezone or "").strip():
+        return settings_row.system_timezone.strip()
+
+    return "UTC"
+
+
+def _list_global_timezones() -> list[str]:
+    try:
+        zones = sorted(available_timezones())
+    except Exception:
+        zones = []
+    if "UTC" not in zones:
+        zones = ["UTC", *zones]
+    return zones
+
+
+def _build_system_time_payload(db: Session) -> dict[str, object]:
+    current_timezone = _resolve_current_timezone_name(db)
+    try:
+        zone = ZoneInfo(current_timezone)
+        current_server_time = datetime.now(zone).isoformat()
+    except ZoneInfoNotFoundError:
+        current_timezone = "UTC"
+        current_server_time = datetime.now(timezone.utc).isoformat()
+
+    return {
+        "current_server_time": current_server_time,
+        "current_timezone": current_timezone,
+        "available_timezones": _list_global_timezones(),
+    }
 
 
 def _apply_secure_permissions(path: Path, mode: int, warnings: list[str], context: str) -> None:
@@ -231,6 +319,54 @@ def _restore_openvpn_server_payload(source_root: Path, warnings: list[str]) -> b
 def list_active_ssl_certificates(current_user: Admin = Depends(get_current_user)):
     _ = current_user
     return {"certificates": _collect_active_ssl_certificates(LETSENCRYPT_LIVE_DIR)}
+
+
+@router.get("/time")
+def get_system_time(
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    return _build_system_time_payload(db)
+
+
+@router.put("/time/timezone")
+def update_system_timezone(
+    payload: TimezoneUpdateRequest,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    requested_timezone = (payload.timezone or "").strip()
+    valid_timezones = set(_list_global_timezones())
+
+    if not requested_timezone:
+        raise HTTPException(status_code=400, detail="Timezone value is required")
+    if requested_timezone not in valid_timezones:
+        raise HTTPException(status_code=400, detail="Invalid timezone value")
+    if shutil.which("timedatectl") is None:
+        raise HTTPException(status_code=503, detail="timedatectl is not available on this host")
+
+    try:
+        subprocess.run(
+            ["timedatectl", "set-timezone", requested_timezone],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "Failed to apply timezone using timedatectl").strip()
+        raise HTTPException(status_code=500, detail=detail) from exc
+
+    settings_row = _get_or_create_general_settings(db)
+    settings_row.system_timezone = requested_timezone
+    settings_row.updated_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "message": f"Timezone updated to {requested_timezone}",
+        **_build_system_time_payload(db),
+    }
 
 
 @router.get("/backup")

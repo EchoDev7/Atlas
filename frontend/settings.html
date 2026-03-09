@@ -507,6 +507,53 @@
 
                     <div x-show="activeGeneralSection === 'system'" class="space-y-4">
                         <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">System</h2>
+                        <div class="rounded-2xl border p-4 sm:p-5 space-y-4"
+                             :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-white'">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <h3 class="text-lg font-bold theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">Server Time &amp; Timezone</h3>
+                                    <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">Monitor current server time and switch timezone safely.</p>
+                                </div>
+                                <button type="button"
+                                        @click="loadSystemTimeData()"
+                                        :disabled="systemTimeLoading || loading"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        :class="darkMode ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-100 text-slate-800 hover:bg-slate-200'">
+                                    Refresh Time
+                                </button>
+                            </div>
+
+                            <div class="rounded-xl border px-4 py-3" :class="darkMode ? 'border-slate-700 bg-slate-800/40' : 'border-slate-200 bg-slate-50'">
+                                <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Current Server Time</p>
+                                <p class="mt-1 text-lg font-bold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="formattedServerTime"></p>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Search Timezone</span>
+                                    <input type="text"
+                                           x-model="timezoneSearch"
+                                           placeholder="Type to filter (e.g., Asia/Tehran)"
+                                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                        <span>System Timezone</span>
+                                        <span x-show="generalForm.system_timezone === 'UTC'" class="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                                              :class="darkMode ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700'">Recommended for Global Servers</span>
+                                    </span>
+                                    <select x-model="generalForm.system_timezone"
+                                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                        <template x-for="tz in filteredTimezones" :key="tz">
+                                            <option :value="tz" x-text="tz === 'UTC' ? 'UTC (Recommended for Global Servers)' : tz"></option>
+                                        </template>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
@@ -516,11 +563,7 @@
                                         <div x-cloak x-show="openTooltip === 'system_timezone'" x-transition class="tooltip-glass absolute left-0 top-6 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">Accurate time is critical for VPN cryptography.</div>
                                     </span>
                                 </span>
-                                <select x-model="generalForm.system_timezone" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                    <option value="UTC">UTC</option>
-                                    <option value="Europe/Berlin">Europe/Berlin</option>
-                                    <option value="Asia/Tehran">Asia/Tehran</option>
-                                </select>
+                                <input type="text" x-model="generalForm.system_timezone" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-300 text-slate-700'">
                             </label>
                             <label class="block">
                                 <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
@@ -1475,6 +1518,12 @@
                 backupDownloading: false,
                 backupRestoring: false,
                 backupRestoreFile: null,
+                systemTimeLoading: false,
+                systemTimeCurrent: null,
+                systemTimeCurrentTimezone: 'UTC',
+                systemTimeAvailableTimezones: ['UTC'],
+                timezoneSearch: '',
+                systemClockTimer: null,
                 serviceActionLoading: false,
                 serviceLogsLoading: false,
                 serviceLogsService: 'openvpn',
@@ -1492,6 +1541,26 @@
                     }
                     const selected = (this.form.protocol || 'udp').toLowerCase();
                     return selected.includes('udp') ? 'udp' : 'tcp';
+                },
+
+                get filteredTimezones() {
+                    const keyword = (this.timezoneSearch || '').trim().toLowerCase();
+                    const all = Array.isArray(this.systemTimeAvailableTimezones) && this.systemTimeAvailableTimezones.length
+                        ? this.systemTimeAvailableTimezones
+                        : ['UTC'];
+                    if (!keyword) {
+                        return all;
+                    }
+                    const matched = all.filter((zone) => zone.toLowerCase().includes(keyword));
+                    return matched.length ? matched : all;
+                },
+
+                get formattedServerTime() {
+                    if (!this.systemTimeCurrent) {
+                        return 'Loading...';
+                    }
+                    const value = this.systemTimeCurrent.toLocaleString();
+                    return `${value} (${this.systemTimeCurrentTimezone || 'UTC'})`;
                 },
 
                 isProtocolForcedByObfuscation() {
@@ -2131,11 +2200,60 @@
                             this.form.ipv6_network = '';
                             this.form.ipv6_prefix = null;
                         }
-                        await this.loadActiveSslCertificates();
+                        await Promise.all([
+                            this.loadActiveSslCertificates(),
+                            this.loadSystemTimeData(),
+                        ]);
                     } catch (error) {
                         this.showToast(error.message || 'Failed to load settings', 'error');
                     } finally {
                         this.loading = false;
+                    }
+                },
+
+                startSystemClock() {
+                    if (this.systemClockTimer) {
+                        clearInterval(this.systemClockTimer);
+                    }
+                    this.systemClockTimer = setInterval(() => {
+                        if (this.systemTimeCurrent) {
+                            this.systemTimeCurrent = new Date(this.systemTimeCurrent.getTime() + 1000);
+                        }
+                    }, 1000);
+                },
+
+                async loadSystemTimeData() {
+                    this.systemTimeLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/system/time', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            throw new Error('Failed to load system time information');
+                        }
+
+                        const payload = await response.json();
+                        this.systemTimeCurrentTimezone = payload.current_timezone || 'UTC';
+                        this.generalForm.system_timezone = payload.current_timezone || this.generalForm.system_timezone || 'UTC';
+                        this.systemTimeAvailableTimezones = Array.isArray(payload.available_timezones) && payload.available_timezones.length
+                            ? payload.available_timezones
+                            : ['UTC'];
+
+                        const parsed = new Date(payload.current_server_time);
+                        this.systemTimeCurrent = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+                        this.startSystemClock();
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to load system time information', 'error');
+                    } finally {
+                        this.systemTimeLoading = false;
                     }
                 },
 
@@ -2509,6 +2627,34 @@
                     this.saving = true;
                     try {
                         const token = localStorage.getItem('access_token');
+                        const selectedTimezone = (this.generalForm.system_timezone || '').trim();
+                        if (this.activeGeneralSection === 'system' && selectedTimezone && selectedTimezone !== this.systemTimeCurrentTimezone) {
+                            const tzResponse = await fetch('/api/system/time/timezone', {
+                                method: 'PUT',
+                                headers: {
+                                    Authorization: `Bearer ${token}`,
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({ timezone: selectedTimezone }),
+                            });
+
+                            if (!tzResponse.ok) {
+                                let message = 'Failed to update timezone';
+                                try {
+                                    const error = await tzResponse.json();
+                                    if (typeof error.detail === 'string') {
+                                        message = error.detail;
+                                    }
+                                } catch (_) {
+                                    // Keep default message
+                                }
+                                throw new Error(message);
+                            }
+
+                            this.showToast('Timezone updated successfully', 'success');
+                            await this.loadSystemTimeData();
+                        }
+
                         const loginMaxFailedAttempts = this.normalizeLoginMaxFailedAttempts(this.generalForm.login_max_failed_attempts);
                         const loginBlockDurationMinutes = this.normalizeLoginBlockDurationMinutes(this.generalForm.login_block_duration_minutes);
 
