@@ -1,6 +1,6 @@
 # Atlas VPN Panel - Enterprise Grade OpenVPN Management
 
-[![Version](https://img.shields.io/badge/version-v1.0.0-2563eb.svg)](https://github.com/EchoDev7/Atlas/releases)
+[![Version](https://img.shields.io/badge/version-v2.0.0-2563eb.svg)](https://github.com/EchoDev7/Atlas/releases)
 [![License](https://img.shields.io/badge/license-Not%20Specified-lightgrey.svg)](#license)
 [![Status](https://img.shields.io/badge/status-stable%20release-16a34a.svg)](#)
 

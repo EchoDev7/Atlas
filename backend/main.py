@@ -135,7 +135,7 @@ def _build_allowed_cors_origins() -> list[str]:
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version=settings.VERSION,
+    version="2.0.0",
     docs_url=f"{settings.API_PREFIX}/docs",
     redoc_url=f"{settings.API_PREFIX}/redoc",
     openapi_url=f"{settings.API_PREFIX}/openapi.json",
