@@ -175,11 +175,17 @@ class VPNUserResponse(BaseModel):
     disabled_reason: Optional[str]
     
     # Protocol availability
+    enable_openvpn: bool = True
     has_openvpn: bool
     has_wireguard: bool
     has_singbox: bool
     wg_public_key: Optional[str] = None
     wg_allocated_ip: Optional[str] = None
+
+    @field_validator("enable_openvpn", mode="before")
+    @classmethod
+    def _coerce_enable_openvpn(cls, value):
+        return True if value is None else bool(value)
     
     class Config:
         from_attributes = True

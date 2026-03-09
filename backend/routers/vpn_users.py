@@ -635,6 +635,8 @@ async def create_user(
     
     # Hash password
     hashed_password = get_password_hash(plain_password)
+    enable_openvpn = bool(user_data.enable_openvpn)
+    enable_wireguard = bool(user_data.enable_wireguard)
     
     # Create user
     new_user = VPNUser(
@@ -649,6 +651,7 @@ async def create_user(
         access_expires_at=user_data.access_expires_at,
         max_devices=user_data.max_devices,
         max_concurrent_connections=user_data.max_concurrent_connections,
+        enable_openvpn=enable_openvpn,
         created_by=current_user.id
     )
     _sync_legacy_accounting_fields(new_user)
@@ -657,8 +660,6 @@ async def create_user(
     db.add(new_user)
     db.flush()  # Get user ID
     
-    enable_openvpn = bool(user_data.enable_openvpn)
-    enable_wireguard = bool(user_data.enable_wireguard)
     # Unified user architecture with selective protocol generation.
     try:
         if enable_openvpn:

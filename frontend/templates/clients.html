@@ -398,10 +398,10 @@
                                                       x-text="'Max: ' + getMaxConcurrent(client) + ' | Online: ' + (client.current_connections || 0)"></span>
                                             </div>
                                             <div class="flex items-center space-x-1 mt-1">
-                                                <span x-show="client.has_openvpn" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">OpenVPN</span>
+                                                <span x-show="client.has_openvpn || client.enable_openvpn" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">OpenVPN</span>
                                                 <span x-show="client.has_wireguard" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">WireGuard</span>
                                                 <span x-show="client.has_singbox" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Sing-box</span>
-                                                <span x-show="!client.has_openvpn && !client.has_wireguard && !client.has_singbox" class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-400'">No protocols</span>
+                                                <span x-show="!(client.has_openvpn || client.enable_openvpn) && !client.has_wireguard && !client.has_singbox" class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-400'">No protocols</span>
                                             </div>
                                             <div class="mt-2 md:hidden space-y-1">
                                                 <div class="flex flex-wrap items-center gap-1">
@@ -514,7 +514,7 @@
                                                     class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
                                                     :class="darkMode ? 'text-cyan-400 hover:bg-slate-700/50' : 'text-cyan-600 hover:bg-cyan-50'"
                                                     title="Download OpenVPN Config"
-                                                    x-show="client.has_openvpn">
+                                                    x-show="client.has_openvpn || client.enable_openvpn">
                                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                                                 </svg>
@@ -595,7 +595,7 @@
                                                 <div class="py-2">
                                                     <!-- OpenVPN -->
                                                     <button @click="showQRCode(client, 'openvpn'); qrOpen = false"
-                                                            x-show="client.has_openvpn"
+                                                            x-show="client.has_openvpn || client.enable_openvpn"
                                                             class="w-full px-4 py-2 text-left text-sm flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-200 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span class="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -625,7 +625,7 @@
 
                                         <!-- Revoke -->
                                         <button @click="confirmRevoke(client)"
-                                                x-show="client.has_openvpn && client.is_active"
+                                                x-show="(client.has_openvpn || client.enable_openvpn) && client.is_active"
                                                 class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
                                                 :class="darkMode ? 'text-red-400 hover:bg-slate-700/50' : 'text-red-600 hover:bg-red-50'"
                                                 title="Revoke OpenVPN Certificate">

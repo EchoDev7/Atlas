@@ -71,6 +71,7 @@ def init_db():
             "wg_private_key": "ALTER TABLE vpn_users ADD COLUMN wg_private_key VARCHAR(128)",
             "wg_public_key": "ALTER TABLE vpn_users ADD COLUMN wg_public_key VARCHAR(128)",
             "wg_allocated_ip": "ALTER TABLE vpn_users ADD COLUMN wg_allocated_ip VARCHAR(64)",
+            "enable_openvpn": "ALTER TABLE vpn_users ADD COLUMN enable_openvpn BOOLEAN NOT NULL DEFAULT 1",
         }
         for column_name, migration_sql in vpn_user_column_migrations.items():
             if column_name not in column_names:
@@ -87,6 +88,17 @@ def init_db():
                     SET traffic_limit_bytes = CAST(data_limit_gb * 1073741824 AS INTEGER)
                     WHERE traffic_limit_bytes IS NULL
                       AND data_limit_gb IS NOT NULL
+                    """
+                )
+            )
+
+        if "enable_openvpn" in column_names:
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET enable_openvpn = 1
+                    WHERE enable_openvpn IS NULL
                     """
                 )
             )

@@ -23,6 +23,7 @@ class VPNUser(Base):
     wg_private_key = Column(String(128), nullable=True)
     wg_public_key = Column(String(128), nullable=True)
     wg_allocated_ip = Column(String(64), nullable=True)
+    enable_openvpn = Column(Boolean, nullable=True, default=True)
     
     # Limits and restrictions
     data_limit_gb = Column(Float, nullable=True)  # Data limit in GB (None = unlimited)
