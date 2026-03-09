@@ -49,11 +49,11 @@ async def _run_local_command(command: str) -> tuple[int, str, str]:
     )
 
     try:
-        stdout_raw, stderr_raw = await asyncio.wait_for(process.communicate(), timeout=45)
+        stdout_raw, stderr_raw = await asyncio.wait_for(process.communicate(), timeout=15)
     except asyncio.TimeoutError:
         process.kill()
         await process.wait()
-        return 124, "", "Command timed out after 45 seconds"
+        return 124, "", "Command timed out after 15 seconds"
 
     stdout = (stdout_raw or b"").decode("utf-8", errors="replace")
     stderr = (stderr_raw or b"").decode("utf-8", errors="replace")
@@ -76,11 +76,11 @@ def _run_foreign_ssh_command(
             port=port,
             username=username,
             password=password,
-            timeout=10,
-            auth_timeout=10,
-            banner_timeout=10,
+            timeout=15,
+            auth_timeout=15,
+            banner_timeout=15,
         )
-        stdin, stdout, stderr = client.exec_command(command, timeout=45)
+        stdin, stdout, stderr = client.exec_command(command, timeout=15)
         _ = stdin
         stdout_text = (stdout.read() or b"").decode("utf-8", errors="replace")
         stderr_text = (stderr.read() or b"").decode("utf-8", errors="replace")
@@ -164,6 +164,22 @@ async def run_foreign_terminal_command(
                 command,
             )
             response = _build_terminal_response("foreign", command, exit_code, stdout, stderr)
+        except paramiko.AuthenticationException:
+            response = _build_terminal_response(
+                "foreign",
+                command,
+                None,
+                "",
+                "SSH authentication failed: invalid username or password.",
+            )
+        except TimeoutError:
+            response = _build_terminal_response(
+                "foreign",
+                command,
+                None,
+                "",
+                "SSH command timed out after 15 seconds.",
+            )
         except Exception as exc:
             response = _build_terminal_response("foreign", command, None, "", f"SSH error: {exc}")
 
