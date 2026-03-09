@@ -148,7 +148,17 @@ class WireGuardManager:
             self._last_seen_rx_bytes[public_key] = transfer_rx
             self._last_seen_tx_bytes[public_key] = transfer_tx
 
-            if total_delta > 0:
+            handshake_unix_time = int(latest_handshake)
+            seconds_ago = int(now_epoch) - handshake_unix_time if handshake_unix_time > 0 else -1
+            # Exact online check requested:
+            # current_unix_time - handshake_unix_time <= 90
+            is_online = (
+                handshake_unix_time > 0
+                and seconds_ago <= int(online_window_seconds)
+            )
+            was_marked_connected = int(user.current_connections or 0) > 0
+
+            if total_delta > 0 and (is_online or was_marked_connected):
                 # Keep parity with OpenVPN accounting fields:
                 # transfer_rx => download => total_bytes_received
                 # transfer_tx => upload   => total_bytes_sent
@@ -158,14 +168,6 @@ class WireGuardManager:
                 user.updated_at = now_utc
                 updated_users += 1
 
-            handshake_unix_time = int(latest_handshake)
-            seconds_ago = int(now_epoch) - handshake_unix_time if handshake_unix_time > 0 else -1
-            # Exact online check requested:
-            # current_unix_time - handshake_unix_time <= 90
-            is_online = (
-                handshake_unix_time > 0
-                and seconds_ago <= int(online_window_seconds)
-            )
             logger.info(
                 "WG Peer %s... - Seconds since handshake: %s - Marking Online: %s",
                 public_key[:8],
