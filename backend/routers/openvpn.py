@@ -3,7 +3,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 from datetime import datetime
 import logging
 
@@ -15,7 +15,6 @@ from backend.models.vpn_client import VPNClient, VPNClientStatus
 from backend.schemas.vpn_client import (
     VPNClientCreate,
     VPNClientUpdate,
-    VPNClientResponse,
     VPNClientDetailResponse,
     VPNClientConfigResponse,
     VPNClientRevokeRequest,
