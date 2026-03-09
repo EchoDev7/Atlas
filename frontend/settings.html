@@ -595,7 +595,7 @@
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                             <button
                                 type="button"
                                 @click="confirmAndRunServiceAction('openvpn', 'restart', 'OpenVPN')"
@@ -619,6 +619,18 @@
                                 <p class="mt-1 text-lg font-bold" :class="darkMode ? 'text-violet-100' : 'text-violet-900'">Restart Panel Backend</p>
                                 <p class="mt-2 text-xs" :class="darkMode ? 'text-violet-200/80' : 'text-violet-800/80'">Restart API workers and panel runtime process.</p>
                             </button>
+
+                            <button
+                                type="button"
+                                @click="confirmAndRunServiceAction('wireguard', 'restart', 'WireGuard')"
+                                :disabled="serviceActionLoading"
+                                class="rounded-2xl border p-5 text-left transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                :class="darkMode ? 'border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20' : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100'"
+                            >
+                                <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-emerald-300' : 'text-emerald-700'">Service Control</p>
+                                <p class="mt-1 text-lg font-bold" :class="darkMode ? 'text-emerald-100' : 'text-emerald-900'">Reset WireGuard</p>
+                                <p class="mt-2 text-xs" :class="darkMode ? 'text-emerald-200/80' : 'text-emerald-800/80'">Restart wg-quick interface and re-apply active peers/routes.</p>
+                            </button>
                         </div>
 
                         <div class="rounded-2xl border p-4"
@@ -636,6 +648,7 @@
                                         :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"
                                     >
                                         <option value="openvpn">OpenVPN</option>
+                                        <option value="wireguard">WireGuard</option>
                                         <option value="backend">Backend</option>
                                     </select>
                                     <button

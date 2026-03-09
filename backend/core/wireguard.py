@@ -252,6 +252,63 @@ class WireGuardManager:
             }
         return {"success": True}
 
+    def _ensure_runtime_firewall_rules(self, interface_name: str, address_range: str, wan_interface: Optional[str] = None) -> Dict[str, Any]:
+        """Ensure FORWARD and NAT masquerade rules exist even when using wg syncconf."""
+        clean_interface = self._validate_interface_name(interface_name or self.config.DEFAULT_INTERFACE)
+        external_interface = self._validate_interface_name(wan_interface or self._detect_wan_interface())
+        network = ipaddress.ip_network((address_range or "").strip(), strict=False)
+
+        checks_and_adds = [
+            (
+                ["iptables", "-C", "FORWARD", "-i", clean_interface, "-j", "ACCEPT"],
+                ["iptables", "-A", "FORWARD", "-i", clean_interface, "-j", "ACCEPT"],
+            ),
+            (
+                ["iptables", "-C", "FORWARD", "-o", clean_interface, "-j", "ACCEPT"],
+                ["iptables", "-A", "FORWARD", "-o", clean_interface, "-j", "ACCEPT"],
+            ),
+            (
+                [
+                    "iptables",
+                    "-t",
+                    "nat",
+                    "-C",
+                    "POSTROUTING",
+                    "-s",
+                    network.with_prefixlen,
+                    "-o",
+                    external_interface,
+                    "-j",
+                    "MASQUERADE",
+                ],
+                [
+                    "iptables",
+                    "-t",
+                    "nat",
+                    "-A",
+                    "POSTROUTING",
+                    "-s",
+                    network.with_prefixlen,
+                    "-o",
+                    external_interface,
+                    "-j",
+                    "MASQUERADE",
+                ],
+            ),
+        ]
+
+        for check_cmd, add_cmd in checks_and_adds:
+            check_result = self._run_command(check_cmd, check=False)
+            if check_result.returncode == 0:
+                continue
+
+            add_result = self._run_command(add_cmd, check=False)
+            if add_result.returncode != 0:
+                error_message = (add_result.stderr or add_result.stdout or "Failed to apply runtime firewall rule").strip()
+                return {"success": False, "message": error_message}
+
+        return {"success": True}
+
     def generate_server_keypair(self) -> Tuple[str, str]:
         """Generate WireGuard private/public key pair using wg(8)."""
         try:
@@ -575,6 +632,14 @@ class WireGuardManager:
         reload_result = self._reload_interface_smoothly(settings.interface_name, expected_peer_count=len(peers))
         if not reload_result.get("success"):
             return reload_result
+
+        firewall_result = self._ensure_runtime_firewall_rules(
+            interface_name=settings.interface_name,
+            address_range=settings.address_range,
+            wan_interface=wan_interface,
+        )
+        if not firewall_result.get("success"):
+            return firewall_result
 
         reload_result["peer_count"] = len(peers)
         reload_result["config_path"] = str(config_path)

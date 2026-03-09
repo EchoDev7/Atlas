@@ -20,6 +20,7 @@ from backend.config import settings
 from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
 from backend.database import engine, get_db
 from backend.models.general_settings import GeneralSettings
+from backend.models.wireguard_settings import WireGuardSettings
 from backend.dependencies import get_current_user
 from backend.models.user import Admin
 from backend.services.audit_service import extract_client_ip, record_audit_event
@@ -38,6 +39,7 @@ BACKEND_SERVICE_CANDIDATES = (
     "atlas",
 )
 LETSENCRYPT_LIVE_DIR = Path("/etc/letsencrypt/live")
+DEFAULT_WIREGUARD_INTERFACE = "wg0"
 
 
 class ServiceActionRequest(BaseModel):
@@ -267,13 +269,21 @@ def _resolve_backend_service_unit() -> str:
     return DEFAULT_BACKEND_SYSTEMD_UNIT
 
 
-def _resolve_service_unit(alias: str) -> str:
+def _resolve_service_unit(alias: str, db: Session | None = None) -> str:
     normalized = (alias or "").strip().lower()
     if normalized == "openvpn":
         return openvpn_manager.service_name
     if normalized == "backend":
         return _resolve_backend_service_unit()
-    raise HTTPException(status_code=400, detail="Unsupported service_name. Use 'openvpn' or 'backend'")
+    if normalized == "wireguard":
+        interface_name = DEFAULT_WIREGUARD_INTERFACE
+        if db is not None:
+            wg_settings = db.query(WireGuardSettings).order_by(WireGuardSettings.id.asc()).first()
+            configured_interface = (getattr(wg_settings, "interface_name", "") or "").strip()
+            if configured_interface:
+                interface_name = configured_interface
+        return f"wg-quick@{interface_name}"
+    raise HTTPException(status_code=400, detail="Unsupported service_name. Use 'openvpn', 'wireguard', or 'backend'")
 
 
 def _safe_extract_tar(archive_path: Path, destination_dir: Path) -> None:
@@ -580,13 +590,14 @@ def run_service_action(
     payload: ServiceActionRequest,
     request: Request,
     current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     action = (payload.action or "").strip().lower()
     if action not in ALLOWED_SERVICE_ACTIONS:
         raise HTTPException(status_code=400, detail="Unsupported action. Use restart, stop, or start")
 
     target_alias = (payload.service_name or "").strip().lower()
-    service_unit = _resolve_service_unit(target_alias)
+    service_unit = _resolve_service_unit(target_alias, db)
     _ensure_systemctl_available()
 
     try:
@@ -638,9 +649,10 @@ def read_service_logs(
     service_name: str,
     request: Request,
     current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     target_alias = (service_name or "").strip().lower()
-    service_unit = _resolve_service_unit(target_alias)
+    service_unit = _resolve_service_unit(target_alias, db)
     _ensure_systemctl_available()
 
     try:
