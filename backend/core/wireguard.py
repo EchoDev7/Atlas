@@ -519,6 +519,32 @@ class WireGuardManager:
     def _user_has_wireguard_identity(user: Any) -> bool:
         return bool((getattr(user, "wg_public_key", "") or "").strip() and (getattr(user, "wg_allocated_ip", "") or "").strip())
 
+    @staticmethod
+    def _extract_wireguard_peer_material(user: Any) -> tuple[str, str]:
+        """Resolve peer key/IP from unified fields first, then active legacy config rows."""
+        public_key = (getattr(user, "wg_public_key", "") or "").strip()
+        allocated_ip = (getattr(user, "wg_allocated_ip", "") or "").strip()
+
+        if public_key and allocated_ip:
+            return public_key, allocated_ip
+
+        for config in list(getattr(user, "configs", []) or []):
+            if getattr(config, "protocol", "") != "wireguard" or not bool(getattr(config, "is_active", False)):
+                continue
+
+            if not public_key:
+                public_key = (getattr(config, "wireguard_public_key", "") or "").strip()
+
+            if not allocated_ip:
+                allowed_ips = (getattr(config, "wireguard_allowed_ips", "") or "").strip()
+                if allowed_ips:
+                    allocated_ip = allowed_ips.split(",", 1)[0].strip()
+
+            if public_key and allocated_ip:
+                break
+
+        return public_key, allocated_ip
+
     def _build_peer_sections(self, peers: list[dict[str, str]]) -> str:
         blocks: list[str] = []
         for peer in peers:
@@ -617,9 +643,12 @@ class WireGuardManager:
             if not has_active_config and not has_identity:
                 continue
 
-            user_public_key = (getattr(user, "wg_public_key", "") or "").strip()
-            user_ip = (getattr(user, "wg_allocated_ip", "") or "").strip()
+            user_public_key, user_ip = self._extract_wireguard_peer_material(user)
             if not user_public_key or not user_ip:
+                logger.warning(
+                    "Skipping WireGuard peer sync for user=%s due to missing key/ip material",
+                    getattr(user, "username", "unknown"),
+                )
                 continue
             peers.append({"public_key": user_public_key, "allocated_ip": user_ip})
 
