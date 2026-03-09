@@ -4,7 +4,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, asc, desc, func, or_
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
 from pathlib import Path
 import logging
@@ -238,6 +238,65 @@ def _get_openvpn_runtime_stats() -> Tuple[Dict[str, Dict[str, int]], bool]:
     return stats, True
 
 
+def _get_wireguard_online_usernames(db: Session, online_window_seconds: int = 90) -> Set[str]:
+    """Return usernames currently online via WireGuard handshake telemetry."""
+    settings = db.query(WireGuardSettings).order_by(WireGuardSettings.id.asc()).first()
+    interface_name = (
+        (getattr(settings, "interface_name", "") if settings else "")
+        or wireguard_manager.config.DEFAULT_INTERFACE
+    ).strip() or wireguard_manager.config.DEFAULT_INTERFACE
+
+    try:
+        result = wireguard_manager._run_command(["wg", "show", interface_name, "dump"], check=False)
+    except Exception as exc:
+        logger.warning("Failed to read WireGuard runtime dump for user list: %s", exc)
+        return set()
+
+    if result.returncode != 0:
+        return set()
+
+    users_by_public_key = {
+        (str(user.wg_public_key or "").strip()): str(user.username or "").strip()
+        for user in db.query(VPNUser).all()
+        if str(user.wg_public_key or "").strip() and str(user.username or "").strip()
+    }
+
+    if not users_by_public_key:
+        return set()
+
+    now_epoch = int(datetime.utcnow().timestamp())
+    online_usernames: Set[str] = set()
+
+    for raw_line in str(result.stdout or "").splitlines():
+        line = (raw_line or "").strip()
+        if not line:
+            continue
+
+        parts = line.split("\t")
+        # all-dump peer row format:
+        # interface, public_key, preshared_key, endpoint, allowed_ips, latest_handshake, transfer_rx, transfer_tx, keepalive
+        if len(parts) >= 9:
+            public_key = (parts[1] or "").strip()
+            latest_handshake = max(0, int(parts[5] or 0)) if str(parts[5] or "0").isdigit() else 0
+        # interface-scoped dump peer row:
+        # public_key, preshared_key, endpoint, allowed_ips, latest_handshake, transfer_rx, transfer_tx, keepalive
+        elif len(parts) >= 8:
+            public_key = (parts[0] or "").strip()
+            latest_handshake = max(0, int(parts[4] or 0)) if str(parts[4] or "0").isdigit() else 0
+        else:
+            continue
+
+        username = users_by_public_key.get(public_key)
+        if not username:
+            continue
+
+        seconds_ago = now_epoch - int(latest_handshake) if latest_handshake > 0 else -1
+        if latest_handshake > 0 and seconds_ago <= int(online_window_seconds):
+            online_usernames.add(username)
+
+    return online_usernames
+
+
 def _apply_runtime_disconnect_fallback_accounting(
     db: Session,
     runtime_stats: Dict[str, Dict[str, int]],
@@ -338,17 +397,26 @@ def _apply_runtime_metrics_to_user_dict(
     user_dict: Dict[str, Any],
     runtime_stats: Dict[str, Dict[str, int]],
     runtime_available: bool,
+    wireguard_online_usernames: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
     """Overlay live session/traffic metrics on top of persisted DB values."""
+    wireguard_online = set(wireguard_online_usernames or set())
+    username = str(user_dict.get("username") or "").strip()
+    is_wireguard_online = username in wireguard_online
+
     if not runtime_available:
-        user_dict["is_online"] = int(user_dict.get("current_connections") or 0) > 0
+        is_openvpn_online = False
+        persisted_online = int(user_dict.get("current_connections") or 0) > 0
+        user_dict["openvpn_online"] = is_openvpn_online
+        user_dict["wireguard_online"] = is_wireguard_online
+        user_dict["is_online"] = bool(persisted_online or is_wireguard_online)
         return user_dict
 
-    username = str(user_dict.get("username") or "").strip()
     user_stats = runtime_stats.get(username, {})
     live_connections = max(0, int(user_stats.get("connections") or 0))
     live_sent = max(0, int(user_stats.get("bytes_sent") or 0))
     live_received = max(0, int(user_stats.get("bytes_received") or 0))
+    is_openvpn_online = live_connections > 0
 
     db_sent = max(0, int(user_dict.get("total_bytes_sent") or 0))
     db_received = max(0, int(user_dict.get("total_bytes_received") or 0))
@@ -363,7 +431,9 @@ def _apply_runtime_metrics_to_user_dict(
     persisted_connections = max(0, int(user_dict.get("current_connections") or 0))
     effective_connections = max(live_connections, persisted_connections)
     user_dict["current_connections"] = effective_connections
-    user_dict["is_online"] = effective_connections > 0
+    user_dict["openvpn_online"] = is_openvpn_online
+    user_dict["wireguard_online"] = is_wireguard_online
+    user_dict["is_online"] = bool(effective_connections > 0 or is_wireguard_online)
     user_dict["total_bytes_sent"] = total_sent
     user_dict["total_bytes_received"] = total_received
     user_dict["traffic_used_bytes"] = effective_total_bytes
@@ -459,12 +529,18 @@ async def list_users(
     total = query.count()
     users = query.offset(skip).limit(limit).all()
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    wireguard_online_usernames = _get_wireguard_online_usernames(db)
     _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, users)
     
     user_responses = []
     for user in users:
         user_dict = VPNUserResponse.from_orm(user).dict()
-        user_dict = _apply_runtime_metrics_to_user_dict(user_dict, runtime_stats, runtime_available)
+        user_dict = _apply_runtime_metrics_to_user_dict(
+            user_dict,
+            runtime_stats,
+            runtime_available,
+            wireguard_online_usernames=wireguard_online_usernames,
+        )
         user_responses.append(VPNUserResponse(**user_dict))
     
     return VPNUserListResponse(
@@ -483,6 +559,7 @@ async def list_users_runtime(
     """Fast runtime snapshot for live users page refresh (online + traffic)."""
     users = db.query(VPNUser).all()
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    wireguard_online_usernames = _get_wireguard_online_usernames(db)
     _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, users)
 
     runtime_users: List[Dict[str, Any]] = []
@@ -509,13 +586,17 @@ async def list_users_runtime(
 
         persisted_connections = max(0, int(user.current_connections or 0))
         effective_connections = max(live_connections, persisted_connections)
+        is_openvpn_online = live_connections > 0
+        is_wireguard_online = str(user.username or "").strip() in wireguard_online_usernames
 
         runtime_users.append(
             {
                 "id": user.id,
                 "username": user.username,
                 "current_connections": effective_connections,
-                "is_online": bool(effective_connections > 0),
+                "openvpn_online": bool(is_openvpn_online),
+                "wireguard_online": bool(is_wireguard_online),
+                "is_online": bool(effective_connections > 0 or is_wireguard_online),
                 "total_bytes_sent": total_sent,
                 "total_bytes_received": total_received,
                 "traffic_used_bytes": effective_total_bytes,
@@ -545,9 +626,15 @@ async def get_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    wireguard_online_usernames = _get_wireguard_online_usernames(db)
     _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, [user])
     user_dict = VPNUserDetailResponse.from_orm(user).dict()
-    user_dict = _apply_runtime_metrics_to_user_dict(user_dict, runtime_stats, runtime_available)
+    user_dict = _apply_runtime_metrics_to_user_dict(
+        user_dict,
+        runtime_stats,
+        runtime_available,
+        wireguard_online_usernames=wireguard_online_usernames,
+    )
     return VPNUserDetailResponse(**user_dict)
 
 

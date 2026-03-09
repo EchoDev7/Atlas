@@ -402,8 +402,12 @@
                                                       x-text="'Max: ' + getMaxConcurrent(client) + ' | Online: ' + (client.current_connections || 0)"></span>
                                             </div>
                                             <div class="flex items-center space-x-1 mt-1">
-                                                <span x-show="client.has_openvpn || client.enable_openvpn" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">OpenVPN</span>
-                                                <span x-show="client.has_wireguard" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">WireGuard</span>
+                                                <span x-show="client.has_openvpn || client.enable_openvpn"
+                                                      class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 transition-opacity duration-200"
+                                                      :class="client.openvpn_online ? 'opacity-100' : 'opacity-40'">OpenVPN</span>
+                                                <span x-show="client.has_wireguard"
+                                                      class="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 transition-opacity duration-200"
+                                                      :class="client.wireguard_online ? 'opacity-100' : 'opacity-40'">WireGuard</span>
                                                 <span x-show="client.has_singbox" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Sing-box</span>
                                                 <span x-show="!(client.has_openvpn || client.enable_openvpn) && !client.has_wireguard && !client.has_singbox" class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-400'">No protocols</span>
                                             </div>
@@ -1587,6 +1591,8 @@
                                 total_gb_used: runtime.total_gb_used,
                                 data_usage_percentage: runtime.data_usage_percentage,
                                 is_data_limit_exceeded: runtime.is_data_limit_exceeded,
+                                openvpn_online: !!runtime.openvpn_online,
+                                wireguard_online: !!runtime.wireguard_online,
                             };
                         });
                         return true;
