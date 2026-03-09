@@ -211,6 +211,10 @@
                               :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                             OpenVPN: <span :class="serviceStatus.is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.is_active ? 'Online' : 'Offline'"></span>
                         </span>
+                        <span class="text-xs sm:text-sm font-medium theme-transition"
+                              :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                            WireGuard: <span :class="serviceStatus.wireguard_is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.wireguard_is_active ? 'Online' : 'Offline'"></span>
+                        </span>
                         <span x-show="serviceStatus.is_mock" class="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">
                             DEV
                         </span>
@@ -1332,7 +1336,8 @@
                 serviceStatus: {
                     is_active: false,
                     is_enabled: false,
-                    is_mock: false
+                    is_mock: false,
+                    wireguard_is_active: false,
                 },
                 autoRefreshTimerId: null,
                 autoRefreshMs: 3000,
@@ -1593,17 +1598,35 @@
                 async loadServiceStatus() {
                     try {
                         const token = localStorage.getItem('access_token');
-                        const response = await fetch('/api/openvpn/service/status', {
-                            headers: {
-                                'Authorization': `Bearer ${token}`
-                            }
-                        });
+                        const [openvpnResponse, wireguardDiagnosticsResponse] = await Promise.all([
+                            fetch('/api/openvpn/service/status', {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            }),
+                            fetch('/api/system/wireguard/diagnostics', {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            }),
+                        ]);
 
-                        if (response.ok) {
-                            this.serviceStatus = await response.json();
+                        const nextStatus = { ...this.serviceStatus };
+                        if (openvpnResponse.ok) {
+                            Object.assign(nextStatus, await openvpnResponse.json());
                         }
+
+                        if (wireguardDiagnosticsResponse.ok) {
+                            const diagnostics = await wireguardDiagnosticsResponse.json();
+                            const serviceStatusCheck = diagnostics?.checks?.service_status;
+                            nextStatus.wireguard_is_active = Number(serviceStatusCheck?.return_code ?? 1) === 0;
+                        } else {
+                            nextStatus.wireguard_is_active = false;
+                        }
+
+                        this.serviceStatus = nextStatus;
                     } catch (_) {
-                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false };
+                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false, wireguard_is_active: false };
                     }
                 },
 
