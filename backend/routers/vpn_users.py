@@ -312,8 +312,10 @@ def _apply_runtime_metrics_to_user_dict(
         total_sent + total_received,
     )
 
-    user_dict["current_connections"] = live_connections
-    user_dict["is_online"] = live_connections > 0
+    persisted_connections = max(0, int(user_dict.get("current_connections") or 0))
+    effective_connections = max(live_connections, persisted_connections)
+    user_dict["current_connections"] = effective_connections
+    user_dict["is_online"] = effective_connections > 0
     user_dict["total_bytes_sent"] = total_sent
     user_dict["total_bytes_received"] = total_received
     user_dict["traffic_used_bytes"] = effective_total_bytes
@@ -326,7 +328,7 @@ def _apply_runtime_metrics_to_user_dict(
         user_dict["data_usage_percentage"] = min(100.0, (effective_total_bytes / float(limit_bytes)) * 100)
 
     max_connections = max(1, int(user_dict.get("max_concurrent_connections") or 1))
-    user_dict["is_connection_limit_exceeded"] = live_connections > max_connections
+    user_dict["is_connection_limit_exceeded"] = effective_connections > max_connections
 
     return user_dict
 
@@ -457,12 +459,15 @@ async def list_users_runtime(
         else:
             data_usage_percentage = min(100.0, (effective_total_bytes / float(limit_bytes)) * 100)
 
+        persisted_connections = max(0, int(user.current_connections or 0))
+        effective_connections = max(live_connections, persisted_connections)
+
         runtime_users.append(
             {
                 "id": user.id,
                 "username": user.username,
-                "current_connections": live_connections if runtime_available else int(user.current_connections or 0),
-                "is_online": bool(live_connections > 0) if runtime_available else bool(int(user.current_connections or 0) > 0),
+                "current_connections": effective_connections,
+                "is_online": bool(effective_connections > 0),
                 "total_bytes_sent": total_sent,
                 "total_bytes_received": total_received,
                 "traffic_used_bytes": effective_total_bytes,

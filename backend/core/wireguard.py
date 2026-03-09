@@ -149,11 +149,18 @@ class WireGuardManager:
                 updated_users += 1
 
             handshake_unix_time = int(latest_handshake)
+            seconds_ago = int(now_epoch) - handshake_unix_time if handshake_unix_time > 0 else -1
             # Exact online check requested:
             # current_unix_time - handshake_unix_time <= 90
             is_online = (
                 handshake_unix_time > 0
-                and (int(now_epoch) - handshake_unix_time) <= int(online_window_seconds)
+                and seconds_ago <= int(online_window_seconds)
+            )
+            logger.info(
+                "WG Peer %s... - Seconds since handshake: %s - Marking Online: %s",
+                public_key[:8],
+                seconds_ago,
+                is_online,
             )
             if is_online:
                 online_users += 1

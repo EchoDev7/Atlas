@@ -228,6 +228,17 @@ class LimitEnforcementScheduler:
             for config in list(getattr(user, "configs", []) or [])
         )
 
+    @staticmethod
+    def _is_recent_wireguard_presence(user: VPNUser, now: datetime, online_window_seconds: int = 90) -> bool:
+        last_connected_at = getattr(user, "last_connected_at", None)
+        if last_connected_at is None:
+            return False
+
+        now_naive = now.replace(tzinfo=None) if now.tzinfo else now
+        connected_naive = last_connected_at.replace(tzinfo=None) if last_connected_at.tzinfo else last_connected_at
+        seconds_since_connected = (now_naive - connected_naive).total_seconds()
+        return 0 <= seconds_since_connected <= float(online_window_seconds)
+
     def _apply_runtime_disconnect_fallback_accounting(
         self,
         db: Session,
@@ -342,15 +353,15 @@ class LimitEnforcementScheduler:
             for user in users:
                 previous_connections = int(user.current_connections or 0)
                 observed_connections = int(online_counts.get(user.username, 0))
+                has_wireguard_runtime_online = (
+                    self._has_active_wireguard_config(user)
+                    and self._is_recent_wireguard_presence(user, now)
+                )
 
                 desired_connections = observed_connections
-                if (
-                    observed_connections == 0
-                    and previous_connections > 0
-                    and self._has_active_wireguard_config(user)
-                ):
-                    # Avoid clobbering an active WireGuard runtime state.
-                    desired_connections = previous_connections
+                if observed_connections == 0 and has_wireguard_runtime_online:
+                    # OR logic across protocols: OpenVPN must not mark offline while WireGuard is online.
+                    desired_connections = max(1, previous_connections)
 
                 if previous_connections > 0 and observed_connections == 0:
                     stale_fixed += 1
