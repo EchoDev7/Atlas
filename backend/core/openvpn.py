@@ -3196,10 +3196,6 @@ if __name__ == "__main__":
 
         return ""
 
-    def _validate_openvpn_settings(self, settings: Dict[str, Any]) -> None:
-        """Legacy validation - kept for compatibility but should not be used."""
-        pass
-
     def generate_server_config(self, settings: Optional[Dict[str, any]] = None) -> Dict[str, any]:
         """Generate OpenVPN 2.6 server.conf content from persisted settings."""
         try:
@@ -3230,7 +3226,6 @@ if __name__ == "__main__":
                         effective_settings[key] = value
 
             settings = effective_settings
-            self._validate_openvpn_settings(settings)
 
             port = int(settings.get("port", 1194))
             protocol = str(settings.get("protocol", "udp")).lower().strip()

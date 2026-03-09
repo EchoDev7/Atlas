@@ -45,7 +45,7 @@ class ServiceActionRequest(BaseModel):
     action: str
 
 
-class TimezoneUpdateRequest(BaseModel):
+class NtpSyncUpdateRequest(BaseModel):
     ntp_server: str = "pool.ntp.org"
 
 
@@ -376,8 +376,8 @@ def get_system_time(
 
 
 @router.put("/time/timezone")
-def update_system_timezone(
-    payload: TimezoneUpdateRequest,
+def update_system_time_sync(
+    payload: NtpSyncUpdateRequest,
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

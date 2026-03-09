@@ -35,6 +35,15 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PATH="${PROJECT_ROOT}/.venv"
 SERVICE_FILE="/etc/systemd/system/atlas-backend.service"
 
+step "Ensuring critical system dependencies are installed"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y \
+  openvpn easy-rsa certbot \
+  "linux-headers-$(uname -r)" openvpn-dco-dkms \
+  iptables-persistent netfilter-persistent
+ok "Critical system dependencies verified"
+
 step "Updating source code from GitHub"
 if [[ ! -d "${PROJECT_ROOT}/.git" ]]; then
   fail "This directory is not a git repository: ${PROJECT_ROOT}"
@@ -89,17 +98,29 @@ ok "atlas-backend.service updated"
 step "Restarting services"
 if systemctl cat atlas-backend.service >/dev/null 2>&1; then
   systemctl restart atlas-backend.service
-  ok "atlas-backend.service restarted"
+  if systemctl is-active --quiet atlas-backend.service; then
+    ok "atlas-backend.service restarted"
+  else
+    fail "atlas-backend.service failed health check after restart"
+  fi
 else
   warn "atlas-backend.service not found. Skipping backend restart."
 fi
 
 if systemctl cat openvpn-server@server >/dev/null 2>&1; then
   systemctl restart openvpn-server@server
-  ok "openvpn-server@server restarted"
+  if systemctl is-active --quiet openvpn-server@server; then
+    ok "openvpn-server@server restarted"
+  else
+    warn "openvpn-server@server restart finished but service is not active"
+  fi
 elif systemctl cat openvpn@server >/dev/null 2>&1; then
   systemctl restart openvpn@server
-  ok "openvpn@server restarted"
+  if systemctl is-active --quiet openvpn@server; then
+    ok "openvpn@server restarted"
+  else
+    warn "openvpn@server restart finished but service is not active"
+  fi
 else
   warn "OpenVPN service unit not found. Skipping OpenVPN restart."
 fi

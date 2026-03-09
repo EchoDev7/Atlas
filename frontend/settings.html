@@ -1483,7 +1483,6 @@
                 backupRestoreFile: null,
                 systemTimeLoading: false,
                 systemTimeCurrent: null,
-                systemTimeCurrentTimezone: 'UTC',
                 systemTimeCurrentNtpServer: 'pool.ntp.org',
                 systemClockTimer: null,
                 serviceActionLoading: false,
@@ -2207,7 +2206,6 @@
                 },
 
                 applySystemTimePayload(payload) {
-                    this.systemTimeCurrentTimezone = 'UTC';
                     this.systemTimeCurrentNtpServer = payload.ntp_server || 'pool.ntp.org';
                     this.generalForm.system_timezone = 'UTC';
                     this.generalForm.ntp_server = payload.ntp_server || this.generalForm.ntp_server || 'pool.ntp.org';
@@ -2617,7 +2615,7 @@
                         const selectedNtpServer = (this.generalForm.ntp_server || '').trim();
                         const ntpChanged = selectedNtpServer && selectedNtpServer !== this.systemTimeCurrentNtpServer;
                         if (this.activeGeneralSection === 'system' && ntpChanged) {
-                            const tzResponse = await fetch('/api/system/time/timezone', {
+                            const ntpResponse = await fetch('/api/system/time/timezone', {
                                 method: 'PUT',
                                 headers: {
                                     Authorization: `Bearer ${token}`,
@@ -2626,10 +2624,10 @@
                                 body: JSON.stringify({ ntp_server: selectedNtpServer || 'pool.ntp.org' }),
                             });
 
-                            if (!tzResponse.ok) {
+                            if (!ntpResponse.ok) {
                                 let message = 'Failed to update NTP server';
                                 try {
-                                    const error = await tzResponse.json();
+                                    const error = await ntpResponse.json();
                                     if (typeof error.detail === 'string') {
                                         message = error.detail;
                                     }
@@ -2639,8 +2637,8 @@
                                 throw new Error(message);
                             }
 
-                            const tzPayload = await tzResponse.json();
-                            this.applySystemTimePayload(tzPayload);
+                            const ntpPayload = await ntpResponse.json();
+                            this.applySystemTimePayload(ntpPayload);
 
                             this.showToast('NTP synchronization updated successfully', 'success');
                         }
