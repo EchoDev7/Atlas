@@ -221,7 +221,9 @@ class DNSTTTunnel(BaseTunnel):
 
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
-        doh_resolver_q = shlex.quote("https://1.1.1.1/dns-query")
+        resolver_raw = str(getattr(self.settings, "dnstt_dns_resolver", "8.8.8.8") or "8.8.8.8").strip()
+        doh_resolver = resolver_raw if resolver_raw.startswith(("http://", "https://")) else f"https://{resolver_raw}/dns-query"
+        doh_resolver_q = shlex.quote(doh_resolver)
         service_steps = [
             "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q),
             "systemctl daemon-reload",

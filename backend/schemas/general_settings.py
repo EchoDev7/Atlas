@@ -40,6 +40,7 @@ class GeneralSettingsBase(BaseModel):
     foreign_ssh_password: Optional[str] = Field(default=None, max_length=255)
     tunnel_architecture: Literal["relay", "standalone"] = Field("standalone")
     dnstt_domain: Optional[str] = Field(default=None, max_length=255)
+    dnstt_dns_resolver: str = Field("8.8.8.8", min_length=3, max_length=255)
     dnstt_pubkey: Optional[str] = Field(default=None)
     dnstt_privkey: Optional[str] = Field(default=None)
 
@@ -79,7 +80,7 @@ class GeneralSettingsBase(BaseModel):
             raise ValueError("Value cannot be empty")
         return normalized
 
-    @field_validator("server_system_dns_primary", "server_system_dns_secondary")
+    @field_validator("server_system_dns_primary", "server_system_dns_secondary", "dnstt_dns_resolver")
     @classmethod
     def validate_server_system_dns(cls, value: str) -> str:
         normalized = value.strip()

@@ -611,53 +611,80 @@
                                     </select>
                                 </label>
                                 <label class="block">
-                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Architecture Mode</span>
+                                    <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                        Deployment Type
+                                        <span title="Choose Relay if this panel is restricted and needs to connect to a free server. Choose Standalone if this panel is already on a free server." class="inline-flex items-center justify-center w-4 h-4 rounded-full border text-[10px] cursor-help" :class="darkMode ? 'border-slate-500 text-slate-300' : 'border-slate-400 text-slate-600'">?</span>
+                                    </span>
                                     <select x-model="generalForm.tunnel_architecture" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                        <option value="standalone">Standalone</option>
-                                        <option value="relay">Relay</option>
+                                        <option value="standalone">Standalone (Direct on this server)</option>
+                                        <option value="relay">Relay (Bridge to Remote Server)</option>
                                     </select>
                                 </label>
-                                <label class="block">
-                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Domain</span>
-                                    <input type="text" x-model="generalForm.dnstt_domain" placeholder="tunnel.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                </label>
-                                <label class="block">
-                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign Server IP</span>
-                                    <input type="text" x-model="generalForm.foreign_server_ip" placeholder="203.0.113.10" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                </label>
-                                <label class="block">
-                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign SSH Port</span>
-                                    <input type="number" min="1" max="65535" x-model.number="generalForm.foreign_server_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                </label>
-                                <label class="block">
-                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign SSH User</span>
-                                    <input type="text" x-model="generalForm.foreign_ssh_user" placeholder="root" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                </label>
-                                <label class="block md:col-span-2">
-                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign SSH Password</span>
-                                    <input type="password" x-model="generalForm.foreign_ssh_password" placeholder="••••••••" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                </label>
-                                <label class="block md:col-span-2">
-                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Public Key (read-only)</span>
-                                    <textarea x-model="generalForm.dnstt_pubkey" rows="3" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition" :class="darkMode ? 'bg-slate-900/70 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-300 text-slate-900'"></textarea>
-                                </label>
-                                <label class="block md:col-span-2">
-                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Private Key (read-only)</span>
-                                    <textarea x-model="generalForm.dnstt_privkey" rows="3" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition" :class="darkMode ? 'bg-slate-900/70 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-300 text-slate-900'"></textarea>
-                                </label>
+
+                                <div id="dnstt_settings_block" x-show="isDnsttModeSelected()" class="contents">
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Tunnel Domain (NS Record)
+                                            <span title="The subdomain you pointed to this server via an NS record (e.g., https://www.google.com/search?q=tns.yourdomain.com)." class="inline-flex items-center justify-center w-4 h-4 rounded-full border text-[10px] cursor-help" :class="darkMode ? 'border-slate-500 text-slate-300' : 'border-slate-400 text-slate-600'">?</span>
+                                        </span>
+                                        <input type="text" x-model="generalForm.dnstt_domain" placeholder="tns.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Local DNS Resolver</span>
+                                        <input type="text" x-model="generalForm.dnstt_dns_resolver" placeholder="8.8.8.8" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    </label>
+                                    <label class="block md:col-span-2">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Public Key (read-only)</span>
+                                        <textarea x-model="generalForm.dnstt_pubkey" rows="3" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition" :class="darkMode ? 'bg-slate-900/70 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-300 text-slate-900'"></textarea>
+                                    </label>
+                                    <label class="block md:col-span-2">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Private Key (read-only)</span>
+                                        <textarea x-model="generalForm.dnstt_privkey" rows="3" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition" :class="darkMode ? 'bg-slate-900/70 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-300 text-slate-900'"></textarea>
+                                    </label>
+
+                                    <div class="md:col-span-3 pt-2">
+                                        <button
+                                            type="button"
+                                            @click="installAndGenerateDnstt()"
+                                            :disabled="dnsttInstallLoading"
+                                            class="px-4 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                            :class="darkMode ? 'bg-indigo-500 hover:bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'"
+                                        >
+                                            <span x-show="!dnsttInstallLoading">Install &amp; Generate Keys</span>
+                                            <span x-show="dnsttInstallLoading" class="inline-flex items-center gap-2">
+                                                <svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                    <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                                </svg>
+                                                Installing &amp; Compiling (Please wait...)
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div id="remote_ssh_block" x-show="isRelayDeploymentSelected()" class="contents">
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Remote Server IP (Exit Node)
+                                            <span title="The IP address of your free server outside the restricted network." class="inline-flex items-center justify-center w-4 h-4 rounded-full border text-[10px] cursor-help" :class="darkMode ? 'border-slate-500 text-slate-300' : 'border-slate-400 text-slate-600'">?</span>
+                                        </span>
+                                        <input type="text" x-model="generalForm.foreign_server_ip" placeholder="203.0.113.10" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Remote SSH Port</span>
+                                        <input type="number" min="1" max="65535" x-model.number="generalForm.foreign_server_port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Remote SSH Username</span>
+                                        <input type="text" x-model="generalForm.foreign_ssh_user" placeholder="root" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    </label>
+                                    <label class="block md:col-span-2">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Remote SSH Password</span>
+                                        <input type="password" x-model="generalForm.foreign_ssh_password" placeholder="••••••••" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    </label>
+                                </div>
                             </div>
 
-                            <div class="pt-2">
-                                <button
-                                    type="button"
-                                    @click="installAndGenerateDnstt()"
-                                    :disabled="dnsttInstallLoading"
-                                    class="px-4 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                    :class="darkMode ? 'bg-indigo-500 hover:bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'"
-                                >
-                                    <span x-text="dnsttInstallLoading ? 'Installing...' : 'Install & Generate Keys'"></span>
-                                </button>
-                            </div>
                         </div>
 
                         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -674,7 +701,7 @@
                                 </div>
                             </div>
 
-                            <div class="rounded-2xl border p-4" :class="darkMode ? 'border-violet-500/40 bg-violet-500/5' : 'border-violet-200 bg-violet-50/50'">
+                            <div x-show="isRelayDeploymentSelected()" class="rounded-2xl border p-4" :class="darkMode ? 'border-violet-500/40 bg-violet-500/5' : 'border-violet-200 bg-violet-50/50'">
                                 <h3 class="text-sm font-bold uppercase tracking-wide mb-2" :class="darkMode ? 'text-violet-300' : 'text-violet-700'">Foreign Exit Node Terminal</h3>
                                 <div x-ref="foreignTunnelTerminal" class="rounded-xl border border-slate-800 bg-black h-56 overflow-y-auto px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-emerald-300">
                                     <template x-for="(line, index) in foreignTunnelTerminalLines" :key="`foreign-terminal-${index}`">
@@ -1685,6 +1712,7 @@
                     foreign_ssh_password: '',
                     tunnel_architecture: 'standalone',
                     dnstt_domain: '',
+                    dnstt_dns_resolver: '8.8.8.8',
                     dnstt_pubkey: '',
                     dnstt_privkey: '',
                 },
@@ -2354,15 +2382,24 @@
                         }
                         this.form.data_ciphers = this.form.data_ciphers.filter(item => item !== cipher);
                     } else {
+                        if (this.form.protocol === 'tcp') {
+                            this.form.explicit_exit_notify = 0;
+                        }
                         this.form.data_ciphers = [...this.form.data_ciphers, cipher];
                     }
                 },
 
+                isDnsttModeSelected() {
+                    return (this.generalForm.tunnel_mode || '').trim().toLowerCase() === 'dnstt';
+                },
+
+                isRelayDeploymentSelected() {
+                    return (this.generalForm.tunnel_architecture || '').trim().toLowerCase() === 'relay';
+                },
+
                 normalizeLoginMaxFailedAttempts(value) {
                     const parsed = Number(value);
-                    if (!Number.isFinite(parsed)) {
-                        return 5;
-                    }
+                    if (!Number.isFinite(parsed)) return 5;
                     return Math.min(20, Math.max(1, Math.round(parsed)));
                 },
 
@@ -2437,6 +2474,7 @@
                             foreign_ssh_password: generalData.foreign_ssh_password || '',
                             tunnel_architecture: generalData.tunnel_architecture || 'standalone',
                             dnstt_domain: generalData.dnstt_domain || '',
+                            dnstt_dns_resolver: generalData.dnstt_dns_resolver || '8.8.8.8',
                             dnstt_pubkey: generalData.dnstt_pubkey || '',
                             dnstt_privkey: generalData.dnstt_privkey || '',
                         };
@@ -3046,6 +3084,7 @@
                             foreign_ssh_password: (this.generalForm.foreign_ssh_password || '').trim() || null,
                             tunnel_architecture: (this.generalForm.tunnel_architecture || 'standalone').trim() || 'standalone',
                             dnstt_domain: (this.generalForm.dnstt_domain || '').trim() || null,
+                            dnstt_dns_resolver: (this.generalForm.dnstt_dns_resolver || '8.8.8.8').trim() || '8.8.8.8',
                             dnstt_pubkey: (this.generalForm.dnstt_pubkey || '').trim() || null,
                             dnstt_privkey: (this.generalForm.dnstt_privkey || '').trim() || null,
                         };
@@ -3107,6 +3146,7 @@
                             foreign_ssh_password: updated.foreign_ssh_password || '',
                             tunnel_architecture: updated.tunnel_architecture || 'standalone',
                             dnstt_domain: updated.dnstt_domain || '',
+                            dnstt_dns_resolver: updated.dnstt_dns_resolver || '8.8.8.8',
                             dnstt_pubkey: updated.dnstt_pubkey || '',
                             dnstt_privkey: updated.dnstt_privkey || '',
                         };
