@@ -605,6 +605,28 @@ def install_and_generate_dnstt(
 
     install_result = tunnel.install_dependencies()
     if not install_result.get("success"):
+        detail_message = str(install_result.get("message") or "DNSTT install failed")
+        local_info = install_result.get("local") or {}
+        foreign_info = install_result.get("foreign") or {}
+        local_error = str(local_info.get("error") or "").strip()
+        foreign_error = str(foreign_info.get("error") or "").strip()
+
+        if local_error:
+            detail_message = f"{detail_message}: {local_error}"
+        elif foreign_error:
+            detail_message = f"{detail_message}: {foreign_error}"
+
+        local_results = local_info.get("results") or []
+        foreign_results = foreign_info.get("results") or []
+        if isinstance(local_results, list) and local_results:
+            failed_command = str((local_results[-1] or {}).get("command") or "").strip()
+            if failed_command:
+                detail_message = f"{detail_message} [command: {failed_command}]"
+        elif isinstance(foreign_results, list) and foreign_results:
+            failed_command = str((foreign_results[-1] or {}).get("command") or "").strip()
+            if failed_command:
+                detail_message = f"{detail_message} [command: {failed_command}]"
+
         record_audit_event(
             action="dnstt_install_generate",
             success=False,
@@ -612,9 +634,13 @@ def install_and_generate_dnstt(
             resource_type="system_tunnel",
             resource_id="dnstt",
             ip_address=extract_client_ip(request),
-            details={"stage": "install", "message": install_result.get("message")},
+            details={
+                "stage": "install",
+                "message": install_result.get("message"),
+                "detail_message": detail_message,
+            },
         )
-        raise HTTPException(status_code=500, detail=install_result.get("message", "DNSTT install failed"))
+        raise HTTPException(status_code=500, detail=detail_message)
 
     keys_result = tunnel.generate_keys()
     if not keys_result.get("success"):
