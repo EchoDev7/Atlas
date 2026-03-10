@@ -676,7 +676,8 @@
                                                 <option :value="1232">1232 (Default - Fast)</option>
                                                 <option :value="900">900 (Safe - Moderate DPI)</option>
                                                 <option :value="500">500 (Extreme - Severe DPI/Blackout)</option>
-                                                <template x-if="![1232, 900, 500].includes(Number(generalForm.dnstt_mtu))">
+                                                <option :value="50">50 (Ultra Extreme - Last Resort)</option>
+                                                <template x-if="![1232, 900, 500, 50].includes(Number(generalForm.dnstt_mtu))">
                                                     <option :value="Number(generalForm.dnstt_mtu)" x-text="`${Number(generalForm.dnstt_mtu)} (Adaptive Detected)`"></option>
                                                 </template>
                                             </select>
@@ -733,19 +734,19 @@
                                         <div class="grid md:grid-cols-4 gap-3">
                                             <label class="block">
                                                 <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Upload Min (bytes)</span>
-                                                <input type="number" x-model.number="generalForm.dnstt_mtu_upload_min" min="256" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                                <input type="number" x-model.number="generalForm.dnstt_mtu_upload_min" min="50" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                             </label>
                                             <label class="block">
                                                 <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Upload Max (bytes)</span>
-                                                <input type="number" x-model.number="generalForm.dnstt_mtu_upload_max" min="256" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                                <input type="number" x-model.number="generalForm.dnstt_mtu_upload_max" min="50" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                             </label>
                                             <label class="block">
                                                 <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Download Min (bytes)</span>
-                                                <input type="number" x-model.number="generalForm.dnstt_mtu_download_min" min="256" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                                <input type="number" x-model.number="generalForm.dnstt_mtu_download_min" min="50" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                             </label>
                                             <label class="block">
                                                 <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Download Max (bytes)</span>
-                                                <input type="number" x-model.number="generalForm.dnstt_mtu_download_max" min="256" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                                <input type="number" x-model.number="generalForm.dnstt_mtu_download_max" min="50" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                             </label>
                                         </div>
 
@@ -3686,8 +3687,8 @@
                         }
 
                         const result = await response.json();
-                        const recommended = Number(result.recommended_mtu) || 500;
-                        this.generalForm.dnstt_mtu = (recommended >= 500 && recommended <= 1400) ? recommended : 500;
+                        const recommended = Number(result.recommended_mtu) || 50;
+                        this.generalForm.dnstt_mtu = (recommended >= 50 && recommended <= 1400) ? recommended : 50;
                         this.showToast(`Optimal MTU detected: ${this.generalForm.dnstt_mtu}`, 'success');
                     } catch (error) {
                         this.showToast(error.message || 'DNSTT MTU probe failed', 'error');

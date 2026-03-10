@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, Integer, String, Text
 
 from backend.database import Base
 
@@ -9,6 +9,11 @@ class GeneralSettings(Base):
     """Singleton table for server-wide settings shared across protocols."""
 
     __tablename__ = "general_settings"
+    __table_args__ = (
+        CheckConstraint("dnstt_mtu >= 50", name="ck_general_settings_dnstt_mtu_min_50"),
+        CheckConstraint("dnstt_mtu_upload_min >= 50", name="ck_general_settings_dnstt_mtu_upload_min_50"),
+        CheckConstraint("dnstt_mtu_download_min >= 50", name="ck_general_settings_dnstt_mtu_download_min_50"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     server_address = Column(String(255), nullable=True)

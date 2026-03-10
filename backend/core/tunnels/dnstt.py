@@ -35,6 +35,8 @@ class CommandResult:
 class DNSTTTunnel(BaseTunnel):
     mode = "dnstt"
     KNOWN_STABLE_COMMIT = "eb4f41670ec77126e14199d223a280569b32cb30"
+    MIN_MTU = 50
+    MAX_MTU = 1400
 
     def __init__(self, *, settings: object):
         super().__init__(settings=settings)
@@ -94,8 +96,8 @@ class DNSTTTunnel(BaseTunnel):
         return bool(getattr(self.settings, "dnstt_adaptive_per_resolver", True))
 
     def _mtu_payload_bounds(self) -> tuple[int, int]:
-        payload_min = self._safe_int(getattr(self.settings, "dnstt_mtu_upload_min", 472), 472, minimum=256, maximum=1400)
-        payload_max = self._safe_int(getattr(self.settings, "dnstt_mtu_upload_max", 1204), 1204, minimum=256, maximum=1400)
+        payload_min = self._safe_int(getattr(self.settings, "dnstt_mtu_upload_min", 472), 472, minimum=self.MIN_MTU, maximum=self.MAX_MTU)
+        payload_max = self._safe_int(getattr(self.settings, "dnstt_mtu_upload_max", 1204), 1204, minimum=self.MIN_MTU, maximum=self.MAX_MTU)
         if payload_min > payload_max:
             payload_min, payload_max = payload_max, payload_min
         return payload_min, payload_max
@@ -126,22 +128,22 @@ class DNSTTTunnel(BaseTunnel):
 
     def _mtu_candidates(self) -> list[int]:
         payload_min, payload_max = self._mtu_payload_bounds()
-        mtu_min = max(500, min(1400, payload_min + 28))
-        mtu_max = max(500, min(1400, payload_max + 28))
+        mtu_min = max(self.MIN_MTU, min(self.MAX_MTU, payload_min))
+        mtu_max = max(self.MIN_MTU, min(self.MAX_MTU, payload_max))
         if mtu_min > mtu_max:
             mtu_min, mtu_max = mtu_max, mtu_min
 
-        baseline = [1400, 1320, 1232, 1200, 1100, 1000, 900, 800, 700, 600, 500]
+        baseline = [1400, 1320, 1232, 1200, 1100, 1000, 900, 800, 700, 600, 500, 450, 400, 350, 300, 250, 200, 150, 100, 75, 50]
         chosen: list[int] = []
         for candidate in baseline:
             if mtu_min <= candidate <= mtu_max:
                 chosen.append(candidate)
 
         if not chosen:
-            fallback = self._safe_int(self._mtu_value(), 1232, minimum=500, maximum=1400)
+            fallback = self._safe_int(self._mtu_value(), 1232, minimum=self.MIN_MTU, maximum=self.MAX_MTU)
             chosen = [fallback]
 
-        chosen.append(self._safe_int(self._mtu_value(), 1232, minimum=500, maximum=1400))
+        chosen.append(self._safe_int(self._mtu_value(), 1232, minimum=self.MIN_MTU, maximum=self.MAX_MTU))
         unique_desc = sorted(set(chosen), reverse=True)
         return unique_desc
 
@@ -166,10 +168,10 @@ class DNSTTTunnel(BaseTunnel):
 
     def _probe_mtu_for_target(self, probe_target: str, mtu_candidates: list[int]) -> int:
         if not probe_target:
-            return 500
+            return self.MIN_MTU
 
         for mtu_value in mtu_candidates:
-            payload_size = max(0, mtu_value - 28)
+            payload_size = max(0, mtu_value)
             for _ in range(self._transport_retry_count() + 1):
                 try:
                     completed = subprocess.run(
@@ -184,11 +186,11 @@ class DNSTTTunnel(BaseTunnel):
                 except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
                     continue
 
-        return 500
+        return self.MIN_MTU
 
     def _mtu_value(self) -> int:
         raw_value = getattr(self.settings, "dnstt_mtu", 1232)
-        return self._safe_int(raw_value, 1232, minimum=500, maximum=1400)
+        return self._safe_int(raw_value, 1232, minimum=self.MIN_MTU, maximum=self.MAX_MTU)
 
     def probe_optimal_mtu(self, resolver_list_string: str) -> int:
         probe_target = self._probe_target_from_resolver(resolver_list_string)
@@ -340,7 +342,66 @@ class DNSTTTunnel(BaseTunnel):
             return self._mtu_value()
         if resolver_info is None:
             return self._mtu_value()
-        return self._safe_int(resolver_info.get("recommended_mtu"), self._mtu_value(), minimum=500, maximum=1400)
+        return self._safe_int(resolver_info.get("recommended_mtu"), self._mtu_value(), minimum=self.MIN_MTU, maximum=self.MAX_MTU)
+
+    def _client_reset_steps(self, *, remove_multiplexer_script: bool) -> list[str]:
+        remove_parts = [
+            "/etc/systemd/system/dnstt-optimizer.service",
+            "/etc/systemd/system/dnstt-multiplexer.service",
+            "/usr/local/bin/dnstt-optimizer.py",
+            "/var/lib/dnstt/current_resolver",
+        ]
+        if remove_multiplexer_script:
+            remove_parts.append("/usr/local/bin/dnstt_multiplexer.py")
+
+        return [
+            "systemctl disable --now dnstt-client.service >/dev/null 2>&1 || true",
+            "systemctl disable --now dnstt-optimizer.service >/dev/null 2>&1 || true",
+            "systemctl disable --now dnstt-multiplexer.service >/dev/null 2>&1 || true",
+            f"rm -f {' '.join(remove_parts)}",
+            "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
+            "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
+        ]
+
+    def _client_service_unit_step(
+        self,
+        *,
+        service_name: str,
+        service_description: str,
+        doh_q: str,
+        pubkey_q: str,
+        domain_q: str,
+        mtu_q: str,
+        local_udp_port: int,
+    ) -> str:
+        return (
+            "cat > /etc/systemd/system/{service_name} <<'EOF'\n"
+            "[Unit]\n"
+            "Description={service_description}\n"
+            "After=network.target\n\n"
+            "[Service]\n"
+            "Type=simple\n"
+            "ExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\n"
+            "Restart=always\n"
+            "RestartSec=3\n"
+            "NoNewPrivileges=true\n"
+            "ProtectSystem=strict\n"
+            "ProtectHome=true\n"
+            "PrivateTmp=true\n\n"
+            "[Install]\n"
+            "WantedBy=multi-user.target\n"
+            "EOF"
+        ).format(
+            service_name=service_name,
+            service_description=service_description,
+            doh=doh_q,
+            port=local_udp_port,
+            pubkey=pubkey_q,
+            domain=domain_q,
+            mtu=mtu_q,
+        )
 
     def _resolver_info_by_selected_doh(self, telemetry: dict, selected_doh: str) -> dict | None:
         selected = str(selected_doh or "").strip()
@@ -877,14 +938,7 @@ class DNSTTTunnel(BaseTunnel):
 
         multiplexer_source_q = shlex.quote(self._multiplexer_script_source_path())
         service_steps = [
-            "systemctl disable --now dnstt-client.service >/dev/null 2>&1 || true",
-            "systemctl disable --now dnstt-optimizer.service >/dev/null 2>&1 || true",
-            "systemctl disable --now dnstt-multiplexer.service >/dev/null 2>&1 || true",
-            "rm -f /etc/systemd/system/dnstt-optimizer.service /etc/systemd/system/dnstt-multiplexer.service /usr/local/bin/dnstt-optimizer.py /var/lib/dnstt/current_resolver",
-            "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
-            "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
-            "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
-            "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
+            *self._client_reset_steps(remove_multiplexer_script=False),
             "install -m 0755 {source} /usr/local/bin/dnstt_multiplexer.py".format(source=multiplexer_source_q),
         ]
 
@@ -897,14 +951,14 @@ class DNSTTTunnel(BaseTunnel):
             doh_resolver_q = shlex.quote(resolver["selected_doh"])
             mtu_q = shlex.quote(str(self._selected_mtu_for_resolver(resolver)))
             service_steps.append(
-                "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Duplication Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
+                self._client_service_unit_step(
                     service_name=service_name,
-                    idx=idx,
-                    doh=doh_resolver_q,
-                    port=local_udp_port,
-                    pubkey=pubkey_q,
-                    domain=domain_q,
-                    mtu=mtu_q,
+                    service_description=f"DNSTT Client Duplication Instance {idx}",
+                    doh_q=doh_resolver_q,
+                    pubkey_q=pubkey_q,
+                    domain_q=domain_q,
+                    mtu_q=mtu_q,
+                    local_udp_port=local_udp_port,
                 )
             )
             service_steps.append(f"systemctl enable {service_name_q}")
@@ -951,14 +1005,16 @@ class DNSTTTunnel(BaseTunnel):
         self._persist_telemetry(resolver_telemetry)
         doh_resolver_q = shlex.quote(doh_resolver)
         service_steps = [
-            "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
-            "systemctl disable --now dnstt-optimizer.service >/dev/null 2>&1 || true",
-            "systemctl disable --now dnstt-multiplexer.service >/dev/null 2>&1 || true",
-            "rm -f /etc/systemd/system/dnstt-optimizer.service /etc/systemd/system/dnstt-multiplexer.service /usr/local/bin/dnstt-optimizer.py /usr/local/bin/dnstt_multiplexer.py /var/lib/dnstt/current_resolver",
-            "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
-            "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
-            "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
-            "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q, mtu=mtu_q),
+            *self._client_reset_steps(remove_multiplexer_script=True),
+            self._client_service_unit_step(
+                service_name="dnstt-client.service",
+                service_description="DNSTT Client",
+                doh_q=doh_resolver_q,
+                pubkey_q=pubkey_q,
+                domain_q=domain_q,
+                mtu_q=mtu_q,
+                local_udp_port=5301,
+            ),
             "systemctl daemon-reload",
             "systemctl enable dnstt-client.service",
             "systemctl restart dnstt-client.service",
@@ -993,14 +1049,7 @@ class DNSTTTunnel(BaseTunnel):
         self._persist_telemetry(resolver_telemetry)
 
         service_steps = [
-            "systemctl disable --now dnstt-client.service >/dev/null 2>&1 || true",
-            "systemctl disable --now dnstt-optimizer.service >/dev/null 2>&1 || true",
-            "systemctl disable --now dnstt-multiplexer.service >/dev/null 2>&1 || true",
-            "rm -f /etc/systemd/system/dnstt-optimizer.service /etc/systemd/system/dnstt-multiplexer.service /usr/local/bin/dnstt-optimizer.py /usr/local/bin/dnstt_multiplexer.py /var/lib/dnstt/current_resolver",
-            "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
-            "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
-            "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
-            "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
+            *self._client_reset_steps(remove_multiplexer_script=True),
             "systemctl daemon-reload",
         ]
 
@@ -1013,14 +1062,14 @@ class DNSTTTunnel(BaseTunnel):
             doh_resolver_q = shlex.quote(resolver["selected_doh"])
             mtu_q = shlex.quote(str(self._selected_mtu_for_resolver(resolver)))
             service_steps.append(
-                "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
+                self._client_service_unit_step(
                     service_name=service_name,
-                    idx=idx,
-                    doh=doh_resolver_q,
-                    port=local_udp_port,
-                    pubkey=pubkey_q,
-                    domain=domain_q,
-                    mtu=mtu_q,
+                    service_description=f"DNSTT Client Instance {idx}",
+                    doh_q=doh_resolver_q,
+                    pubkey_q=pubkey_q,
+                    domain_q=domain_q,
+                    mtu_q=mtu_q,
+                    local_udp_port=local_udp_port,
                 )
             )
             service_steps.append(f"systemctl enable {service_name_q}")
@@ -1230,14 +1279,17 @@ if __name__ == '__main__':
 """
         optimizer_script = optimizer_script.replace("__ATLAS_OPTIMIZER_PAYLOAD__", repr(json.dumps(optimizer_payload)))
         service_steps = [
-            "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
-            "systemctl disable --now dnstt-multiplexer.service >/dev/null 2>&1 || true",
-            "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
-            "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
-            "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
-            "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q, mtu=mtu_q),
+            *self._client_reset_steps(remove_multiplexer_script=True),
+            self._client_service_unit_step(
+                service_name="dnstt-client.service",
+                service_description="DNSTT Client",
+                doh_q=doh_resolver_q,
+                pubkey_q=pubkey_q,
+                domain_q=domain_q,
+                mtu_q=mtu_q,
+                local_udp_port=5301,
+            ),
             "mkdir -p /var/lib/dnstt",
-            "rm -f /etc/systemd/system/dnstt-multiplexer.service /usr/local/bin/dnstt_multiplexer.py",
             "cat > /usr/local/bin/dnstt-optimizer.py <<'PY'\n{script}\nPY".format(script=optimizer_script),
             "chmod 0755 /usr/local/bin/dnstt-optimizer.py",
             "cat > /etc/systemd/system/dnstt-optimizer.service <<'EOF'\n[Unit]\nDescription=DNSTT Least-Latency Optimizer\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/python3 /usr/local/bin/dnstt-optimizer.py\nRestart=always\nRestartSec=5\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF",

@@ -678,8 +678,8 @@ def probe_dnstt_mtu(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"DNSTT MTU probe failed: {exc}") from exc
 
-    if not 500 <= recommended_mtu <= 1400:
-        recommended_mtu = 500
+    if not 50 <= recommended_mtu <= 1400:
+        recommended_mtu = 50
 
     return {"recommended_mtu": recommended_mtu}
 
