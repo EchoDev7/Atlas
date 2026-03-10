@@ -819,7 +819,13 @@ class DNSTTTunnel(BaseTunnel):
 
     def generate_keys(self) -> dict:
         target = "foreign" if self._is_relay_mode() else "local"
-        command = f"{self.server_bin} -gen"
+        command = (
+            "tmp_priv=$(mktemp) && tmp_pub=$(mktemp) && "
+            f"{self.server_bin} -gen-key -privkey-file \"$tmp_priv\" -pubkey-file \"$tmp_pub\" && "
+            "printf 'priv: %s\\n' \"$(cat \"$tmp_priv\")\" && "
+            "printf 'pub: %s\\n' \"$(cat \"$tmp_pub\")\" && "
+            "rm -f \"$tmp_priv\" \"$tmp_pub\""
+        )
         result = self._run_on_target(command=command, target=target, timeout=120)
         if not result.success:
             return {
