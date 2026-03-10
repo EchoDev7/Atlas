@@ -881,28 +881,15 @@ class DNSTTTunnel(BaseTunnel):
                 "message": "DNSTT active domain and public key are required to generate client profile",
             }
 
-        normalized_resolvers: list[str] = []
+        configured_resolvers: list[str] = []
         seen = set()
         for resolver in self._resolver_candidates():
-            selected = self._normalize_doh_endpoint(resolver)
+            selected = resolver.strip()
             key = selected.lower()
             if key in seen:
                 continue
             seen.add(key)
-            normalized_resolvers.append(selected)
-
-        default_fallbacks = [
-            "https://cloudflare-dns.com/dns-query",
-            "https://dns.google/dns-query",
-            "https://dns.quad9.net/dns-query",
-            "https://dns.nextdns.io/dns-query",
-        ]
-        for resolver in default_fallbacks:
-            key = resolver.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            normalized_resolvers.append(resolver)
+            configured_resolvers.append(selected)
 
         profile = {
             "schema": "atlas.dnstt.client_profile.v1",
@@ -929,10 +916,15 @@ class DNSTTTunnel(BaseTunnel):
                     minimum=5,
                     maximum=80,
                 ),
+                "resolver_endpoints": {
+                    "primary": configured_resolvers[0],
+                    "fallback_chain": configured_resolvers[1:],
+                    "all": configured_resolvers,
+                },
                 "doh_endpoints": {
-                    "primary": normalized_resolvers[0],
-                    "fallback_chain": normalized_resolvers[1:],
-                    "all": normalized_resolvers,
+                    "primary": configured_resolvers[0],
+                    "fallback_chain": configured_resolvers[1:],
+                    "all": configured_resolvers,
                 },
             },
             "mtu": {
