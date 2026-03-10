@@ -624,10 +624,18 @@
                                 <div id="dnstt_settings_block" x-show="isDnsttModeSelected()" class="contents">
                                     <label class="block">
                                         <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                            Tunnel Domain (NS Record)
-                                            <span title="Your NS record domain (e.g., https://www.google.com/search?q=tns.yourdomain.com)." style="cursor:help;">❓</span>
+                                            Tunnel Domains (NS Records)
+                                            <span title="Enter one or more NS record domains, comma-separated (e.g., tns1.example.com, tns2.example.com)." style="cursor:help;">❓</span>
                                         </span>
-                                        <input type="text" x-model="generalForm.dnstt_domain" placeholder="tns.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                        <input type="text" x-model="generalForm.dnstt_domain" placeholder="tns1.example.com, tns2.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Active Tunnel Domain</span>
+                                        <select x-model="generalForm.dnstt_active_domain" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            <template x-for="(domainOption, idx) in getDnsttDomainOptions()" :key="`dnstt-domain-option-${idx}`">
+                                                <option :value="domainOption" x-text="domainOption"></option>
+                                            </template>
+                                        </select>
                                     </label>
                                     <label class="block">
                                         <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
@@ -1768,6 +1776,7 @@
                     foreign_ssh_password: '',
                     tunnel_architecture: 'standalone',
                     dnstt_domain: '',
+                    dnstt_active_domain: '',
                     dnstt_dns_resolver: '8.8.8.8',
                     dnstt_telemetry: null,
                     dnstt_pubkey: '',
@@ -2335,6 +2344,22 @@
                         }
                     });
 
+                    this.$watch('generalForm.dnstt_domain', () => {
+                        this.ensureDnsttActiveDomainSelection();
+                    });
+
+                    this.$watch('generalForm.dnstt_active_domain', (activeDomain) => {
+                        if (!activeDomain) {
+                            this.ensureDnsttActiveDomainSelection();
+                            return;
+                        }
+                        const options = this.getDnsttDomainOptions();
+                        const selected = String(activeDomain).trim();
+                        if (!options.some(option => option.toLowerCase() === selected.toLowerCase())) {
+                            this.ensureDnsttActiveDomainSelection();
+                        }
+                    });
+
                     this.$watch('activeGeneralSection', async (section) => {
                         if (section === 'network') {
                             await this.loadServerIps();
@@ -2452,6 +2477,46 @@
 
                 isRelayDeploymentSelected() {
                     return (this.generalForm.tunnel_architecture || '').trim().toLowerCase() === 'relay';
+                },
+
+                getDnsttDomainOptions() {
+                    const domainRaw = (this.generalForm.dnstt_domain || '').trim();
+                    if (!domainRaw) {
+                        return [];
+                    }
+
+                    const options = [];
+                    const seen = new Set();
+                    for (const rawEntry of domainRaw.split(',')) {
+                        const entry = rawEntry.trim().replace(/\.$/, '');
+                        if (!entry) {
+                            continue;
+                        }
+                        const key = entry.toLowerCase();
+                        if (seen.has(key)) {
+                            continue;
+                        }
+                        seen.add(key);
+                        options.push(entry);
+                    }
+                    return options;
+                },
+
+                ensureDnsttActiveDomainSelection() {
+                    const options = this.getDnsttDomainOptions();
+                    if (options.length === 0) {
+                        this.generalForm.dnstt_active_domain = '';
+                        return;
+                    }
+
+                    const selected = (this.generalForm.dnstt_active_domain || '').trim().replace(/\.$/, '');
+                    if (selected && options.some(option => option.toLowerCase() === selected.toLowerCase())) {
+                        const canonical = options.find(option => option.toLowerCase() === selected.toLowerCase());
+                        this.generalForm.dnstt_active_domain = canonical || options[0];
+                        return;
+                    }
+
+                    this.generalForm.dnstt_active_domain = options[0];
                 },
 
                 getDnsttTelemetry() {
@@ -2575,11 +2640,13 @@
                             foreign_ssh_password: generalData.foreign_ssh_password || '',
                             tunnel_architecture: generalData.tunnel_architecture || 'standalone',
                             dnstt_domain: generalData.dnstt_domain || '',
+                            dnstt_active_domain: generalData.dnstt_active_domain || '',
                             dnstt_dns_resolver: generalData.dnstt_dns_resolver || '8.8.8.8',
                             dnstt_telemetry: generalData.dnstt_telemetry || null,
                             dnstt_pubkey: generalData.dnstt_pubkey || '',
                             dnstt_privkey: generalData.dnstt_privkey || '',
                         };
+                        this.ensureDnsttActiveDomainSelection();
 
                         if (Number(this.generalForm.panel_https_port) === Number(this.generalForm.subscription_https_port)) {
                             const fallbackPort = [2053, 2083, 2087, 2096, 8443].find(port => port !== Number(this.generalForm.panel_https_port));
@@ -3186,6 +3253,7 @@
                             foreign_ssh_password: (this.generalForm.foreign_ssh_password || '').trim() || null,
                             tunnel_architecture: (this.generalForm.tunnel_architecture || 'standalone').trim() || 'standalone',
                             dnstt_domain: (this.generalForm.dnstt_domain || '').trim() || null,
+                            dnstt_active_domain: (this.generalForm.dnstt_active_domain || '').trim() || null,
                             dnstt_dns_resolver: (this.generalForm.dnstt_dns_resolver || '8.8.8.8').trim() || '8.8.8.8',
                             dnstt_telemetry: this.getDnsttTelemetry(),
                             dnstt_pubkey: (this.generalForm.dnstt_pubkey || '').trim() || null,
@@ -3249,11 +3317,13 @@
                             foreign_ssh_password: updated.foreign_ssh_password || '',
                             tunnel_architecture: updated.tunnel_architecture || 'standalone',
                             dnstt_domain: updated.dnstt_domain || '',
+                            dnstt_active_domain: updated.dnstt_active_domain || '',
                             dnstt_dns_resolver: updated.dnstt_dns_resolver || '8.8.8.8',
                             dnstt_telemetry: updated.dnstt_telemetry || null,
                             dnstt_pubkey: updated.dnstt_pubkey || '',
                             dnstt_privkey: updated.dnstt_privkey || '',
                         };
+                        this.ensureDnsttActiveDomainSelection();
 
                         if (!this.generalForm.global_ipv6_support) {
                             this.form.ipv6_network = '';
@@ -3261,8 +3331,10 @@
                         }
 
                         this.showToast('Settings applied successfully', 'success');
+                        return true;
                     } catch (error) {
                         this.showToast(error.message || 'Failed to save settings', 'error');
+                        return false;
                     } finally {
                         this.saving = false;
                     }
@@ -3271,6 +3343,11 @@
                 async installAndGenerateDnstt() {
                     this.dnsttInstallLoading = true;
                     try {
+                        this.ensureDnsttActiveDomainSelection();
+                        const saved = await this.saveGeneralSettings();
+                        if (!saved) {
+                            throw new Error('Please fix settings validation errors before DNSTT install');
+                        }
                         const token = localStorage.getItem('access_token');
                         const response = await fetch('/api/settings/tunnel/dnstt/install-generate', {
                             method: 'POST',

@@ -30,6 +30,7 @@ class CommandResult:
 
 class DNSTTTunnel(BaseTunnel):
     mode = "dnstt"
+    KNOWN_STABLE_COMMIT = "eb4f41670ec77126e14199d223a280569b32cb30"
 
     def __init__(self, *, settings: object):
         super().__init__(settings=settings)
@@ -56,6 +57,30 @@ class DNSTTTunnel(BaseTunnel):
             seen.add(normalized_key)
             unique_values.append(value)
         return unique_values
+
+    def _domain_candidates(self) -> list[str]:
+        domains_raw = str(getattr(self.settings, "dnstt_domain", "") or "").strip()
+        values = [item.strip() for item in domains_raw.split(",") if item and item.strip()]
+        unique_values: list[str] = []
+        seen = set()
+        for value in values:
+            normalized_key = value.lower().rstrip(".")
+            if normalized_key in seen:
+                continue
+            seen.add(normalized_key)
+            unique_values.append(value.rstrip("."))
+        return unique_values
+
+    def _active_domain(self) -> str:
+        candidates = self._domain_candidates()
+        active_domain = str(getattr(self.settings, "dnstt_active_domain", "") or "").strip().rstrip(".")
+        if not candidates:
+            return active_domain
+        if active_domain:
+            for candidate in candidates:
+                if candidate.lower() == active_domain.lower():
+                    return candidate
+        return candidates[0]
 
     def _normalize_doh_endpoint(self, candidate: str) -> str:
         trimmed = candidate.strip()
@@ -210,6 +235,20 @@ class DNSTTTunnel(BaseTunnel):
         finally:
             client.close()
 
+    def _run_remote_with_client(self, command: str, ssh_client: paramiko.SSHClient, timeout: int = 900) -> CommandResult:
+        _, stdout, stderr = ssh_client.exec_command(command, timeout=timeout)
+        stdout_text = (stdout.read() or b"").decode("utf-8", errors="replace").strip()
+        stderr_text = (stderr.read() or b"").decode("utf-8", errors="replace").strip()
+        return_code = int(stdout.channel.recv_exit_status())
+        return CommandResult(
+            success=return_code == 0,
+            command=command,
+            return_code=return_code,
+            stdout=stdout_text,
+            stderr=stderr_text,
+            node="foreign",
+        )
+
     def _run_on_target(self, command: str, target: str, timeout: int = 900) -> CommandResult:
         if target == "foreign":
             return self._run_remote(command=command, timeout=timeout)
@@ -237,11 +276,122 @@ class DNSTTTunnel(BaseTunnel):
                 }
         return {"success": True, "node": target, "results": command_results}
 
+    def _ensure_port_53_free(self, ssh_client: paramiko.SSHClient | None = None) -> dict:
+        target = "foreign" if self._is_relay_mode() else "local"
+        check_command = (
+            "if ss -H -ulpn 2>/dev/null | awk '{print $5}' | grep -Eq '(^|.*:)53$'; then "
+            "if ss -H -ulpn 2>/dev/null | grep -qi 'systemd-resolved' || "
+            "lsof -nP -iUDP:53 2>/dev/null | grep -qi 'systemd-resolved'; then "
+            "echo occupied_by_systemd_resolved; "
+            "else echo occupied_by_other_process; fi; "
+            "else echo free; fi"
+        )
+
+        if target == "foreign" and ssh_client is not None:
+            check_result = self._run_remote_with_client(command=check_command, ssh_client=ssh_client, timeout=60)
+        else:
+            check_result = self._run_on_target(command=check_command, target=target, timeout=60)
+
+        if not check_result.success:
+            return {
+                "success": False,
+                "message": "Failed to inspect UDP port 53 state",
+                "target": target,
+                "details": {
+                    "node": check_result.node,
+                    "command": check_result.command,
+                    "return_code": check_result.return_code,
+                    "stdout": check_result.stdout,
+                    "stderr": check_result.stderr,
+                },
+            }
+
+        check_status = (check_result.stdout or "").strip().lower()
+        if check_status == "free":
+            return {
+                "success": True,
+                "message": "UDP port 53 is already free",
+                "target": target,
+                "details": {"check_status": check_status},
+            }
+
+        if check_status == "occupied_by_other_process":
+            return {
+                "success": False,
+                "message": "UDP port 53 is occupied by a non-systemd-resolved process",
+                "target": target,
+                "details": {"check_status": check_status},
+            }
+
+        if check_status != "occupied_by_systemd_resolved":
+            return {
+                "success": False,
+                "message": "Unable to determine UDP port 53 ownership safely",
+                "target": target,
+                "details": {"check_status": check_status},
+            }
+
+        safe_fix_steps = [
+            "if grep -Eq '^[#[:space:]]*DNSStubListener=' /etc/systemd/resolved.conf; then "
+            "sed -i -E \"s|^[#[:space:]]*DNSStubListener=.*|DNSStubListener=no|\" /etc/systemd/resolved.conf; "
+            "else printf '\nDNSStubListener=no\n' >> /etc/systemd/resolved.conf; fi",
+            "systemctl restart systemd-resolved",
+            "rm -f /etc/resolv.conf && ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf",
+        ]
+
+        if target == "foreign" and ssh_client is not None:
+            command_results: list[dict] = []
+            for command in safe_fix_steps:
+                step_result = self._run_remote_with_client(command=command, ssh_client=ssh_client, timeout=120)
+                command_results.append(
+                    {
+                        "node": step_result.node,
+                        "command": step_result.command,
+                        "return_code": step_result.return_code,
+                        "stdout": step_result.stdout,
+                        "stderr": step_result.stderr,
+                    }
+                )
+                if not step_result.success:
+                    return {
+                        "success": False,
+                        "message": "Port 53 safe-fix failed",
+                        "target": target,
+                        "details": {
+                            "check_status": check_status,
+                            "results": command_results,
+                        },
+                    }
+            return {
+                "success": True,
+                "message": "Port 53 was occupied by systemd-resolved and has been safely freed",
+                "target": target,
+                "details": {
+                    "check_status": check_status,
+                    "results": command_results,
+                },
+            }
+
+        safe_fix_result = self._run_steps(target=target, steps=safe_fix_steps, timeout=120)
+        return {
+            "success": bool(safe_fix_result.get("success")),
+            "message": "Port 53 was occupied by systemd-resolved and has been safely freed"
+            if safe_fix_result.get("success")
+            else "Port 53 safe-fix failed",
+            "target": target,
+            "details": {
+                "check_status": check_status,
+                "safe_fix": safe_fix_result,
+            },
+        }
+
     def install_dependencies(self) -> dict:
         install_steps = [
             "apt-get update -y",
             "apt-get install -y golang-go git make build-essential",
-            f"if [ ! -d {self.repo_dir} ]; then git clone https://github.com/tladesignz/dnstt {self.repo_dir}; else git -C {self.repo_dir} pull --ff-only; fi",
+            f"if [ ! -d {self.repo_dir}/.git ]; then git clone https://www.bamsoftware.com/git/dnstt.git {self.repo_dir}; else git -C {self.repo_dir} remote set-url origin https://www.bamsoftware.com/git/dnstt.git && git -C {self.repo_dir} fetch --all --tags --force; fi",
+            f"git -C {self.repo_dir} checkout {self.KNOWN_STABLE_COMMIT}",
+            f"echo '[dnstt] source integrity verified via commit pinning: {self.KNOWN_STABLE_COMMIT}'",
             f"cd {self.repo_dir} && go build -o dnstt-server ./dnstt-server",
             f"cd {self.repo_dir} && go build -o dnstt-client ./dnstt-client",
             f"install -m 0755 {self.repo_dir}/dnstt-server {self.server_bin}",
@@ -312,10 +462,19 @@ class DNSTTTunnel(BaseTunnel):
         }
 
     def setup_server(self) -> dict:
-        domain = (getattr(self.settings, "dnstt_domain", "") or "").strip()
+        domain = self._active_domain()
         privkey = (getattr(self.settings, "dnstt_privkey", "") or "").strip()
         if not domain or not privkey:
-            return {"success": False, "message": "DNSTT domain and private key are required for server setup"}
+            return {"success": False, "message": "DNSTT active domain and private key are required for server setup"}
+
+        port_53_result = self._ensure_port_53_free()
+        if not port_53_result.get("success"):
+            return {
+                "success": False,
+                "message": "DNSTT server setup failed while preparing UDP port 53",
+                "target": port_53_result.get("target"),
+                "port_53": port_53_result,
+            }
 
         domain_q = shlex.quote(domain)
         privkey_q = shlex.quote(privkey)
@@ -332,14 +491,16 @@ class DNSTTTunnel(BaseTunnel):
             "success": result.get("success", False),
             "message": "DNSTT server configured" if result.get("success") else "DNSTT server setup failed",
             "target": target,
+            "active_domain": domain,
+            "port_53": port_53_result,
             "details": result,
         }
 
     def setup_client(self) -> dict:
-        domain = (getattr(self.settings, "dnstt_domain", "") or "").strip()
+        domain = self._active_domain()
         pubkey = (getattr(self.settings, "dnstt_pubkey", "") or "").strip()
         if not domain or not pubkey:
-            return {"success": False, "message": "DNSTT domain and public key are required for client setup"}
+            return {"success": False, "message": "DNSTT active domain and public key are required for client setup"}
 
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
@@ -357,6 +518,7 @@ class DNSTTTunnel(BaseTunnel):
             "success": result.get("success", False),
             "message": "DNSTT client configured" if result.get("success") else "DNSTT client setup failed",
             "target": "local",
+            "active_domain": domain,
             "selected_doh_resolver": doh_resolver,
             "resolver_probe_report": resolver_telemetry.get("probe_results", []),
             "dnstt_telemetry": resolver_telemetry,

@@ -40,7 +40,8 @@ class GeneralSettingsBase(BaseModel):
     foreign_ssh_user: str = Field("root", min_length=1, max_length=64)
     foreign_ssh_password: Optional[str] = Field(default=None, max_length=255)
     tunnel_architecture: Literal["relay", "standalone"] = Field("standalone")
-    dnstt_domain: Optional[str] = Field(default=None, max_length=255)
+    dnstt_domain: Optional[str] = Field(default=None, max_length=1024)
+    dnstt_active_domain: Optional[str] = Field(default=None, max_length=255)
     dnstt_dns_resolver: str = Field("8.8.8.8", min_length=3, max_length=1024)
     dnstt_telemetry: Optional[Dict[str, Any]] = Field(default=None)
     dnstt_pubkey: Optional[str] = Field(default=None)
@@ -120,6 +121,48 @@ class GeneralSettingsBase(BaseModel):
 
         return ", ".join(normalized_entries)
 
+    @field_validator("dnstt_domain")
+    @classmethod
+    def validate_dnstt_domain(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+
+        normalized_entries: list[str] = []
+        seen = set()
+        for raw_entry in value.split(","):
+            entry = raw_entry.strip().rstrip(".")
+            if not entry:
+                continue
+
+            labels = entry.split(".")
+            if len(labels) < 2:
+                raise ValueError("Each DNSTT tunnel domain must contain at least one dot")
+
+            for label in labels:
+                if not label or len(label) > 63 or label.startswith("-") or label.endswith("-"):
+                    raise ValueError("DNSTT tunnel domain labels must be 1-63 chars and cannot start/end with hyphen")
+                if not all(char.isalnum() or char == "-" for char in label):
+                    raise ValueError("DNSTT tunnel domains may only contain letters, digits, dots, and hyphens")
+
+            normalized_entry = entry.lower()
+            if normalized_entry in seen:
+                continue
+            seen.add(normalized_entry)
+            normalized_entries.append(entry)
+
+        if not normalized_entries:
+            return None
+
+        return ", ".join(normalized_entries)
+
+    @field_validator("dnstt_active_domain")
+    @classmethod
+    def validate_dnstt_active_domain(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().rstrip(".")
+        return normalized or None
+
     @field_validator("foreign_server_ip")
     @classmethod
     def validate_foreign_server_ip(cls, value: Optional[str]) -> Optional[str]:
@@ -142,7 +185,6 @@ class GeneralSettingsBase(BaseModel):
         "custom_ssl_private_key",
         "letsencrypt_email",
         "foreign_ssh_password",
-        "dnstt_domain",
         "dnstt_pubkey",
         "dnstt_privkey",
     )
@@ -185,6 +227,27 @@ class GeneralSettingsBase(BaseModel):
             self.custom_ssl_certificate = None
             self.custom_ssl_private_key = None
 
+        return self
+
+    @model_validator(mode="after")
+    def validate_dnstt_active_domain_selection(self):
+        if not self.dnstt_domain:
+            self.dnstt_active_domain = None
+            return self
+
+        domains = [item.strip().rstrip(".") for item in self.dnstt_domain.split(",") if item and item.strip()]
+        if not domains:
+            self.dnstt_active_domain = None
+            return self
+
+        if self.dnstt_active_domain:
+            active = self.dnstt_active_domain.strip().rstrip(".")
+            for candidate in domains:
+                if candidate.lower() == active.lower():
+                    self.dnstt_active_domain = candidate
+                    return self
+
+        self.dnstt_active_domain = domains[0]
         return self
 
 

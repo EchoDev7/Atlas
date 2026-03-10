@@ -524,6 +524,7 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         foreign_ssh_password=settings.foreign_ssh_password,
         tunnel_architecture=settings.tunnel_architecture,
         dnstt_domain=settings.dnstt_domain,
+        dnstt_active_domain=settings.dnstt_active_domain,
         dnstt_dns_resolver=settings.dnstt_dns_resolver,
         dnstt_telemetry=settings.dnstt_telemetry,
         dnstt_pubkey=settings.dnstt_pubkey,
@@ -630,6 +631,7 @@ def install_and_generate_dnstt(
         details={
             "architecture": settings.tunnel_architecture,
             "domain": settings.dnstt_domain,
+            "active_domain": settings.dnstt_active_domain,
         },
     )
 
@@ -712,6 +714,7 @@ def update_general_settings(
     settings.foreign_ssh_password = payload.foreign_ssh_password
     settings.tunnel_architecture = payload.tunnel_architecture
     settings.dnstt_domain = payload.dnstt_domain
+    settings.dnstt_active_domain = payload.dnstt_active_domain
     settings.dnstt_dns_resolver = payload.dnstt_dns_resolver
     settings.dnstt_telemetry = payload.dnstt_telemetry
     settings.dnstt_pubkey = payload.dnstt_pubkey
