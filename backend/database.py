@@ -469,7 +469,7 @@ def init_db():
                 "foreign_ssh_password": "ALTER TABLE general_settings ADD COLUMN foreign_ssh_password VARCHAR(255)",
                 "tunnel_architecture": "ALTER TABLE general_settings ADD COLUMN tunnel_architecture VARCHAR(32) NOT NULL DEFAULT 'standalone'",
                 "dnstt_domain": "ALTER TABLE general_settings ADD COLUMN dnstt_domain VARCHAR(255)",
-                "dnstt_dns_resolver": "ALTER TABLE general_settings ADD COLUMN dnstt_dns_resolver VARCHAR(255) NOT NULL DEFAULT '8.8.8.8'",
+                "dnstt_dns_resolver": "ALTER TABLE general_settings ADD COLUMN dnstt_dns_resolver VARCHAR(1024) NOT NULL DEFAULT '8.8.8.8'",
                 "dnstt_pubkey": "ALTER TABLE general_settings ADD COLUMN dnstt_pubkey TEXT",
                 "dnstt_privkey": "ALTER TABLE general_settings ADD COLUMN dnstt_privkey TEXT",
                 "created_at": "ALTER TABLE general_settings ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",

@@ -1,6 +1,7 @@
 from datetime import datetime
 import ipaddress
 from typing import List, Literal, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -40,7 +41,7 @@ class GeneralSettingsBase(BaseModel):
     foreign_ssh_password: Optional[str] = Field(default=None, max_length=255)
     tunnel_architecture: Literal["relay", "standalone"] = Field("standalone")
     dnstt_domain: Optional[str] = Field(default=None, max_length=255)
-    dnstt_dns_resolver: str = Field("8.8.8.8", min_length=3, max_length=255)
+    dnstt_dns_resolver: str = Field("8.8.8.8", min_length=3, max_length=1024)
     dnstt_pubkey: Optional[str] = Field(default=None)
     dnstt_privkey: Optional[str] = Field(default=None)
 
@@ -80,7 +81,7 @@ class GeneralSettingsBase(BaseModel):
             raise ValueError("Value cannot be empty")
         return normalized
 
-    @field_validator("server_system_dns_primary", "server_system_dns_secondary", "dnstt_dns_resolver")
+    @field_validator("server_system_dns_primary", "server_system_dns_secondary")
     @classmethod
     def validate_server_system_dns(cls, value: str) -> str:
         normalized = value.strip()
@@ -91,6 +92,32 @@ class GeneralSettingsBase(BaseModel):
         except ValueError as exc:
             raise ValueError("Server DNS must be a valid IPv4 or IPv6 address") from exc
         return normalized
+
+    @field_validator("dnstt_dns_resolver")
+    @classmethod
+    def validate_dnstt_dns_resolver(cls, value: str) -> str:
+        normalized_entries: list[str] = []
+        for raw_entry in value.split(","):
+            entry = raw_entry.strip()
+            if not entry:
+                continue
+
+            if entry.startswith(("http://", "https://")):
+                parsed = urlparse(entry)
+                if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                    raise ValueError("DNSTT DNS endpoint URL must include a valid scheme and host")
+            else:
+                try:
+                    ipaddress.ip_address(entry)
+                except ValueError as exc:
+                    raise ValueError("DNSTT DNS endpoint must be a DoH URL or IP address") from exc
+
+            normalized_entries.append(entry)
+
+        if not normalized_entries:
+            raise ValueError("At least one DNSTT DNS endpoint is required")
+
+        return ", ".join(normalized_entries)
 
     @field_validator("foreign_server_ip")
     @classmethod

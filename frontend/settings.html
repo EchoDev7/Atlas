@@ -613,7 +613,7 @@
                                 <label class="block">
                                     <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                                         Deployment Type
-                                        <span title="Choose Relay if this panel is restricted and needs to connect to a free server. Choose Standalone if this panel is already on a free server." class="inline-flex items-center justify-center w-4 h-4 rounded-full border text-[10px] cursor-help" :class="darkMode ? 'border-slate-500 text-slate-300' : 'border-slate-400 text-slate-600'">?</span>
+                                        <span title="Standalone = Panel is on the free server. Relay = Panel connects to the free server." style="cursor:help;">❓</span>
                                     </span>
                                     <select x-model="generalForm.tunnel_architecture" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                         <option value="standalone">Standalone (Direct on this server)</option>
@@ -625,13 +625,16 @@
                                     <label class="block">
                                         <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                                             Tunnel Domain (NS Record)
-                                            <span title="The subdomain you pointed to this server via an NS record (e.g., https://www.google.com/search?q=tns.yourdomain.com)." class="inline-flex items-center justify-center w-4 h-4 rounded-full border text-[10px] cursor-help" :class="darkMode ? 'border-slate-500 text-slate-300' : 'border-slate-400 text-slate-600'">?</span>
+                                            <span title="Your NS record domain (e.g., https://www.google.com/search?q=tns.yourdomain.com)." style="cursor:help;">❓</span>
                                         </span>
                                         <input type="text" x-model="generalForm.dnstt_domain" placeholder="tns.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                     </label>
                                     <label class="block">
-                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Local DNS Resolver</span>
-                                        <input type="text" x-model="generalForm.dnstt_dns_resolver" placeholder="8.8.8.8" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Tunnel DNS Endpoint (DoH/UDP)
+                                            <span title="Enter DoH URLs or IPs (comma-separated). The system will auto-select the working one during severe restrictions." style="cursor:help;">❓</span>
+                                        </span>
+                                        <input type="text" x-model="generalForm.dnstt_dns_resolver" placeholder="https://dns.google/dns-query, 8.8.8.8, 1.1.1.1" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                     </label>
                                     <label class="block md:col-span-2">
                                         <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Public Key (read-only)</span>

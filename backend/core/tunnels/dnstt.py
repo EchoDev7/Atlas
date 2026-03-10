@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import re
 import shlex
+import socket
+import ssl
 import subprocess
 from dataclasses import dataclass
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 import paramiko
 
@@ -32,6 +37,81 @@ class DNSTTTunnel(BaseTunnel):
     def _is_relay_mode(self) -> bool:
         architecture = str(getattr(self.settings, "tunnel_architecture", "standalone") or "standalone").strip().lower()
         return architecture == "relay"
+
+    def _resolver_candidates(self) -> list[str]:
+        resolver_raw = str(getattr(self.settings, "dnstt_dns_resolver", "8.8.8.8") or "8.8.8.8").strip()
+        values = [item.strip() for item in resolver_raw.split(",") if item and item.strip()]
+        if not values:
+            return ["8.8.8.8"]
+
+        unique_values: list[str] = []
+        seen = set()
+        for value in values:
+            normalized_key = value.lower()
+            if normalized_key in seen:
+                continue
+            seen.add(normalized_key)
+            unique_values.append(value)
+        return unique_values
+
+    def _normalize_doh_endpoint(self, candidate: str) -> str:
+        trimmed = candidate.strip()
+        if trimmed.startswith(("http://", "https://")):
+            return trimmed
+        return f"https://{trimmed}/dns-query"
+
+    def _probe_url(self, endpoint: str, timeout_seconds: float = 2.0) -> bool:
+        request = Request(endpoint, method="GET", headers={"Accept": "application/dns-message"})
+        try:
+            with urlopen(request, timeout=timeout_seconds, context=ssl._create_unverified_context()) as response:  # nosec B310
+                _ = response.read(1)
+            return True
+        except HTTPError:
+            # An HTTP response still proves endpoint reachability.
+            return True
+        except (URLError, ValueError, TimeoutError, socket.timeout):
+            return False
+        except Exception:
+            return False
+
+    def _probe_ip(self, ip_address: str, timeout_seconds: float = 2.0) -> bool:
+        for port in (53, 443):
+            try:
+                with socket.create_connection((ip_address, port), timeout=timeout_seconds):
+                    return True
+            except (socket.timeout, OSError):
+                continue
+        return False
+
+    def _select_healthy_doh_endpoint(self) -> tuple[str, list[dict]]:
+        probe_report: list[dict] = []
+        candidates = self._resolver_candidates()
+
+        for candidate in candidates:
+            selected_endpoint = self._normalize_doh_endpoint(candidate)
+            parsed = urlparse(candidate)
+            is_url = parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+            if is_url:
+                healthy = self._probe_url(candidate)
+            else:
+                healthy = self._probe_ip(candidate)
+                if not healthy:
+                    healthy = self._probe_url(selected_endpoint)
+
+            probe_report.append(
+                {
+                    "candidate": candidate,
+                    "selected_doh": selected_endpoint,
+                    "healthy": healthy,
+                }
+            )
+
+            if healthy:
+                return selected_endpoint, probe_report
+
+        # Fallback for heavily filtered networks: still use first configured endpoint.
+        return self._normalize_doh_endpoint(candidates[0]), probe_report
 
     def _ssh_target(self) -> tuple[str, int, str, str]:
         host = (getattr(self.settings, "foreign_server_ip", "") or "").strip()
@@ -221,8 +301,7 @@ class DNSTTTunnel(BaseTunnel):
 
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
-        resolver_raw = str(getattr(self.settings, "dnstt_dns_resolver", "8.8.8.8") or "8.8.8.8").strip()
-        doh_resolver = resolver_raw if resolver_raw.startswith(("http://", "https://")) else f"https://{resolver_raw}/dns-query"
+        doh_resolver, resolver_probe_report = self._select_healthy_doh_endpoint()
         doh_resolver_q = shlex.quote(doh_resolver)
         service_steps = [
             "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q),
@@ -235,6 +314,8 @@ class DNSTTTunnel(BaseTunnel):
             "success": result.get("success", False),
             "message": "DNSTT client configured" if result.get("success") else "DNSTT client setup failed",
             "target": "local",
+            "selected_doh_resolver": doh_resolver,
+            "resolver_probe_report": resolver_probe_report,
             "details": result,
         }
 
