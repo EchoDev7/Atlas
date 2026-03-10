@@ -43,6 +43,7 @@ class GeneralSettingsBase(BaseModel):
     dnstt_domain: Optional[str] = Field(default=None, max_length=1024)
     dnstt_active_domain: Optional[str] = Field(default=None, max_length=255)
     dnstt_dns_resolver: str = Field("8.8.8.8", min_length=3, max_length=1024)
+    dnstt_resolver_strategy: Literal["failover", "least-latency", "round-robin"] = Field("failover")
     dnstt_telemetry: Optional[Dict[str, Any]] = Field(default=None)
     dnstt_pubkey: Optional[str] = Field(default=None)
     dnstt_privkey: Optional[str] = Field(default=None)
@@ -120,6 +121,11 @@ class GeneralSettingsBase(BaseModel):
             raise ValueError("At least one DNSTT DNS endpoint is required")
 
         return ", ".join(normalized_entries)
+
+    @field_validator("dnstt_resolver_strategy")
+    @classmethod
+    def validate_dnstt_resolver_strategy(cls, value: str) -> str:
+        return value.strip().lower()
 
     @field_validator("dnstt_domain")
     @classmethod

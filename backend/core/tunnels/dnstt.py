@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 import re
 import shlex
 import socket
@@ -57,6 +58,12 @@ class DNSTTTunnel(BaseTunnel):
             seen.add(normalized_key)
             unique_values.append(value)
         return unique_values
+
+    def _resolver_strategy(self) -> str:
+        value = str(getattr(self.settings, "dnstt_resolver_strategy", "failover") or "failover").strip().lower()
+        if value in {"failover", "least-latency", "round-robin"}:
+            return value
+        return "failover"
 
     def _domain_candidates(self) -> list[str]:
         domains_raw = str(getattr(self.settings, "dnstt_domain", "") or "").strip()
@@ -122,12 +129,11 @@ class DNSTTTunnel(BaseTunnel):
             return True, best_latency_ms, None
         return False, None, last_error or "ip_probe_failed"
 
-    def _select_healthy_doh_endpoint(self) -> tuple[str, dict]:
+    def _probe_resolver_candidates(self) -> tuple[list[dict], list[dict]]:
         probe_results: list[dict] = []
-        candidates = self._resolver_candidates()
         ranked_healthy: list[dict] = []
 
-        for candidate in candidates:
+        for candidate in self._resolver_candidates():
             selected_endpoint = self._normalize_doh_endpoint(candidate)
             parsed = urlparse(candidate)
             is_url = parsed.scheme in {"http", "https"} and bool(parsed.netloc)
@@ -143,12 +149,11 @@ class DNSTTTunnel(BaseTunnel):
                 if not healthy:
                     healthy, latency_ms, error = self._probe_url(selected_endpoint)
 
-            status = "healthy" if healthy else "failed"
             probe_result = {
                 "resolver": candidate,
                 "selected_doh": selected_endpoint,
                 "latency_ms": round(latency_ms, 2) if latency_ms is not None else None,
-                "status": status,
+                "status": "healthy" if healthy else "failed",
                 "error": error,
             }
             probe_results.append(probe_result)
@@ -157,7 +162,12 @@ class DNSTTTunnel(BaseTunnel):
                 ranked_healthy.append(probe_result)
 
         ranked_healthy.sort(key=lambda item: item["latency_ms"])
-        selected_doh = ranked_healthy[0]["selected_doh"] if ranked_healthy else self._normalize_doh_endpoint(candidates[0])
+        return probe_results, ranked_healthy
+
+    def _select_healthy_doh_endpoint(self) -> tuple[str, dict]:
+        probe_results, ranked_healthy = self._probe_resolver_candidates()
+        fallback_candidates = self._resolver_candidates()
+        selected_doh = ranked_healthy[0]["selected_doh"] if ranked_healthy else self._normalize_doh_endpoint(fallback_candidates[0])
 
         telemetry = {
             "selected_resolver": selected_doh,
@@ -165,6 +175,18 @@ class DNSTTTunnel(BaseTunnel):
             "probe_results": probe_results,
         }
         return selected_doh, telemetry
+
+    def _select_all_healthy_doh_endpoints(self) -> tuple[list[dict], dict]:
+        probe_results, ranked_healthy = self._probe_resolver_candidates()
+        fallback_candidates = self._resolver_candidates()
+        selected_doh = ranked_healthy[0]["selected_doh"] if ranked_healthy else self._normalize_doh_endpoint(fallback_candidates[0])
+        telemetry = {
+            "selected_resolver": selected_doh,
+            "last_update_timestamp": datetime.now(timezone.utc).isoformat(),
+            "probe_results": probe_results,
+            "healthy_resolvers": [item["selected_doh"] for item in ranked_healthy],
+        }
+        return ranked_healthy, telemetry
 
     def _persist_telemetry(self, telemetry: dict) -> None:
         if not hasattr(self.settings, "dnstt_telemetry"):
@@ -502,12 +524,27 @@ class DNSTTTunnel(BaseTunnel):
         if not domain or not pubkey:
             return {"success": False, "message": "DNSTT active domain and public key are required for client setup"}
 
+        strategy = self._resolver_strategy()
+        if strategy == "round-robin":
+            return self._setup_client_round_robin(domain=domain, pubkey=pubkey)
+        if strategy == "least-latency":
+            return self._setup_client_least_latency(domain=domain, pubkey=pubkey)
+        return self._setup_client_failover(domain=domain, pubkey=pubkey)
+
+    def _setup_client_failover(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
         doh_resolver, resolver_telemetry = self._select_healthy_doh_endpoint()
+        resolver_telemetry["strategy"] = "failover"
         self._persist_telemetry(resolver_telemetry)
         doh_resolver_q = shlex.quote(doh_resolver)
         service_steps = [
+            "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
+            "systemctl disable --now dnstt-optimizer.service >/dev/null 2>&1 || true",
+            "rm -f /etc/systemd/system/dnstt-optimizer.service /usr/local/bin/dnstt-optimizer.py /var/lib/dnstt/current_resolver",
+            "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
             "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q),
             "systemctl daemon-reload",
             "systemctl enable dnstt-client.service",
@@ -518,8 +555,275 @@ class DNSTTTunnel(BaseTunnel):
             "success": result.get("success", False),
             "message": "DNSTT client configured" if result.get("success") else "DNSTT client setup failed",
             "target": "local",
+            "strategy": "failover",
             "active_domain": domain,
             "selected_doh_resolver": doh_resolver,
+            "resolver_probe_report": resolver_telemetry.get("probe_results", []),
+            "dnstt_telemetry": resolver_telemetry,
+            "details": result,
+        }
+
+    def _setup_client_round_robin(self, *, domain: str, pubkey: str) -> dict:
+        domain_q = shlex.quote(domain)
+        pubkey_q = shlex.quote(pubkey)
+        healthy_resolvers, resolver_telemetry = self._select_all_healthy_doh_endpoints()
+        if not healthy_resolvers:
+            return {
+                "success": False,
+                "message": "DNSTT round-robin requires at least one healthy resolver",
+                "target": "local",
+                "strategy": "round-robin",
+                "resolver_probe_report": resolver_telemetry.get("probe_results", []),
+            }
+
+        resolver_telemetry["strategy"] = "round-robin"
+        self._persist_telemetry(resolver_telemetry)
+
+        service_steps = [
+            "systemctl disable --now dnstt-client.service >/dev/null 2>&1 || true",
+            "systemctl disable --now dnstt-optimizer.service >/dev/null 2>&1 || true",
+            "rm -f /etc/systemd/system/dnstt-optimizer.service /usr/local/bin/dnstt-optimizer.py /var/lib/dnstt/current_resolver",
+            "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
+            "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
+            "systemctl daemon-reload",
+        ]
+
+        instance_ports: list[int] = []
+        for idx, resolver in enumerate(healthy_resolvers, start=1):
+            local_udp_port = 9000 + idx
+            instance_ports.append(local_udp_port)
+            service_name = f"dnstt-client-{idx}.service"
+            service_name_q = shlex.quote(service_name)
+            doh_resolver_q = shlex.quote(resolver["selected_doh"])
+            service_steps.append(
+                "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
+                    service_name=service_name,
+                    idx=idx,
+                    doh=doh_resolver_q,
+                    port=local_udp_port,
+                    pubkey=pubkey_q,
+                    domain=domain_q,
+                )
+            )
+            service_steps.append(f"systemctl enable {service_name_q}")
+            service_steps.append(f"systemctl restart {service_name_q}")
+
+        service_steps.append("iptables -t nat -N DNSTT_RR")
+        strategy_len = len(instance_ports)
+        for idx, local_udp_port in enumerate(instance_ports):
+            service_steps.append(
+                "iptables -t nat -A DNSTT_RR -p udp -m statistic --mode nth --every {every} --packet {packet} -j REDIRECT --to-ports {port}".format(
+                    every=strategy_len,
+                    packet=idx,
+                    port=local_udp_port,
+                )
+            )
+        service_steps.append(
+            "iptables -t nat -A DNSTT_RR -p udp -j REDIRECT --to-ports {port}".format(port=instance_ports[0])
+        )
+        service_steps.append("iptables -t nat -A OUTPUT -p udp --dport 5301 -j DNSTT_RR")
+
+        result = self._run_steps(target="local", steps=service_steps)
+        return {
+            "success": result.get("success", False),
+            "message": "DNSTT round-robin client configured" if result.get("success") else "DNSTT round-robin setup failed",
+            "target": "local",
+            "strategy": "round-robin",
+            "active_domain": domain,
+            "selected_doh_resolver": healthy_resolvers[0]["selected_doh"],
+            "healthy_resolvers": [item["selected_doh"] for item in healthy_resolvers],
+            "local_udp_ports": instance_ports,
+            "resolver_probe_report": resolver_telemetry.get("probe_results", []),
+            "dnstt_telemetry": resolver_telemetry,
+            "details": result,
+        }
+
+    def _setup_client_least_latency(self, *, domain: str, pubkey: str) -> dict:
+        domain_q = shlex.quote(domain)
+        pubkey_q = shlex.quote(pubkey)
+        doh_resolver, resolver_telemetry = self._select_healthy_doh_endpoint()
+        resolver_telemetry["strategy"] = "least-latency"
+        self._persist_telemetry(resolver_telemetry)
+        doh_resolver_q = shlex.quote(doh_resolver)
+        optimizer_payload = {
+            "domain": domain,
+            "pubkey": pubkey,
+            "resolvers": self._resolver_candidates(),
+            "initial_doh": doh_resolver,
+        }
+        optimizer_script = """#!/usr/bin/env python3
+import json
+import shlex
+import socket
+import subprocess
+import time
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+
+CONFIG = json.loads(__ATLAS_OPTIMIZER_PAYLOAD__)
+STATE_FILE = Path('/var/lib/dnstt/current_resolver')
+SERVICE_PATH = Path('/etc/systemd/system/dnstt-client.service')
+THRESHOLD = 0.8
+INTERVAL_SECONDS = 180
+
+
+def normalize_doh(candidate: str) -> str:
+    candidate = (candidate or '').strip()
+    if candidate.startswith(('http://', 'https://')):
+        return candidate
+    return f'https://{candidate}/dns-query'
+
+
+def probe_url(endpoint: str, timeout_seconds: float = 2.0):
+    request = Request(endpoint, method='GET', headers={'Accept': 'application/dns-message'})
+    started_at = time.perf_counter()
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:  # nosec B310
+            _ = response.read(1)
+        return True, (time.perf_counter() - started_at) * 1000.0
+    except HTTPError:
+        return True, (time.perf_counter() - started_at) * 1000.0
+    except Exception:
+        return False, None
+
+
+def probe_ip(ip_address: str, timeout_seconds: float = 2.0):
+    best_latency = None
+    for port in (53, 443):
+        started_at = time.perf_counter()
+        try:
+            with socket.create_connection((ip_address, port), timeout=timeout_seconds):
+                latency = (time.perf_counter() - started_at) * 1000.0
+            if best_latency is None or latency < best_latency:
+                best_latency = latency
+        except Exception:
+            continue
+    if best_latency is None:
+        return False, None
+    return True, best_latency
+
+
+def probe_candidate(candidate: str):
+    candidate = (candidate or '').strip()
+    if not candidate:
+        return False, None, None
+
+    selected_doh = normalize_doh(candidate)
+    parsed = urlparse(candidate)
+    is_url = parsed.scheme in {'http', 'https'} and bool(parsed.netloc)
+    if is_url:
+        healthy, latency = probe_url(candidate)
+    else:
+        healthy, latency = probe_ip(candidate)
+        if not healthy:
+            healthy, latency = probe_url(selected_doh)
+    return healthy, latency, selected_doh
+
+
+def best_resolver():
+    ranked = []
+    for resolver in CONFIG.get('resolvers', []):
+        healthy, latency, selected_doh = probe_candidate(resolver)
+        if healthy and latency is not None and selected_doh:
+            ranked.append((latency, selected_doh))
+    ranked.sort(key=lambda item: item[0])
+    return ranked[0] if ranked else (None, None)
+
+
+def render_service(selected_doh: str) -> str:
+    cmd = '/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080'.format(
+        doh=shlex.quote(selected_doh),
+        pubkey=shlex.quote(CONFIG.get('pubkey', '')),
+        domain=shlex.quote(CONFIG.get('domain', '')),
+    )
+    return '\n'.join([
+        '[Unit]',
+        'Description=DNSTT Client',
+        'After=network.target',
+        '',
+        '[Service]',
+        'Type=simple',
+        f'ExecStart={cmd}',
+        'Restart=always',
+        'RestartSec=3',
+        'NoNewPrivileges=true',
+        'ProtectSystem=strict',
+        'ProtectHome=true',
+        'PrivateTmp=true',
+        '',
+        '[Install]',
+        'WantedBy=multi-user.target',
+        '',
+    ])
+
+
+def apply_new_resolver(selected_doh: str):
+    SERVICE_PATH.write_text(render_service(selected_doh), encoding='utf-8')
+    subprocess.run(['systemctl', 'daemon-reload'], check=False)
+    subprocess.run(['systemctl', 'restart', 'dnstt-client.service'], check=False)
+    STATE_FILE.write_text(selected_doh, encoding='utf-8')
+
+
+def run():
+    fallback = CONFIG.get('initial_doh') or normalize_doh((CONFIG.get('resolvers') or ['8.8.8.8'])[0])
+    current = fallback
+    if STATE_FILE.exists():
+        persisted = STATE_FILE.read_text(encoding='utf-8', errors='ignore').strip()
+        if persisted:
+            current = persisted
+    else:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATE_FILE.write_text(current, encoding='utf-8')
+
+    while True:
+        try:
+            best_latency, best = best_resolver()
+            current_ok, current_latency, _ = probe_candidate(current)
+            if best and best != current:
+                if (not current_ok) or current_latency is None or (best_latency is not None and best_latency <= current_latency * THRESHOLD):
+                    apply_new_resolver(best)
+                    current = best
+        except Exception:
+            pass
+        time.sleep(INTERVAL_SECONDS)
+
+
+if __name__ == '__main__':
+    run()
+"""
+        optimizer_script = optimizer_script.replace("__ATLAS_OPTIMIZER_PAYLOAD__", repr(json.dumps(optimizer_payload)))
+        service_steps = [
+            "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
+            "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
+            "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q),
+            "mkdir -p /var/lib/dnstt",
+            "cat > /usr/local/bin/dnstt-optimizer.py <<'PY'\n{script}\nPY".format(script=optimizer_script),
+            "chmod 0755 /usr/local/bin/dnstt-optimizer.py",
+            "cat > /etc/systemd/system/dnstt-optimizer.service <<'EOF'\n[Unit]\nDescription=DNSTT Least-Latency Optimizer\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/python3 /usr/local/bin/dnstt-optimizer.py\nRestart=always\nRestartSec=5\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF",
+            "echo {selected} > /var/lib/dnstt/current_resolver".format(selected=doh_resolver_q),
+            "systemctl daemon-reload",
+            "systemctl enable dnstt-client.service",
+            "systemctl restart dnstt-client.service",
+            "systemctl enable dnstt-optimizer.service",
+            "systemctl restart dnstt-optimizer.service",
+        ]
+        result = self._run_steps(target="local", steps=service_steps)
+        return {
+            "success": result.get("success", False),
+            "message": "DNSTT least-latency client configured" if result.get("success") else "DNSTT least-latency setup failed",
+            "target": "local",
+            "strategy": "least-latency",
+            "active_domain": domain,
+            "selected_doh_resolver": doh_resolver,
+            "optimizer_service": "dnstt-optimizer.service",
+            "optimizer_interval_seconds": 180,
+            "optimizer_switch_threshold": "20% faster",
             "resolver_probe_report": resolver_telemetry.get("probe_results", []),
             "dnstt_telemetry": resolver_telemetry,
             "details": result,

@@ -644,6 +644,17 @@
                                         </span>
                                         <input type="text" x-model="generalForm.dnstt_dns_resolver" placeholder="https://dns.google/dns-query, 8.8.8.8, 1.1.1.1" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                     </label>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Resolver Strategy
+                                            <span title="Failover: Picks best at startup. Least-Latency: Re-evaluates ping every few minutes in background. Round-Robin: Spawns multiple concurrent tunnels and load-balances UDP traffic across all healthy DNS servers." style="cursor:help;">❓</span>
+                                        </span>
+                                        <select x-model="generalForm.dnstt_resolver_strategy" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            <option value="failover">Startup Failover (Stable)</option>
+                                            <option value="least-latency">Continuous Least-Latency (Dynamic)</option>
+                                            <option value="round-robin">Multi-Path Round-Robin (Max Stability)</option>
+                                        </select>
+                                    </label>
                                     <div class="md:col-span-3 rounded-2xl border p-4" :class="darkMode ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50/50'">
                                         <div class="flex items-center justify-between gap-3 mb-3">
                                             <h4 class="text-xs font-bold uppercase tracking-wide" :class="darkMode ? 'text-emerald-300' : 'text-emerald-700'">Live Telemetry &amp; Health</h4>
@@ -1778,6 +1789,7 @@
                     dnstt_domain: '',
                     dnstt_active_domain: '',
                     dnstt_dns_resolver: '8.8.8.8',
+                    dnstt_resolver_strategy: 'failover',
                     dnstt_telemetry: null,
                     dnstt_pubkey: '',
                     dnstt_privkey: '',
@@ -2642,6 +2654,7 @@
                             dnstt_domain: generalData.dnstt_domain || '',
                             dnstt_active_domain: generalData.dnstt_active_domain || '',
                             dnstt_dns_resolver: generalData.dnstt_dns_resolver || '8.8.8.8',
+                            dnstt_resolver_strategy: generalData.dnstt_resolver_strategy || 'failover',
                             dnstt_telemetry: generalData.dnstt_telemetry || null,
                             dnstt_pubkey: generalData.dnstt_pubkey || '',
                             dnstt_privkey: generalData.dnstt_privkey || '',
@@ -3255,6 +3268,7 @@
                             dnstt_domain: (this.generalForm.dnstt_domain || '').trim() || null,
                             dnstt_active_domain: (this.generalForm.dnstt_active_domain || '').trim() || null,
                             dnstt_dns_resolver: (this.generalForm.dnstt_dns_resolver || '8.8.8.8').trim() || '8.8.8.8',
+                            dnstt_resolver_strategy: (this.generalForm.dnstt_resolver_strategy || 'failover').trim().toLowerCase() || 'failover',
                             dnstt_telemetry: this.getDnsttTelemetry(),
                             dnstt_pubkey: (this.generalForm.dnstt_pubkey || '').trim() || null,
                             dnstt_privkey: (this.generalForm.dnstt_privkey || '').trim() || null,
@@ -3319,6 +3333,7 @@
                             dnstt_domain: updated.dnstt_domain || '',
                             dnstt_active_domain: updated.dnstt_active_domain || '',
                             dnstt_dns_resolver: updated.dnstt_dns_resolver || '8.8.8.8',
+                            dnstt_resolver_strategy: updated.dnstt_resolver_strategy || 'failover',
                             dnstt_telemetry: updated.dnstt_telemetry || null,
                             dnstt_pubkey: updated.dnstt_pubkey || '',
                             dnstt_privkey: updated.dnstt_privkey || '',
