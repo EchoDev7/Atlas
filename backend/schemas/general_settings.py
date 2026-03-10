@@ -38,6 +38,10 @@ class GeneralSettingsBase(BaseModel):
     foreign_server_port: int = Field(22, ge=1, le=65535)
     foreign_ssh_user: str = Field("root", min_length=1, max_length=64)
     foreign_ssh_password: Optional[str] = Field(default=None, max_length=255)
+    tunnel_architecture: Literal["relay", "standalone"] = Field("standalone")
+    dnstt_domain: Optional[str] = Field(default=None, max_length=255)
+    dnstt_pubkey: Optional[str] = Field(default=None)
+    dnstt_privkey: Optional[str] = Field(default=None)
 
     @field_validator("public_ipv4_address")
     @classmethod
@@ -109,6 +113,9 @@ class GeneralSettingsBase(BaseModel):
         "custom_ssl_private_key",
         "letsencrypt_email",
         "foreign_ssh_password",
+        "dnstt_domain",
+        "dnstt_pubkey",
+        "dnstt_privkey",
     )
     @classmethod
     def normalize_optional_text(cls, value: Optional[str]) -> Optional[str]:

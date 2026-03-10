@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from backend.core.tunnels.manager import TunnelManager
 from backend.core.obfuscation_manager import ObfuscationManager
 from backend.core.openvpn import OpenVPNManager
 from backend.core.wireguard import WireGuardManager
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_manager = OpenVPNManager()
 obfuscation_manager = ObfuscationManager()
 wireguard_manager = WireGuardManager()
+tunnel_manager = TunnelManager()
 logger = logging.getLogger(__name__)
 RESOLVED_DROPIN_DIR = Path("/etc/systemd/resolved.conf.d")
 ATLAS_DNS_DROPIN_FILE = RESOLVED_DROPIN_DIR / "atlas-dns.conf"
@@ -520,6 +522,10 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         foreign_server_port=settings.foreign_server_port,
         foreign_ssh_user=settings.foreign_ssh_user,
         foreign_ssh_password=settings.foreign_ssh_password,
+        tunnel_architecture=settings.tunnel_architecture,
+        dnstt_domain=settings.dnstt_domain,
+        dnstt_pubkey=settings.dnstt_pubkey,
+        dnstt_privkey=settings.dnstt_privkey,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
@@ -565,6 +571,74 @@ def get_general_settings(
         db.refresh(settings)
 
     return _to_general_response(settings)
+
+
+@router.post("/tunnel/dnstt/install-generate")
+def install_and_generate_dnstt(
+    request: Request,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    settings = _get_or_create_general_settings(db)
+    settings.tunnel_mode = "dnstt"
+    tunnel = tunnel_manager.get_tunnel(settings)
+
+    if not hasattr(tunnel, "install_dependencies") or not hasattr(tunnel, "generate_keys"):
+        raise HTTPException(status_code=400, detail="DNSTT engine is not available")
+
+    install_result = tunnel.install_dependencies()
+    if not install_result.get("success"):
+        record_audit_event(
+            action="dnstt_install_generate",
+            success=False,
+            admin_username=current_user.username,
+            resource_type="system_tunnel",
+            resource_id="dnstt",
+            ip_address=extract_client_ip(request),
+            details={"stage": "install", "message": install_result.get("message")},
+        )
+        raise HTTPException(status_code=500, detail=install_result.get("message", "DNSTT install failed"))
+
+    keys_result = tunnel.generate_keys()
+    if not keys_result.get("success"):
+        record_audit_event(
+            action="dnstt_install_generate",
+            success=False,
+            admin_username=current_user.username,
+            resource_type="system_tunnel",
+            resource_id="dnstt",
+            ip_address=extract_client_ip(request),
+            details={"stage": "generate_keys", "message": keys_result.get("message")},
+        )
+        raise HTTPException(status_code=500, detail=keys_result.get("message", "DNSTT key generation failed"))
+
+    settings.dnstt_pubkey = keys_result.get("dnstt_pubkey")
+    settings.dnstt_privkey = keys_result.get("dnstt_privkey")
+    settings.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(settings)
+
+    record_audit_event(
+        action="dnstt_install_generate",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="system_tunnel",
+        resource_id="dnstt",
+        ip_address=extract_client_ip(request),
+        details={
+            "architecture": settings.tunnel_architecture,
+            "domain": settings.dnstt_domain,
+        },
+    )
+
+    return {
+        "success": True,
+        "message": "DNSTT dependencies installed and keys generated",
+        "dnstt_pubkey": settings.dnstt_pubkey,
+        "dnstt_privkey": settings.dnstt_privkey,
+        "install_result": install_result,
+        "keys_result": keys_result,
+    }
 
 
 @router.get("/server-ips")
@@ -634,6 +708,10 @@ def update_general_settings(
     settings.foreign_server_port = payload.foreign_server_port
     settings.foreign_ssh_user = payload.foreign_ssh_user
     settings.foreign_ssh_password = payload.foreign_ssh_password
+    settings.tunnel_architecture = payload.tunnel_architecture
+    settings.dnstt_domain = payload.dnstt_domain
+    settings.dnstt_pubkey = payload.dnstt_pubkey
+    settings.dnstt_privkey = payload.dnstt_privkey
     settings.updated_at = datetime.utcnow()
 
     dns_apply_result = _apply_system_dns_servers(

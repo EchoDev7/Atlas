@@ -43,6 +43,10 @@ class GeneralSettings(Base):
     foreign_server_port = Column(Integer, nullable=False, default=22)
     foreign_ssh_user = Column(String(64), nullable=False, default="root")
     foreign_ssh_password = Column(String(255), nullable=True)
+    tunnel_architecture = Column(String(32), nullable=False, default="standalone")
+    dnstt_domain = Column(String(255), nullable=True)
+    dnstt_pubkey = Column(Text, nullable=True)
+    dnstt_privkey = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

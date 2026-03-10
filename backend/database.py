@@ -467,6 +467,10 @@ def init_db():
                 "foreign_server_port": "ALTER TABLE general_settings ADD COLUMN foreign_server_port INTEGER NOT NULL DEFAULT 22",
                 "foreign_ssh_user": "ALTER TABLE general_settings ADD COLUMN foreign_ssh_user VARCHAR(64) NOT NULL DEFAULT 'root'",
                 "foreign_ssh_password": "ALTER TABLE general_settings ADD COLUMN foreign_ssh_password VARCHAR(255)",
+                "tunnel_architecture": "ALTER TABLE general_settings ADD COLUMN tunnel_architecture VARCHAR(32) NOT NULL DEFAULT 'standalone'",
+                "dnstt_domain": "ALTER TABLE general_settings ADD COLUMN dnstt_domain VARCHAR(255)",
+                "dnstt_pubkey": "ALTER TABLE general_settings ADD COLUMN dnstt_pubkey TEXT",
+                "dnstt_privkey": "ALTER TABLE general_settings ADD COLUMN dnstt_privkey TEXT",
                 "created_at": "ALTER TABLE general_settings ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
                 "updated_at": "ALTER TABLE general_settings ADD COLUMN updated_at DATETIME",
             }
@@ -577,6 +581,10 @@ def init_db():
                             foreign_server_port,
                             foreign_ssh_user,
                             foreign_ssh_password,
+                            tunnel_architecture,
+                            dnstt_domain,
+                            dnstt_pubkey,
+                            dnstt_privkey,
                             created_at,
                             updated_at
                         ) VALUES (
@@ -608,6 +616,10 @@ def init_db():
                             NULL,
                             22,
                             'root',
+                            NULL,
+                            'standalone',
+                            NULL,
+                            NULL,
                             NULL,
                             CURRENT_TIMESTAMP,
                             CURRENT_TIMESTAMP

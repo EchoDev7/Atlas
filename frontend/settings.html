@@ -605,10 +605,21 @@
                                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Tunnel Mode</span>
                                     <select x-model="generalForm.tunnel_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                         <option value="direct">Direct (Dummy)</option>
-                                        <option value="dnstt">DNSTT (Planned)</option>
+                                        <option value="dnstt">DNSTT</option>
                                         <option value="gost">GOST (Planned)</option>
                                         <option value="xray">Xray (Planned)</option>
                                     </select>
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Architecture Mode</span>
+                                    <select x-model="generalForm.tunnel_architecture" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                        <option value="standalone">Standalone</option>
+                                        <option value="relay">Relay</option>
+                                    </select>
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Domain</span>
+                                    <input type="text" x-model="generalForm.dnstt_domain" placeholder="tunnel.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                 </label>
                                 <label class="block">
                                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign Server IP</span>
@@ -626,6 +637,26 @@
                                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Foreign SSH Password</span>
                                     <input type="password" x-model="generalForm.foreign_ssh_password" placeholder="••••••••" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                 </label>
+                                <label class="block md:col-span-2">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Public Key (read-only)</span>
+                                    <textarea x-model="generalForm.dnstt_pubkey" rows="3" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition" :class="darkMode ? 'bg-slate-900/70 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-300 text-slate-900'"></textarea>
+                                </label>
+                                <label class="block md:col-span-2">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Private Key (read-only)</span>
+                                    <textarea x-model="generalForm.dnstt_privkey" rows="3" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition" :class="darkMode ? 'bg-slate-900/70 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-300 text-slate-900'"></textarea>
+                                </label>
+                            </div>
+
+                            <div class="pt-2">
+                                <button
+                                    type="button"
+                                    @click="installAndGenerateDnstt()"
+                                    :disabled="dnsttInstallLoading"
+                                    class="px-4 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-indigo-500 hover:bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'"
+                                >
+                                    <span x-text="dnsttInstallLoading ? 'Installing...' : 'Install & Generate Keys'"></span>
+                                </button>
                             </div>
                         </div>
 
@@ -1652,7 +1683,12 @@
                     foreign_server_port: 22,
                     foreign_ssh_user: 'root',
                     foreign_ssh_password: '',
+                    tunnel_architecture: 'standalone',
+                    dnstt_domain: '',
+                    dnstt_pubkey: '',
+                    dnstt_privkey: '',
                 },
+                dnsttInstallLoading: false,
                 localTunnelTerminalLines: ['[local] master orchestrator terminal ready'],
                 foreignTunnelTerminalLines: ['[foreign] exit node terminal ready'],
                 localTunnelCommand: '',
@@ -2399,6 +2435,10 @@
                             foreign_server_port: Number(generalData.foreign_server_port) || 22,
                             foreign_ssh_user: generalData.foreign_ssh_user || 'root',
                             foreign_ssh_password: generalData.foreign_ssh_password || '',
+                            tunnel_architecture: generalData.tunnel_architecture || 'standalone',
+                            dnstt_domain: generalData.dnstt_domain || '',
+                            dnstt_pubkey: generalData.dnstt_pubkey || '',
+                            dnstt_privkey: generalData.dnstt_privkey || '',
                         };
 
                         if (Number(this.generalForm.panel_https_port) === Number(this.generalForm.subscription_https_port)) {
@@ -3004,6 +3044,10 @@
                             foreign_server_port: Number(this.generalForm.foreign_server_port) || 22,
                             foreign_ssh_user: (this.generalForm.foreign_ssh_user || '').trim() || 'root',
                             foreign_ssh_password: (this.generalForm.foreign_ssh_password || '').trim() || null,
+                            tunnel_architecture: (this.generalForm.tunnel_architecture || 'standalone').trim() || 'standalone',
+                            dnstt_domain: (this.generalForm.dnstt_domain || '').trim() || null,
+                            dnstt_pubkey: (this.generalForm.dnstt_pubkey || '').trim() || null,
+                            dnstt_privkey: (this.generalForm.dnstt_privkey || '').trim() || null,
                         };
 
                         const response = await fetch('/api/settings/general', {
@@ -3061,6 +3105,10 @@
                             foreign_server_port: Number(updated.foreign_server_port) || 22,
                             foreign_ssh_user: updated.foreign_ssh_user || 'root',
                             foreign_ssh_password: updated.foreign_ssh_password || '',
+                            tunnel_architecture: updated.tunnel_architecture || 'standalone',
+                            dnstt_domain: updated.dnstt_domain || '',
+                            dnstt_pubkey: updated.dnstt_pubkey || '',
+                            dnstt_privkey: updated.dnstt_privkey || '',
                         };
 
                         if (!this.generalForm.global_ipv6_support) {
@@ -3073,6 +3121,49 @@
                         this.showToast(error.message || 'Failed to save settings', 'error');
                     } finally {
                         this.saving = false;
+                    }
+                },
+
+                async installAndGenerateDnstt() {
+                    this.dnsttInstallLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/settings/tunnel/dnstt/install-generate', {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'DNSTT install failed';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const result = await response.json();
+                        this.generalForm.tunnel_mode = 'dnstt';
+                        this.generalForm.dnstt_pubkey = result.dnstt_pubkey || '';
+                        this.generalForm.dnstt_privkey = result.dnstt_privkey || '';
+                        this.showToast(result.message || 'DNSTT installed and keys generated', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'DNSTT install failed', 'error');
+                    } finally {
+                        this.dnsttInstallLoading = false;
                     }
                 },
 

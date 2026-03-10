@@ -10,7 +10,7 @@ class TunnelManager:
 
     TUNNEL_CLASS_MAP = {
         "direct": "backend.core.tunnels.tunnels.direct.DirectTunnel",
-        "dnstt": "backend.core.tunnels.tunnels.direct.DirectTunnel",
+        "dnstt": "backend.core.tunnels.dnstt.DNSTTTunnel",
         "gost": "backend.core.tunnels.tunnels.direct.DirectTunnel",
         "xray": "backend.core.tunnels.tunnels.direct.DirectTunnel",
     }
