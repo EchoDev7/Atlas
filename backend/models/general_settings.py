@@ -48,6 +48,7 @@ class GeneralSettings(Base):
     dnstt_active_domain = Column(String(255), nullable=True)
     dnstt_dns_resolver = Column(String(1024), nullable=False, default="8.8.8.8")
     dnstt_resolver_strategy = Column(String(32), nullable=False, default="failover")
+    dnstt_duplication_mode = Column(Integer, nullable=False, default=1)
     dnstt_telemetry = Column(JSON, nullable=True)
     dnstt_pubkey = Column(Text, nullable=True)
     dnstt_privkey = Column(Text, nullable=True)

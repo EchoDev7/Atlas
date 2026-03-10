@@ -527,6 +527,7 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         dnstt_active_domain=settings.dnstt_active_domain,
         dnstt_dns_resolver=settings.dnstt_dns_resolver,
         dnstt_resolver_strategy=settings.dnstt_resolver_strategy,
+        dnstt_duplication_mode=settings.dnstt_duplication_mode,
         dnstt_telemetry=settings.dnstt_telemetry,
         dnstt_pubkey=settings.dnstt_pubkey,
         dnstt_privkey=settings.dnstt_privkey,
@@ -718,6 +719,7 @@ def update_general_settings(
     settings.dnstt_active_domain = payload.dnstt_active_domain
     settings.dnstt_dns_resolver = payload.dnstt_dns_resolver
     settings.dnstt_resolver_strategy = payload.dnstt_resolver_strategy
+    settings.dnstt_duplication_mode = payload.dnstt_duplication_mode
     settings.dnstt_telemetry = payload.dnstt_telemetry
     settings.dnstt_pubkey = payload.dnstt_pubkey
     settings.dnstt_privkey = payload.dnstt_privkey

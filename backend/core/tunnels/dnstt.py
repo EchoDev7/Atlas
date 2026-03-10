@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 import re
 import shlex
 import socket
@@ -64,6 +65,17 @@ class DNSTTTunnel(BaseTunnel):
         if value in {"failover", "least-latency", "round-robin"}:
             return value
         return "failover"
+
+    def _duplication_mode(self) -> int:
+        raw_value = getattr(self.settings, "dnstt_duplication_mode", 1)
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            return 1
+        return value if value in {1, 2, 3} else 1
+
+    def _multiplexer_script_source_path(self) -> str:
+        return str((Path(__file__).resolve().parent / "scripts" / "dnstt_multiplexer.py"))
 
     def _domain_candidates(self) -> list[str]:
         domains_raw = str(getattr(self.settings, "dnstt_domain", "") or "").strip()
@@ -524,12 +536,98 @@ class DNSTTTunnel(BaseTunnel):
         if not domain or not pubkey:
             return {"success": False, "message": "DNSTT active domain and public key are required for client setup"}
 
+        duplication_mode = self._duplication_mode()
+        if duplication_mode > 1:
+            return self._setup_client_duplication(domain=domain, pubkey=pubkey, duplication_mode=duplication_mode)
+
         strategy = self._resolver_strategy()
         if strategy == "round-robin":
             return self._setup_client_round_robin(domain=domain, pubkey=pubkey)
         if strategy == "least-latency":
             return self._setup_client_least_latency(domain=domain, pubkey=pubkey)
         return self._setup_client_failover(domain=domain, pubkey=pubkey)
+
+    def _setup_client_duplication(self, *, domain: str, pubkey: str, duplication_mode: int) -> dict:
+        domain_q = shlex.quote(domain)
+        pubkey_q = shlex.quote(pubkey)
+        healthy_resolvers, resolver_telemetry = self._select_all_healthy_doh_endpoints()
+        selected_resolvers = healthy_resolvers[:duplication_mode]
+        if len(selected_resolvers) < duplication_mode:
+            return {
+                "success": False,
+                "message": f"DNSTT duplication mode {duplication_mode}x requires at least {duplication_mode} healthy DNS endpoints",
+                "target": "local",
+                "duplication_mode": duplication_mode,
+                "resolver_probe_report": resolver_telemetry.get("probe_results", []),
+            }
+
+        resolver_telemetry["strategy"] = "duplication"
+        resolver_telemetry["duplication_mode"] = duplication_mode
+        self._persist_telemetry(resolver_telemetry)
+
+        multiplexer_source_q = shlex.quote(self._multiplexer_script_source_path())
+        service_steps = [
+            "systemctl disable --now dnstt-client.service >/dev/null 2>&1 || true",
+            "systemctl disable --now dnstt-optimizer.service >/dev/null 2>&1 || true",
+            "systemctl disable --now dnstt-multiplexer.service >/dev/null 2>&1 || true",
+            "rm -f /etc/systemd/system/dnstt-optimizer.service /etc/systemd/system/dnstt-multiplexer.service /usr/local/bin/dnstt-optimizer.py /var/lib/dnstt/current_resolver",
+            "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
+            "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
+            "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
+            "install -m 0755 {source} /usr/local/bin/dnstt_multiplexer.py".format(source=multiplexer_source_q),
+        ]
+
+        instance_ports: list[int] = []
+        for idx, resolver in enumerate(selected_resolvers, start=1):
+            local_udp_port = 9000 + idx
+            instance_ports.append(local_udp_port)
+            service_name = f"dnstt-client-{idx}.service"
+            service_name_q = shlex.quote(service_name)
+            doh_resolver_q = shlex.quote(resolver["selected_doh"])
+            service_steps.append(
+                "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Duplication Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
+                    service_name=service_name,
+                    idx=idx,
+                    doh=doh_resolver_q,
+                    port=local_udp_port,
+                    pubkey=pubkey_q,
+                    domain=domain_q,
+                )
+            )
+            service_steps.append(f"systemctl enable {service_name_q}")
+
+        target_ports = ",".join(str(port) for port in instance_ports)
+        target_ports_q = shlex.quote(target_ports)
+        service_steps.append(
+            "cat > /etc/systemd/system/dnstt-multiplexer.service <<'EOF'\n[Unit]\nDescription=DNSTT UDP Multiplexer\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/python3 /usr/local/bin/dnstt_multiplexer.py --listen-host 127.0.0.1 --listen-port 9000 --target-host 127.0.0.1 --target-ports {target_ports}\nRestart=always\nRestartSec=2\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(target_ports=target_ports_q)
+        )
+        service_steps.extend(
+            [
+                "systemctl daemon-reload",
+                "systemctl enable dnstt-multiplexer.service",
+            ]
+        )
+        for idx in range(1, len(instance_ports) + 1):
+            service_steps.append(f"systemctl restart dnstt-client-{idx}.service")
+        service_steps.append("systemctl restart dnstt-multiplexer.service")
+
+        result = self._run_steps(target="local", steps=service_steps)
+        return {
+            "success": result.get("success", False),
+            "message": "DNSTT duplication mode configured" if result.get("success") else "DNSTT duplication mode setup failed",
+            "target": "local",
+            "strategy": "duplication",
+            "duplication_mode": duplication_mode,
+            "active_domain": domain,
+            "healthy_resolvers": [item["selected_doh"] for item in selected_resolvers],
+            "local_udp_ports": instance_ports,
+            "multiplexer_port": 9000,
+            "multiplexer_service": "dnstt-multiplexer.service",
+            "resolver_probe_report": resolver_telemetry.get("probe_results", []),
+            "dnstt_telemetry": resolver_telemetry,
+            "details": result,
+        }
 
     def _setup_client_failover(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
@@ -541,7 +639,8 @@ class DNSTTTunnel(BaseTunnel):
         service_steps = [
             "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
             "systemctl disable --now dnstt-optimizer.service >/dev/null 2>&1 || true",
-            "rm -f /etc/systemd/system/dnstt-optimizer.service /usr/local/bin/dnstt-optimizer.py /var/lib/dnstt/current_resolver",
+            "systemctl disable --now dnstt-multiplexer.service >/dev/null 2>&1 || true",
+            "rm -f /etc/systemd/system/dnstt-optimizer.service /etc/systemd/system/dnstt-multiplexer.service /usr/local/bin/dnstt-optimizer.py /usr/local/bin/dnstt_multiplexer.py /var/lib/dnstt/current_resolver",
             "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
             "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
             "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
@@ -582,7 +681,8 @@ class DNSTTTunnel(BaseTunnel):
         service_steps = [
             "systemctl disable --now dnstt-client.service >/dev/null 2>&1 || true",
             "systemctl disable --now dnstt-optimizer.service >/dev/null 2>&1 || true",
-            "rm -f /etc/systemd/system/dnstt-optimizer.service /usr/local/bin/dnstt-optimizer.py /var/lib/dnstt/current_resolver",
+            "systemctl disable --now dnstt-multiplexer.service >/dev/null 2>&1 || true",
+            "rm -f /etc/systemd/system/dnstt-optimizer.service /etc/systemd/system/dnstt-multiplexer.service /usr/local/bin/dnstt-optimizer.py /usr/local/bin/dnstt_multiplexer.py /var/lib/dnstt/current_resolver",
             "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
             "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
             "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
@@ -798,11 +898,13 @@ if __name__ == '__main__':
         optimizer_script = optimizer_script.replace("__ATLAS_OPTIMIZER_PAYLOAD__", repr(json.dumps(optimizer_payload)))
         service_steps = [
             "for unit in /etc/systemd/system/dnstt-client-*.service; do [ -e \"$unit\" ] || continue; name=$(basename \"$unit\"); systemctl disable --now \"$name\" >/dev/null 2>&1 || true; rm -f \"$unit\"; done",
+            "systemctl disable --now dnstt-multiplexer.service >/dev/null 2>&1 || true",
             "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
             "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
             "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
             "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q),
             "mkdir -p /var/lib/dnstt",
+            "rm -f /etc/systemd/system/dnstt-multiplexer.service /usr/local/bin/dnstt_multiplexer.py",
             "cat > /usr/local/bin/dnstt-optimizer.py <<'PY'\n{script}\nPY".format(script=optimizer_script),
             "chmod 0755 /usr/local/bin/dnstt-optimizer.py",
             "cat > /etc/systemd/system/dnstt-optimizer.service <<'EOF'\n[Unit]\nDescription=DNSTT Least-Latency Optimizer\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/python3 /usr/local/bin/dnstt-optimizer.py\nRestart=always\nRestartSec=5\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF",
