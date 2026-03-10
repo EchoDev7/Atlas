@@ -45,6 +45,7 @@ class GeneralSettingsBase(BaseModel):
     dnstt_dns_resolver: str = Field("8.8.8.8", min_length=3, max_length=1024)
     dnstt_resolver_strategy: Literal["failover", "least-latency", "round-robin"] = Field("failover")
     dnstt_duplication_mode: Literal[1, 2, 3] = Field(1)
+    dnstt_mtu: Literal[1232, 900, 500] = Field(1232)
     dnstt_telemetry: Optional[Dict[str, Any]] = Field(default=None)
     dnstt_pubkey: Optional[str] = Field(default=None)
     dnstt_privkey: Optional[str] = Field(default=None)
@@ -131,6 +132,11 @@ class GeneralSettingsBase(BaseModel):
     @field_validator("dnstt_duplication_mode")
     @classmethod
     def validate_dnstt_duplication_mode(cls, value: int) -> int:
+        return int(value)
+
+    @field_validator("dnstt_mtu")
+    @classmethod
+    def validate_dnstt_mtu(cls, value: int) -> int:
         return int(value)
 
     @field_validator("dnstt_domain")

@@ -528,6 +528,7 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         dnstt_dns_resolver=settings.dnstt_dns_resolver,
         dnstt_resolver_strategy=settings.dnstt_resolver_strategy,
         dnstt_duplication_mode=settings.dnstt_duplication_mode,
+        dnstt_mtu=settings.dnstt_mtu,
         dnstt_telemetry=settings.dnstt_telemetry,
         dnstt_pubkey=settings.dnstt_pubkey,
         dnstt_privkey=settings.dnstt_privkey,
@@ -647,6 +648,31 @@ def install_and_generate_dnstt(
     }
 
 
+@router.get("/tunnel/dnstt/probe-mtu")
+def probe_dnstt_mtu(
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    settings = _get_or_create_general_settings(db)
+    settings.tunnel_mode = "dnstt"
+    tunnel = tunnel_manager.get_tunnel(settings)
+
+    if not hasattr(tunnel, "probe_optimal_mtu"):
+        raise HTTPException(status_code=400, detail="DNSTT MTU probe is not available")
+
+    resolver_list = str(getattr(settings, "dnstt_dns_resolver", "8.8.8.8") or "8.8.8.8")
+    try:
+        recommended_mtu = int(tunnel.probe_optimal_mtu(resolver_list))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"DNSTT MTU probe failed: {exc}") from exc
+
+    if recommended_mtu not in {1232, 900, 500}:
+        recommended_mtu = 500
+
+    return {"recommended_mtu": recommended_mtu}
+
+
 @router.get("/server-ips")
 def get_server_public_ips(current_user: Admin = Depends(get_current_user)):
     _ = current_user
@@ -720,6 +746,7 @@ def update_general_settings(
     settings.dnstt_dns_resolver = payload.dnstt_dns_resolver
     settings.dnstt_resolver_strategy = payload.dnstt_resolver_strategy
     settings.dnstt_duplication_mode = payload.dnstt_duplication_mode
+    settings.dnstt_mtu = payload.dnstt_mtu
     settings.dnstt_telemetry = payload.dnstt_telemetry
     settings.dnstt_pubkey = payload.dnstt_pubkey
     settings.dnstt_privkey = payload.dnstt_privkey

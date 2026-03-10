@@ -666,6 +666,35 @@
                                             <option :value="3">3x Path Duplication</option>
                                         </select>
                                     </label>
+                                    <label class="block">
+                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            Tunnel MTU (Payload Size)
+                                            <span title="Lowering MTU fragments your packets to bypass firewalls that drop large DNS queries. Use the Auto-Detect tool if your tunnel connects but drops traffic." style="cursor:help;">❓</span>
+                                        </span>
+                                        <div class="mt-1 flex items-center gap-2">
+                                            <select x-model.number="generalForm.dnstt_mtu" class="w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                                <option :value="1232">1232 (Default - Fast)</option>
+                                                <option :value="900">900 (Safe - Moderate DPI)</option>
+                                                <option :value="500">500 (Extreme - Severe DPI/Blackout)</option>
+                                            </select>
+                                            <button
+                                                type="button"
+                                                @click="probeDnsttMtu()"
+                                                :disabled="dnsttMtuProbeLoading"
+                                                class="shrink-0 px-3 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'"
+                                            >
+                                                <span x-show="!dnsttMtuProbeLoading">🔍 Auto-Detect Safe MTU</span>
+                                                <span x-show="dnsttMtuProbeLoading" class="inline-flex items-center gap-2">
+                                                    <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"></circle>
+                                                        <path d="M22 12a10 10 0 00-10-10" stroke="currentColor" stroke-width="4" class="opacity-75"></path>
+                                                    </svg>
+                                                    Probing...
+                                                </span>
+                                            </button>
+                                        </div>
+                                    </label>
                                     <div class="md:col-span-3 rounded-2xl border p-4" :class="darkMode ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50/50'">
                                         <div class="flex items-center justify-between gap-3 mb-3">
                                             <h4 class="text-xs font-bold uppercase tracking-wide" :class="darkMode ? 'text-emerald-300' : 'text-emerald-700'">Live Telemetry &amp; Health</h4>
@@ -1802,11 +1831,13 @@
                     dnstt_dns_resolver: '8.8.8.8',
                     dnstt_resolver_strategy: 'failover',
                     dnstt_duplication_mode: 1,
+                    dnstt_mtu: 1232,
                     dnstt_telemetry: null,
                     dnstt_pubkey: '',
                     dnstt_privkey: '',
                 },
                 dnsttInstallLoading: false,
+                dnsttMtuProbeLoading: false,
                 localTunnelTerminalLines: ['[local] master orchestrator terminal ready'],
                 foreignTunnelTerminalLines: ['[foreign] exit node terminal ready'],
                 localTunnelCommand: '',
@@ -2668,6 +2699,7 @@
                             dnstt_dns_resolver: generalData.dnstt_dns_resolver || '8.8.8.8',
                             dnstt_resolver_strategy: generalData.dnstt_resolver_strategy || 'failover',
                             dnstt_duplication_mode: Number(generalData.dnstt_duplication_mode) || 1,
+                            dnstt_mtu: Number(generalData.dnstt_mtu) || 1232,
                             dnstt_telemetry: generalData.dnstt_telemetry || null,
                             dnstt_pubkey: generalData.dnstt_pubkey || '',
                             dnstt_privkey: generalData.dnstt_privkey || '',
@@ -3283,6 +3315,7 @@
                             dnstt_dns_resolver: (this.generalForm.dnstt_dns_resolver || '8.8.8.8').trim() || '8.8.8.8',
                             dnstt_resolver_strategy: (this.generalForm.dnstt_resolver_strategy || 'failover').trim().toLowerCase() || 'failover',
                             dnstt_duplication_mode: Number(this.generalForm.dnstt_duplication_mode) || 1,
+                            dnstt_mtu: Number(this.generalForm.dnstt_mtu) || 1232,
                             dnstt_telemetry: this.getDnsttTelemetry(),
                             dnstt_pubkey: (this.generalForm.dnstt_pubkey || '').trim() || null,
                             dnstt_privkey: (this.generalForm.dnstt_privkey || '').trim() || null,
@@ -3349,6 +3382,7 @@
                             dnstt_dns_resolver: updated.dnstt_dns_resolver || '8.8.8.8',
                             dnstt_resolver_strategy: updated.dnstt_resolver_strategy || 'failover',
                             dnstt_duplication_mode: Number(updated.dnstt_duplication_mode) || 1,
+                            dnstt_mtu: Number(updated.dnstt_mtu) || 1232,
                             dnstt_telemetry: updated.dnstt_telemetry || null,
                             dnstt_pubkey: updated.dnstt_pubkey || '',
                             dnstt_privkey: updated.dnstt_privkey || '',
@@ -3415,6 +3449,44 @@
                         this.showToast(error.message || 'DNSTT install failed', 'error');
                     } finally {
                         this.dnsttInstallLoading = false;
+                    }
+                },
+
+                async probeDnsttMtu() {
+                    this.dnsttMtuProbeLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/settings/tunnel/dnstt/probe-mtu', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'DNSTT MTU probe failed';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const result = await response.json();
+                        const recommended = Number(result.recommended_mtu) || 500;
+                        this.generalForm.dnstt_mtu = [1232, 900, 500].includes(recommended) ? recommended : 500;
+                        this.showToast(`Optimal MTU detected: ${this.generalForm.dnstt_mtu}`, 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'DNSTT MTU probe failed', 'error');
+                    } finally {
+                        this.dnsttMtuProbeLoading = false;
                     }
                 },
 

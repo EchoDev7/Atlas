@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import ipaddress
 import json
 from pathlib import Path
 import re
@@ -76,6 +77,66 @@ class DNSTTTunnel(BaseTunnel):
 
     def _multiplexer_script_source_path(self) -> str:
         return str((Path(__file__).resolve().parent / "scripts" / "dnstt_multiplexer.py"))
+
+    def _mtu_value(self) -> int:
+        raw_value = getattr(self.settings, "dnstt_mtu", 1232)
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            return 1232
+        return value if value in {1232, 900, 500} else 1232
+
+    def probe_optimal_mtu(self, resolver_list_string: str) -> int:
+        candidates = [item.strip() for item in str(resolver_list_string or "").split(",") if item and item.strip()]
+
+        probe_target = ""
+        for candidate in candidates:
+            parsed = urlparse(candidate)
+            if parsed.scheme in {"http", "https"} and parsed.netloc:
+                probe_target = (parsed.hostname or "").strip()
+                if probe_target:
+                    break
+                continue
+
+            try:
+                ipaddress.ip_address(candidate)
+                probe_target = candidate
+                break
+            except ValueError:
+                host_candidate = candidate.split("/", 1)[0].split(":", 1)[0].strip()
+                if host_candidate:
+                    probe_target = host_candidate
+                    break
+
+        if not probe_target:
+            return 500
+
+        probe_matrix = [
+            (1232, 1204),
+            (900, 872),
+            (500, 472),
+        ]
+        results: dict[int, bool] = {}
+        for mtu_value, payload_size in probe_matrix:
+            try:
+                completed = subprocess.run(
+                    ["ping", "-c", "1", "-M", "do", "-s", str(payload_size), "-W", "2", probe_target],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=4,
+                )
+                results[mtu_value] = completed.returncode == 0
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                results[mtu_value] = False
+
+        if results.get(1232):
+            return 1232
+        if results.get(900):
+            return 900
+        if results.get(500):
+            return 500
+        return 500
 
     def _domain_candidates(self) -> list[str]:
         domains_raw = str(getattr(self.settings, "dnstt_domain", "") or "").strip()
@@ -512,8 +573,9 @@ class DNSTTTunnel(BaseTunnel):
 
         domain_q = shlex.quote(domain)
         privkey_q = shlex.quote(privkey)
+        mtu_q = shlex.quote(str(self._mtu_value()))
         service_steps = [
-            "cat > /etc/systemd/system/dnstt-server.service <<'EOF'\n[Unit]\nDescription=DNSTT Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey {privkey} -domain {domain} 127.0.0.1:5300\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(privkey=privkey_q, domain=domain_q),
+            "cat > /etc/systemd/system/dnstt-server.service <<'EOF'\n[Unit]\nDescription=DNSTT Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey {privkey} -domain {domain} -mtu {mtu} 127.0.0.1:5300\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(privkey=privkey_q, domain=domain_q, mtu=mtu_q),
             "systemctl daemon-reload",
             "systemctl enable dnstt-server.service",
             "systemctl restart dnstt-server.service",
@@ -550,6 +612,7 @@ class DNSTTTunnel(BaseTunnel):
     def _setup_client_duplication(self, *, domain: str, pubkey: str, duplication_mode: int) -> dict:
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
+        mtu_q = shlex.quote(str(self._mtu_value()))
         healthy_resolvers, resolver_telemetry = self._select_all_healthy_doh_endpoints()
         selected_resolvers = healthy_resolvers[:duplication_mode]
         if len(selected_resolvers) < duplication_mode:
@@ -586,13 +649,14 @@ class DNSTTTunnel(BaseTunnel):
             service_name_q = shlex.quote(service_name)
             doh_resolver_q = shlex.quote(resolver["selected_doh"])
             service_steps.append(
-                "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Duplication Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
+                "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Duplication Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
                     service_name=service_name,
                     idx=idx,
                     doh=doh_resolver_q,
                     port=local_udp_port,
                     pubkey=pubkey_q,
                     domain=domain_q,
+                    mtu=mtu_q,
                 )
             )
             service_steps.append(f"systemctl enable {service_name_q}")
@@ -632,6 +696,7 @@ class DNSTTTunnel(BaseTunnel):
     def _setup_client_failover(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
+        mtu_q = shlex.quote(str(self._mtu_value()))
         doh_resolver, resolver_telemetry = self._select_healthy_doh_endpoint()
         resolver_telemetry["strategy"] = "failover"
         self._persist_telemetry(resolver_telemetry)
@@ -644,7 +709,7 @@ class DNSTTTunnel(BaseTunnel):
             "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
             "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
             "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
-            "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q),
+            "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q, mtu=mtu_q),
             "systemctl daemon-reload",
             "systemctl enable dnstt-client.service",
             "systemctl restart dnstt-client.service",
@@ -665,6 +730,7 @@ class DNSTTTunnel(BaseTunnel):
     def _setup_client_round_robin(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
+        mtu_q = shlex.quote(str(self._mtu_value()))
         healthy_resolvers, resolver_telemetry = self._select_all_healthy_doh_endpoints()
         if not healthy_resolvers:
             return {
@@ -698,13 +764,14 @@ class DNSTTTunnel(BaseTunnel):
             service_name_q = shlex.quote(service_name)
             doh_resolver_q = shlex.quote(resolver["selected_doh"])
             service_steps.append(
-                "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
+                "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
                     service_name=service_name,
                     idx=idx,
                     doh=doh_resolver_q,
                     port=local_udp_port,
                     pubkey=pubkey_q,
                     domain=domain_q,
+                    mtu=mtu_q,
                 )
             )
             service_steps.append(f"systemctl enable {service_name_q}")
@@ -743,6 +810,7 @@ class DNSTTTunnel(BaseTunnel):
     def _setup_client_least_latency(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
+        mtu_q = shlex.quote(str(self._mtu_value()))
         doh_resolver, resolver_telemetry = self._select_healthy_doh_endpoint()
         resolver_telemetry["strategy"] = "least-latency"
         self._persist_telemetry(resolver_telemetry)
@@ -750,6 +818,7 @@ class DNSTTTunnel(BaseTunnel):
         optimizer_payload = {
             "domain": domain,
             "pubkey": pubkey,
+            "mtu": self._mtu_value(),
             "resolvers": self._resolver_candidates(),
             "initial_doh": doh_resolver,
         }
@@ -835,10 +904,11 @@ def best_resolver():
 
 
 def render_service(selected_doh: str) -> str:
-    cmd = '/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080'.format(
+    cmd = '/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080'.format(
         doh=shlex.quote(selected_doh),
         pubkey=shlex.quote(CONFIG.get('pubkey', '')),
         domain=shlex.quote(CONFIG.get('domain', '')),
+        mtu=shlex.quote(str(int(CONFIG.get('mtu', 1232) or 1232))),
     )
     return '\n'.join([
         '[Unit]',
@@ -902,7 +972,7 @@ if __name__ == '__main__':
             "iptables -t nat -D OUTPUT -p udp --dport 5301 -j DNSTT_RR >/dev/null 2>&1 || true",
             "iptables -t nat -F DNSTT_RR >/dev/null 2>&1 || true",
             "iptables -t nat -X DNSTT_RR >/dev/null 2>&1 || true",
-            "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q),
+            "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q, mtu=mtu_q),
             "mkdir -p /var/lib/dnstt",
             "rm -f /etc/systemd/system/dnstt-multiplexer.service /usr/local/bin/dnstt_multiplexer.py",
             "cat > /usr/local/bin/dnstt-optimizer.py <<'PY'\n{script}\nPY".format(script=optimizer_script),
