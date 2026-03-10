@@ -1004,9 +1004,28 @@
                                                     Generating Profile...
                                                 </span>
                                             </button>
+                                            <button
+                                                type="button"
+                                                @click="downloadDnsttHttpInjectorStarter()"
+                                                :disabled="dnsttHttpInjectorStarterDownloading"
+                                                class="px-4 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                :class="darkMode ? 'bg-amber-500 hover:bg-amber-400' : 'bg-amber-600 hover:bg-amber-700'"
+                                            >
+                                                <span x-show="!dnsttHttpInjectorStarterDownloading">Export HTTP Injector Starter</span>
+                                                <span x-show="dnsttHttpInjectorStarterDownloading" class="inline-flex items-center gap-2">
+                                                    <svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                        <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                                    </svg>
+                                                    Generating Starter...
+                                                </span>
+                                            </button>
                                         </div>
                                         <p class="mt-2 text-[11px]" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
                                             Exported profile uses the exact resolver list from Tunnel DNS Endpoint (DoH/UDP) as primary and fallback chain.
+                                        </p>
+                                        <p class="mt-1 text-[11px]" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                            HTTP Injector Starter includes documented scenarios (Direct Payload, Proxy Payload, SSL/SNI) to help build final .ehi inside the app.
                                         </p>
                                     </div>
                                 </div>
@@ -2084,6 +2103,7 @@
                 },
                 dnsttInstallLoading: false,
                 dnsttProfileDownloading: false,
+                dnsttHttpInjectorStarterDownloading: false,
                 dnsttMtuProbeLoading: false,
                 dnsttDiagnosticsLoading: false,
                 dnsttDiagnosticsReport: null,
@@ -3788,6 +3808,63 @@
                         this.showToast(error.message || 'Failed to generate DNSTT client profile', 'error');
                     } finally {
                         this.dnsttProfileDownloading = false;
+                    }
+                },
+
+                async downloadDnsttHttpInjectorStarter() {
+                    this.dnsttHttpInjectorStarterDownloading = true;
+                    try {
+                        this.ensureDnsttActiveDomainSelection();
+                        const saved = await this.saveGeneralSettings();
+                        if (!saved) {
+                            throw new Error('Please fix settings validation errors before exporting HTTP Injector starter');
+                        }
+
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/settings/tunnel/dnstt/http-injector-starter', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Failed to generate HTTP Injector starter';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const payload = await response.json();
+                        const starter = payload.starter || {};
+                        const filename = payload.filename || `dnstt-http-injector-starter-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+                        const blob = new Blob([JSON.stringify(starter, null, 2)], { type: 'application/json;charset=utf-8' });
+                        const url = window.URL.createObjectURL(blob);
+                        const anchor = document.createElement('a');
+                        anchor.href = url;
+                        anchor.style.display = 'none';
+                        anchor.download = filename;
+                        document.body.appendChild(anchor);
+                        anchor.click();
+                        requestAnimationFrame(() => {
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(anchor);
+                        });
+
+                        this.showToast(payload.message || 'HTTP Injector starter downloaded', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to generate HTTP Injector starter', 'error');
+                    } finally {
+                        this.dnsttHttpInjectorStarterDownloading = false;
                     }
                 },
 

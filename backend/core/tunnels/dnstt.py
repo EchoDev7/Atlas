@@ -968,6 +968,127 @@ class DNSTTTunnel(BaseTunnel):
             "profile": profile,
         }
 
+    def generate_http_injector_starter(self) -> dict:
+        domain = self._active_domain()
+        pubkey = (getattr(self.settings, "dnstt_pubkey", "") or "").strip()
+        if not domain or not pubkey:
+            return {
+                "success": False,
+                "message": "DNSTT active domain and public key are required to generate HTTP Injector starter",
+            }
+
+        resolver_list = self._resolver_candidates()
+        configured_ssh_host = str(getattr(self.settings, "server_address", "") or "").strip()
+        configured_ssh_port = 443
+        configured_sni = domain
+
+        starter = {
+            "schema": "atlas.http_injector.starter.v1",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "note": "This file is a starter template for HTTP Injector. Build and export the final encrypted .ehi inside the HTTP Injector app.",
+            "dnstt_reference": {
+                "domain": domain,
+                "pubkey": pubkey,
+                "resolver_endpoints": resolver_list,
+                "mtu_mode": self._mtu_mode(),
+                "mtu_preset_value": self._mtu_value(),
+            },
+            "documented_app_flow": [
+                "Open HTTP Injector and choose tunnel type scenario below.",
+                "Apply payload and connection options exactly as provided.",
+                "Fill SSH/SSL credentials in app settings.",
+                "Test connection, then use Export Config to create final .ehi.",
+            ],
+            "scenarios": [
+                {
+                    "id": "ssh_custom_payload_direct",
+                    "title": "Secure Shell (SSH) + Custom Payload + Direct",
+                    "matches_http_injector_docs": True,
+                    "tunnel_type": "Secure Shell (SSH)",
+                    "connect_from": "None (Direct)",
+                    "options": {
+                        "custom_payload": True,
+                        "remote_proxy": False,
+                        "sni": False,
+                    },
+                    "payload_templates": [
+                        "CONNECT [host_port] [protocol][crlf]Host: [host][crlf]X-Online-Host: [host][crlf]X-Forward-Host: [host][crlf]Connection: Keep-Alive[crlf][crlf]",
+                        "CONNECT [host_port] HTTP/1.1[crlf]Host: [host][crlf]Connection: keep-alive[crlf][crlf]",
+                    ],
+                    "required_user_inputs": {
+                        "ssh_host": configured_ssh_host,
+                        "ssh_port": configured_ssh_port,
+                        "ssh_username": "<set-in-app>",
+                        "ssh_password": "<set-in-app>",
+                    },
+                    "recommended_host_placeholder": domain,
+                },
+                {
+                    "id": "ssh_custom_payload_proxy",
+                    "title": "Secure Shell (SSH) + Custom Payload + Proxy",
+                    "matches_http_injector_docs": True,
+                    "tunnel_type": "Secure Shell (SSH)",
+                    "connect_from": "Proxy",
+                    "options": {
+                        "custom_payload": True,
+                        "remote_proxy": True,
+                        "sni": False,
+                    },
+                    "payload_templates": [
+                        "CONNECT [host_port] [protocol][crlf]Host: [host][crlf]Proxy-Connection: Keep-Alive[crlf][crlf]",
+                    ],
+                    "required_user_inputs": {
+                        "remote_proxy_host": "<set-in-app>",
+                        "remote_proxy_port": 8080,
+                        "remote_proxy_username": "<optional>",
+                        "remote_proxy_password": "<optional>",
+                        "ssh_host": configured_ssh_host,
+                        "ssh_port": configured_ssh_port,
+                        "ssh_username": "<set-in-app>",
+                        "ssh_password": "<set-in-app>",
+                    },
+                    "recommended_host_placeholder": domain,
+                },
+                {
+                    "id": "ssh_ssl_sni",
+                    "title": "SSH over SSL/TLS (SNI)",
+                    "matches_http_injector_docs": True,
+                    "tunnel_type": "Secure Shell (SSH)",
+                    "connect_from": "SSL/TLS",
+                    "options": {
+                        "custom_payload": False,
+                        "remote_proxy": False,
+                        "sni": True,
+                    },
+                    "required_user_inputs": {
+                        "ssh_host": configured_ssh_host,
+                        "ssh_port": configured_ssh_port,
+                        "ssh_username": "<set-in-app>",
+                        "ssh_password": "<set-in-app>",
+                        "sni_host": configured_sni,
+                    },
+                    "notes": [
+                        "Use when payload-based direct/proxy paths are unstable.",
+                        "In high filtering environments, rotate SNI host and SSH endpoint when blocked.",
+                    ],
+                },
+            ],
+            "export_guidance": {
+                "config_locking_options": [
+                    "Lock config and prevent editing",
+                    "Include payload",
+                    "Include remote proxy auth (if used)",
+                    "Include SNI (if used)",
+                ],
+                "final_step": "Use HTTP Injector Export Config to generate .ehi for end users.",
+            },
+        }
+        return {
+            "success": True,
+            "message": "HTTP Injector starter generated",
+            "starter": starter,
+        }
+
     def setup_server(self) -> dict:
         domain = self._active_domain()
         privkey = (getattr(self.settings, "dnstt_privkey", "") or "").strip()
