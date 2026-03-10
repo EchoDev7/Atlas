@@ -796,10 +796,11 @@ class DNSTTTunnel(BaseTunnel):
             f"if [ ! -d {self.repo_dir}/.git ]; then git clone https://www.bamsoftware.com/git/dnstt.git {self.repo_dir}; else git -C {self.repo_dir} remote set-url origin https://www.bamsoftware.com/git/dnstt.git && git -C {self.repo_dir} fetch --all --tags --force; fi",
             f"git -C {self.repo_dir} checkout {self.KNOWN_STABLE_COMMIT}",
             f"echo '[dnstt] source integrity verified via commit pinning: {self.KNOWN_STABLE_COMMIT}'",
-            f"cd {self.repo_dir} && go build -o dnstt-server ./dnstt-server",
-            f"cd {self.repo_dir} && go build -o dnstt-client ./dnstt-client",
-            f"install -m 0755 {self.repo_dir}/dnstt-server {self.server_bin}",
-            f"install -m 0755 {self.repo_dir}/dnstt-client {self.client_bin}",
+            f"mkdir -p {self.repo_dir}/.atlas-build",
+            f"cd {self.repo_dir} && go build -o .atlas-build/dnstt-server ./dnstt-server",
+            f"cd {self.repo_dir} && go build -o .atlas-build/dnstt-client ./dnstt-client",
+            f"install -m 0755 {self.repo_dir}/.atlas-build/dnstt-server {self.server_bin}",
+            f"install -m 0755 {self.repo_dir}/.atlas-build/dnstt-client {self.client_bin}",
         ]
 
         if self._is_relay_mode():
@@ -818,7 +819,7 @@ class DNSTTTunnel(BaseTunnel):
 
     def generate_keys(self) -> dict:
         target = "foreign" if self._is_relay_mode() else "local"
-        command = f"cd {self.repo_dir} && ./dnstt-server -gen"
+        command = f"{self.server_bin} -gen"
         result = self._run_on_target(command=command, target=target, timeout=120)
         if not result.success:
             return {
