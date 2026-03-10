@@ -872,6 +872,110 @@ class DNSTTTunnel(BaseTunnel):
             "stderr": result.stderr,
         }
 
+    def generate_client_profile(self) -> dict:
+        domain = self._active_domain()
+        pubkey = (getattr(self.settings, "dnstt_pubkey", "") or "").strip()
+        if not domain or not pubkey:
+            return {
+                "success": False,
+                "message": "DNSTT active domain and public key are required to generate client profile",
+            }
+
+        normalized_resolvers: list[str] = []
+        seen = set()
+        for resolver in self._resolver_candidates():
+            selected = self._normalize_doh_endpoint(resolver)
+            key = selected.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized_resolvers.append(selected)
+
+        default_fallbacks = [
+            "https://cloudflare-dns.com/dns-query",
+            "https://dns.google/dns-query",
+            "https://dns.quad9.net/dns-query",
+            "https://dns.nextdns.io/dns-query",
+        ]
+        for resolver in default_fallbacks:
+            key = resolver.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized_resolvers.append(resolver)
+
+        profile = {
+            "schema": "atlas.dnstt.client_profile.v1",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "mode": str(self.mode),
+            "architecture": str(getattr(self.settings, "tunnel_architecture", "standalone") or "standalone"),
+            "server": {
+                "domain": domain,
+                "pubkey": pubkey,
+            },
+            "transport": {
+                "resolver_strategy": self._resolver_strategy(),
+                "duplication_mode": self._duplication_mode(),
+                "retry_count": self._transport_retry_count(),
+                "probe_timeout_ms": self._safe_int(
+                    getattr(self.settings, "dnstt_transport_probe_timeout_ms", 2000),
+                    2000,
+                    minimum=500,
+                    maximum=15000,
+                ),
+                "switch_threshold_percent": self._safe_int(
+                    getattr(self.settings, "dnstt_transport_switch_threshold_percent", 20),
+                    20,
+                    minimum=5,
+                    maximum=80,
+                ),
+                "doh_endpoints": {
+                    "primary": normalized_resolvers[0],
+                    "fallback_chain": normalized_resolvers[1:],
+                    "all": normalized_resolvers,
+                },
+            },
+            "mtu": {
+                "mode": self._mtu_mode(),
+                "preset_value": self._mtu_value(),
+                "adaptive_per_resolver": self._adaptive_per_resolver_enabled(),
+                "adaptive_upload_min": self._safe_int(
+                    getattr(self.settings, "dnstt_mtu_upload_min", 472),
+                    472,
+                    minimum=self.MIN_MTU,
+                    maximum=self.MAX_MTU,
+                ),
+                "adaptive_upload_max": self._safe_int(
+                    getattr(self.settings, "dnstt_mtu_upload_max", 1204),
+                    1204,
+                    minimum=self.MIN_MTU,
+                    maximum=self.MAX_MTU,
+                ),
+                "adaptive_download_min": self._safe_int(
+                    getattr(self.settings, "dnstt_mtu_download_min", 472),
+                    472,
+                    minimum=self.MIN_MTU,
+                    maximum=self.MAX_MTU,
+                ),
+                "adaptive_download_max": self._safe_int(
+                    getattr(self.settings, "dnstt_mtu_download_max", 1204),
+                    1204,
+                    minimum=self.MIN_MTU,
+                    maximum=self.MAX_MTU,
+                ),
+            },
+            "client_runtime": {
+                "binary": self.client_bin,
+                "local_udp_bind": "127.0.0.1:5301",
+                "local_socks5_listen": "127.0.0.1:1080",
+            },
+        }
+        return {
+            "success": True,
+            "message": "DNSTT client profile generated",
+            "profile": profile,
+        }
+
     def setup_server(self) -> dict:
         domain = self._active_domain()
         privkey = (getattr(self.settings, "dnstt_privkey", "") or "").strip()

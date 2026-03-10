@@ -731,6 +731,40 @@ def dnstt_diagnostics(
     return report
 
 
+@router.get("/tunnel/dnstt/client-profile")
+def dnstt_client_profile(
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    settings = _get_or_create_general_settings(db)
+    settings.tunnel_mode = "dnstt"
+    tunnel = tunnel_manager.get_tunnel(settings)
+
+    if not hasattr(tunnel, "generate_client_profile"):
+        raise HTTPException(status_code=400, detail="DNSTT client profile generator is not available")
+
+    try:
+        profile_result = tunnel.generate_client_profile()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"DNSTT client profile generation failed: {exc}") from exc
+
+    if not profile_result.get("success"):
+        raise HTTPException(status_code=400, detail=profile_result.get("message", "DNSTT client profile generation failed"))
+
+    profile_payload = profile_result.get("profile") or {}
+    active_domain = str(profile_payload.get("server", {}).get("domain") or "dnstt-client").strip()
+    safe_domain = re.sub(r"[^A-Za-z0-9_.-]+", "_", active_domain) or "dnstt-client"
+    profile_filename = f"{safe_domain}-dnstt-client-profile.json"
+
+    return {
+        "success": True,
+        "message": profile_result.get("message", "DNSTT client profile generated"),
+        "filename": profile_filename,
+        "profile": profile_payload,
+    }
+
+
 @router.get("/server-ips")
 def get_server_public_ips(current_user: Admin = Depends(get_current_user)):
     _ = current_user
