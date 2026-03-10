@@ -611,9 +611,14 @@
                                     </select>
                                 </label>
                                 <label class="block">
-                                    <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                        Deployment Type
-                                        <span title="Standalone = Panel is on the free server. Relay = Panel connects to the free server." style="cursor:help;">❓</span>
+                                    <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                        <span>Deployment Type</span>
+                                        <span class="relative" @mouseenter="showTooltip('tunnel_architecture')" @mouseleave="hideTooltip('tunnel_architecture')">
+                                            <button type="button" @click.stop="toggleTooltip('tunnel_architecture')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                            <div x-cloak x-show="openTooltip === 'tunnel_architecture'" x-transition class="tooltip-glass absolute left-0 top-6 z-20 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">
+                                                Choose <strong>Standalone</strong> when DNSTT runs on this server. Choose <strong>Relay</strong> only when tunneling traffic through a remote exit node.
+                                            </div>
+                                        </span>
                                     </span>
                                     <select x-model="generalForm.tunnel_architecture" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                         <option value="standalone">Standalone (Direct on this server)</option>
@@ -621,16 +626,30 @@
                                     </select>
                                 </label>
 
-                                <div id="dnstt_settings_block" x-show="isDnsttModeSelected()" class="contents">
+                                <div id="dnstt_settings_block" x-show="isDnsttModeSelected()" class="col-span-1 md:col-span-2 lg:col-span-3">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                                     <label class="block">
-                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                            Tunnel Domains (NS Records)
-                                            <span title="Enter one or more NS record domains, comma-separated (e.g., tns1.example.com, tns2.example.com)." style="cursor:help;">❓</span>
+                                        <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            <span>Tunnel Domains (NS Records)</span>
+                                            <span class="relative" @mouseenter="showTooltip('dnstt_domain')" @mouseleave="hideTooltip('dnstt_domain')">
+                                                <button type="button" @click.stop="toggleTooltip('dnstt_domain')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                                <div x-cloak x-show="openTooltip === 'dnstt_domain'" x-transition class="tooltip-glass absolute left-0 top-6 z-20 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">
+                                                    Provide one or more delegated NS domains, separated by commas. Use multiple domains when you need fast failover during DNS interference.
+                                                </div>
+                                            </span>
                                         </span>
                                         <input type="text" x-model="generalForm.dnstt_domain" placeholder="tns1.example.com, tns2.example.com" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                     </label>
                                     <label class="block">
-                                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Active Tunnel Domain</span>
+                                        <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            <span>Active Tunnel Domain</span>
+                                            <span class="relative" @mouseenter="showTooltip('dnstt_active_domain')" @mouseleave="hideTooltip('dnstt_active_domain')">
+                                                <button type="button" @click.stop="toggleTooltip('dnstt_active_domain')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                                <div x-cloak x-show="openTooltip === 'dnstt_active_domain'" x-transition class="tooltip-glass absolute left-0 top-6 z-20 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">
+                                                    Select the primary domain used for new DNSTT sessions. Switch this when one delegated domain becomes throttled or blocked.
+                                                </div>
+                                            </span>
+                                        </span>
                                         <select x-model="generalForm.dnstt_active_domain" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                             <template x-for="(domainOption, idx) in getDnsttDomainOptions()" :key="`dnstt-domain-option-${idx}`">
                                                 <option :value="domainOption" x-text="domainOption"></option>
@@ -638,16 +657,26 @@
                                         </select>
                                     </label>
                                     <label class="block">
-                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                            Tunnel DNS Endpoint (DoH/UDP)
-                                            <span title="Enter DoH URLs or IPs (comma-separated). The system will auto-select the working one during severe restrictions." style="cursor:help;">❓</span>
+                                        <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            <span>Tunnel DNS Endpoint (DoH/UDP)</span>
+                                            <span class="relative" @mouseenter="showTooltip('dnstt_dns_resolver')" @mouseleave="hideTooltip('dnstt_dns_resolver')">
+                                                <button type="button" @click.stop="toggleTooltip('dnstt_dns_resolver')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                                <div x-cloak x-show="openTooltip === 'dnstt_dns_resolver'" x-transition class="tooltip-glass absolute left-0 top-6 z-20 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">
+                                                    Enter DoH URLs and/or resolver IPs as a comma-separated list. Add at least two providers for high-censorship networks.
+                                                </div>
+                                            </span>
                                         </span>
                                         <input type="text" x-model="generalForm.dnstt_dns_resolver" placeholder="https://dns.google/dns-query, 8.8.8.8, 1.1.1.1" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                     </label>
                                     <label class="block">
-                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                            Resolver Strategy
-                                            <span title="Failover: Picks best at startup. Least-Latency: Re-evaluates ping every few minutes in background. Round-Robin: Spawns multiple concurrent tunnels and load-balances UDP traffic across all healthy DNS servers." style="cursor:help;">❓</span>
+                                        <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            <span>Resolver Strategy</span>
+                                            <span class="relative" @mouseenter="showTooltip('dnstt_resolver_strategy')" @mouseleave="hideTooltip('dnstt_resolver_strategy')">
+                                                <button type="button" @click.stop="toggleTooltip('dnstt_resolver_strategy')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                                <div x-cloak x-show="openTooltip === 'dnstt_resolver_strategy'" x-transition class="tooltip-glass absolute left-0 top-6 z-20 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">
+                                                    Use <strong>Failover</strong> for stability, <strong>Least-Latency</strong> for adaptive optimization, and <strong>Round-Robin</strong> when you need multi-path survivability.
+                                                </div>
+                                            </span>
                                         </span>
                                         <select x-model="generalForm.dnstt_resolver_strategy" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                             <option value="failover">Startup Failover (Stable)</option>
@@ -656,9 +685,14 @@
                                         </select>
                                     </label>
                                     <label class="block">
-                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                            Packet Duplication (Severe Blackout)
-                                            <span title="Clones and sends VPN packets simultaneously across 2 or 3 different DNS resolvers. Guarantees connection during extreme packet loss. Uses more server bandwidth. (Requires at least 2 or 3 DNS Endpoints configured)." style="cursor:help;">❓</span>
+                                        <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            <span>Packet Duplication (Severe Blackout)</span>
+                                            <span class="relative" @mouseenter="showTooltip('dnstt_duplication_mode')" @mouseleave="hideTooltip('dnstt_duplication_mode')">
+                                                <button type="button" @click.stop="toggleTooltip('dnstt_duplication_mode')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                                <div x-cloak x-show="openTooltip === 'dnstt_duplication_mode'" x-transition class="tooltip-glass absolute left-0 top-6 z-20 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">
+                                                    Sends duplicate packets through multiple resolvers. Enable only for severe packet loss or hard blocking, because bandwidth consumption increases.
+                                                </div>
+                                            </span>
                                         </span>
                                         <select x-model.number="generalForm.dnstt_duplication_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                             <option :value="1">Off (Standard)</option>
@@ -666,13 +700,18 @@
                                             <option :value="3">3x Path Duplication</option>
                                         </select>
                                     </label>
-                                    <label class="block">
-                                        <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                            Tunnel MTU (Payload Size)
-                                            <span title="Lowering MTU fragments your packets to bypass firewalls that drop large DNS queries. Use the Auto-Detect tool if your tunnel connects but drops traffic." style="cursor:help;">❓</span>
+                                    <label class="block md:col-span-2 xl:col-span-1">
+                                        <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                            <span>Tunnel MTU (Payload Size)</span>
+                                            <span class="relative" @mouseenter="showTooltip('dnstt_mtu')" @mouseleave="hideTooltip('dnstt_mtu')">
+                                                <button type="button" @click.stop="toggleTooltip('dnstt_mtu')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                                <div x-cloak x-show="openTooltip === 'dnstt_mtu'" x-transition class="tooltip-glass absolute left-0 top-6 z-20 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">
+                                                    Fixed MTU value used in preset mode. Lower values improve bypass reliability; set <strong>50 bytes only during extreme DPI blocking</strong>.
+                                                </div>
+                                            </span>
                                         </span>
-                                        <div class="mt-1 flex items-center gap-2">
-                                            <select x-model.number="generalForm.dnstt_mtu" class="w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                        <div class="mt-1 flex flex-col sm:flex-row sm:items-center gap-2">
+                                            <select x-model.number="generalForm.dnstt_mtu" :disabled="generalForm.dnstt_mtu_mode === 'adaptive'" class="w-full rounded-xl border px-3 py-2.5 theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                                 <option :value="1232">1232 (Default - Fast)</option>
                                                 <option :value="900">900 (Safe - Moderate DPI)</option>
                                                 <option :value="500">500 (Extreme - Severe DPI/Blackout)</option>
@@ -684,11 +723,11 @@
                                             <button
                                                 type="button"
                                                 @click="probeDnsttMtu()"
-                                                :disabled="dnsttMtuProbeLoading"
-                                                class="shrink-0 px-3 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                :disabled="dnsttMtuProbeLoading || generalForm.dnstt_mtu_mode === 'adaptive'"
+                                                class="w-full sm:w-auto shrink-0 px-3 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                                                 :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'"
                                             >
-                                                <span x-show="!dnsttMtuProbeLoading">🔍 Auto-Detect Safe MTU</span>
+                                                <span x-show="!dnsttMtuProbeLoading">Auto-Detect Fixed MTU</span>
                                                 <span x-show="dnsttMtuProbeLoading" class="inline-flex items-center gap-2">
                                                     <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                                         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"></circle>
@@ -698,9 +737,12 @@
                                                 </span>
                                             </button>
                                         </div>
+                                        <p class="mt-1 text-[11px]" :class="darkMode ? 'text-slate-400' : 'text-slate-500'" x-show="generalForm.dnstt_mtu_mode === 'adaptive'">
+                                            Fixed MTU is disabled in Dynamic Range mode.
+                                        </p>
                                     </label>
-                                    <div class="md:col-span-3 rounded-2xl border p-4 space-y-4" :class="darkMode ? 'border-cyan-500/40 bg-cyan-500/5' : 'border-cyan-200 bg-cyan-50/60'">
-                                        <div class="flex items-center justify-between gap-2">
+                                    <div class="md:col-span-2 xl:col-span-3 rounded-2xl border p-4 space-y-4" :class="darkMode ? 'border-cyan-500/40 bg-cyan-500/5' : 'border-cyan-200 bg-cyan-50/60'">
+                                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                             <h4 class="text-xs font-bold uppercase tracking-wide" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'">Advanced MTU & Transport Controls</h4>
                                             <span class="text-[11px]" :class="darkMode ? 'text-cyan-200/80' : 'text-cyan-800/80'">Operational tuning</span>
                                         </div>
@@ -708,30 +750,40 @@
                                             Use adaptive mode for difficult networks. Keep tighter bounds when you need stability and wider bounds when you need survivability.
                                         </p>
 
-                                        <div class="grid md:grid-cols-3 gap-3">
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                                             <label class="block">
-                                                <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                                    MTU Tuning Mode
-                                                    <span title="Preset uses fixed MTU. Adaptive probes resolver paths and chooses best MTU within your bounds." style="cursor:help;">❓</span>
+                                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                    <span>MTU Tuning Mode</span>
+                                                    <span class="relative" @mouseenter="showTooltip('dnstt_mtu_mode')" @mouseleave="hideTooltip('dnstt_mtu_mode')">
+                                                        <button type="button" @click.stop="toggleTooltip('dnstt_mtu_mode')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                                        <div x-cloak x-show="openTooltip === 'dnstt_mtu_mode'" x-transition class="tooltip-glass absolute left-0 top-6 z-20 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">
+                                                            <strong>Fixed Value (Preset)</strong> uses one MTU. <strong>Dynamic Range (Adaptive)</strong> probes and selects MTU within your configured min/max bounds.
+                                                        </div>
+                                                    </span>
                                                 </span>
                                                 <select x-model="generalForm.dnstt_mtu_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                                                    <option value="preset">Preset (Manual)</option>
-                                                    <option value="adaptive">Adaptive (Auto per path)</option>
+                                                    <option value="preset">Fixed Value (Preset)</option>
+                                                    <option value="adaptive">Dynamic Range (Adaptive)</option>
                                                 </select>
                                             </label>
                                             <label class="block md:col-span-2">
-                                                <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                                                    Adaptive Per Resolver
-                                                    <span title="When enabled, each resolver instance can run with its own MTU for better survivability under uneven filtering." style="cursor:help;">❓</span>
+                                                <span class="text-sm font-medium theme-transition flex items-center gap-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                    <span>Adaptive Per Resolver</span>
+                                                    <span class="relative" @mouseenter="showTooltip('dnstt_adaptive_per_resolver')" @mouseleave="hideTooltip('dnstt_adaptive_per_resolver')">
+                                                        <button type="button" @click.stop="toggleTooltip('dnstt_adaptive_per_resolver')" class="w-4 h-4 rounded-full text-[10px] font-bold border flex items-center justify-center" :class="darkMode ? 'border-slate-500 text-slate-200 bg-slate-700/70' : 'border-slate-400 text-slate-700 bg-white/80'">?</button>
+                                                        <div x-cloak x-show="openTooltip === 'dnstt_adaptive_per_resolver'" x-transition class="tooltip-glass absolute left-0 top-6 z-20 rounded-xl border px-3 py-2 text-xs leading-relaxed shadow-2xl" :class="darkMode ? 'bg-slate-900/95 border-slate-700 text-slate-100' : 'bg-white/95 border-slate-300 text-slate-800'">
+                                                            Allows each resolver to use its own optimal MTU. Enable in Dynamic Range mode for uneven paths; keep disabled for deterministic behavior.
+                                                        </div>
+                                                    </span>
                                                 </span>
                                                 <div class="mt-2 flex items-center gap-2 text-xs" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">
-                                                    <input type="checkbox" x-model="generalForm.dnstt_adaptive_per_resolver" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                                                    <input type="checkbox" x-model="generalForm.dnstt_adaptive_per_resolver" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed">
                                                     <span>Enable resolver-specific MTU selection (adaptive mode only)</span>
                                                 </div>
                                             </label>
                                         </div>
 
-                                        <div class="grid md:grid-cols-4 gap-3">
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                                             <label class="block">
                                                 <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Upload Min (bytes)</span>
                                                 <input type="number" x-model.number="generalForm.dnstt_mtu_upload_min" min="50" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
@@ -750,7 +802,7 @@
                                             </label>
                                         </div>
 
-                                        <div class="grid md:grid-cols-4 gap-3">
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                                             <label class="block">
                                                 <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Probe Workers</span>
                                                 <input type="number" x-model.number="generalForm.dnstt_transport_probe_workers" min="1" max="8" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
@@ -772,7 +824,7 @@
                                             Higher switch threshold reduces flapping; lower threshold reacts faster to degraded resolvers.
                                         </p>
 
-                                        <div class="flex flex-wrap items-center gap-2">
+                                        <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
                                             <button
                                                 type="button"
                                                 @click="runDnsttDiagnostics()"
@@ -918,7 +970,7 @@
                                         <textarea x-model="generalForm.dnstt_privkey" rows="3" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition" :class="darkMode ? 'bg-slate-900/70 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-300 text-slate-900'"></textarea>
                                     </label>
 
-                                    <div class="md:col-span-3 pt-2">
+                                    <div class="md:col-span-2 xl:col-span-3 pt-2">
                                         <button
                                             type="button"
                                             @click="installAndGenerateDnstt()"
@@ -936,6 +988,7 @@
                                             </span>
                                         </button>
                                     </div>
+                                </div>
                                 </div>
 
                                 <div id="remote_ssh_block" x-show="isRelayDeploymentSelected()" class="contents">
