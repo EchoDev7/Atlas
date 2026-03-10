@@ -636,6 +636,59 @@
                                         </span>
                                         <input type="text" x-model="generalForm.dnstt_dns_resolver" placeholder="https://dns.google/dns-query, 8.8.8.8, 1.1.1.1" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                                     </label>
+                                    <div class="md:col-span-3 rounded-2xl border p-4" :class="darkMode ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50/50'">
+                                        <div class="flex items-center justify-between gap-3 mb-3">
+                                            <h4 class="text-xs font-bold uppercase tracking-wide" :class="darkMode ? 'text-emerald-300' : 'text-emerald-700'">Live Telemetry &amp; Health</h4>
+                                            <span class="text-[11px]" :class="darkMode ? 'text-emerald-200/80' : 'text-emerald-800/80'">Read-only</span>
+                                        </div>
+
+                                        <template x-if="getDnsttTelemetry()">
+                                            <div class="space-y-3">
+                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                                                    <div class="rounded-xl border px-3 py-2" :class="darkMode ? 'border-slate-700 bg-slate-900/40' : 'border-slate-200 bg-white'">
+                                                        <p class="uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Selected Resolver</p>
+                                                        <p class="mt-1 font-mono break-all" :class="darkMode ? 'text-emerald-200' : 'text-emerald-700'" x-text="getDnsttTelemetry().selected_resolver || 'N/A'"></p>
+                                                    </div>
+                                                    <div class="rounded-xl border px-3 py-2" :class="darkMode ? 'border-slate-700 bg-slate-900/40' : 'border-slate-200 bg-white'">
+                                                        <p class="uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Last Update</p>
+                                                        <p class="mt-1" :class="darkMode ? 'text-slate-200' : 'text-slate-700'" x-text="formatDnsttTelemetryTimestamp(getDnsttTelemetry().last_update_timestamp)"></p>
+                                                    </div>
+                                                </div>
+
+                                                <div class="overflow-x-auto rounded-xl border" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                                                    <table class="min-w-full text-xs">
+                                                        <thead :class="darkMode ? 'bg-slate-900/60 text-slate-300' : 'bg-slate-100 text-slate-700'">
+                                                            <tr>
+                                                                <th class="px-3 py-2 text-left font-semibold">Resolver</th>
+                                                                <th class="px-3 py-2 text-left font-semibold">Latency</th>
+                                                                <th class="px-3 py-2 text-left font-semibold">Status</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <template x-for="(probe, idx) in getDnsttProbeResults()" :key="`dnstt-probe-${idx}`">
+                                                                <tr :class="darkMode ? 'border-t border-slate-800 text-slate-200' : 'border-t border-slate-200 text-slate-700'">
+                                                                    <td class="px-3 py-2 font-mono break-all" x-text="probe.resolver || probe.selected_doh || 'N/A'"></td>
+                                                                    <td class="px-3 py-2" x-text="formatDnsttProbeLatency(probe)"></td>
+                                                                    <td class="px-3 py-2">
+                                                                        <span class="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                                                                              :class="probe.status === 'healthy' ? (darkMode ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700') : (darkMode ? 'bg-rose-500/20 text-rose-300' : 'bg-rose-100 text-rose-700')"
+                                                                              x-text="probe.status === 'healthy' ? 'Healthy' : 'Failed'"></span>
+                                                                    </td>
+                                                                </tr>
+                                                            </template>
+                                                            <tr x-show="getDnsttProbeResults().length === 0" :class="darkMode ? 'border-t border-slate-800 text-slate-400' : 'border-t border-slate-200 text-slate-500'">
+                                                                <td colspan="3" class="px-3 py-2">No probe results available yet.</td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </template>
+
+                                        <template x-if="!getDnsttTelemetry()">
+                                            <p class="text-xs" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Telemetry will appear after DNSTT probe runs.</p>
+                                        </template>
+                                    </div>
                                     <label class="block md:col-span-2">
                                         <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">DNSTT Public Key (read-only)</span>
                                         <textarea x-model="generalForm.dnstt_pubkey" rows="3" readonly class="mt-1 w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition" :class="darkMode ? 'bg-slate-900/70 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-300 text-slate-900'"></textarea>
@@ -1716,6 +1769,7 @@
                     tunnel_architecture: 'standalone',
                     dnstt_domain: '',
                     dnstt_dns_resolver: '8.8.8.8',
+                    dnstt_telemetry: null,
                     dnstt_pubkey: '',
                     dnstt_privkey: '',
                 },
@@ -2400,6 +2454,50 @@
                     return (this.generalForm.tunnel_architecture || '').trim().toLowerCase() === 'relay';
                 },
 
+                getDnsttTelemetry() {
+                    const telemetry = this.generalForm.dnstt_telemetry;
+                    if (!telemetry) {
+                        return null;
+                    }
+                    if (typeof telemetry === 'string') {
+                        try {
+                            return JSON.parse(telemetry);
+                        } catch (_) {
+                            return null;
+                        }
+                    }
+                    if (typeof telemetry === 'object') {
+                        return telemetry;
+                    }
+                    return null;
+                },
+
+                getDnsttProbeResults() {
+                    const telemetry = this.getDnsttTelemetry();
+                    if (!telemetry || !Array.isArray(telemetry.probe_results)) {
+                        return [];
+                    }
+                    return telemetry.probe_results;
+                },
+
+                formatDnsttTelemetryTimestamp(value) {
+                    if (!value) {
+                        return 'N/A';
+                    }
+                    const parsed = new Date(value);
+                    if (Number.isNaN(parsed.getTime())) {
+                        return value;
+                    }
+                    return parsed.toLocaleString();
+                },
+
+                formatDnsttProbeLatency(probe) {
+                    if (!probe || probe.latency_ms === null || probe.latency_ms === undefined) {
+                        return probe && probe.status === 'healthy' ? 'N/A' : 'Timeout';
+                    }
+                    return `${probe.latency_ms} ms`;
+                },
+
                 normalizeLoginMaxFailedAttempts(value) {
                     const parsed = Number(value);
                     if (!Number.isFinite(parsed)) return 5;
@@ -2478,6 +2576,7 @@
                             tunnel_architecture: generalData.tunnel_architecture || 'standalone',
                             dnstt_domain: generalData.dnstt_domain || '',
                             dnstt_dns_resolver: generalData.dnstt_dns_resolver || '8.8.8.8',
+                            dnstt_telemetry: generalData.dnstt_telemetry || null,
                             dnstt_pubkey: generalData.dnstt_pubkey || '',
                             dnstt_privkey: generalData.dnstt_privkey || '',
                         };
@@ -3088,6 +3187,7 @@
                             tunnel_architecture: (this.generalForm.tunnel_architecture || 'standalone').trim() || 'standalone',
                             dnstt_domain: (this.generalForm.dnstt_domain || '').trim() || null,
                             dnstt_dns_resolver: (this.generalForm.dnstt_dns_resolver || '8.8.8.8').trim() || '8.8.8.8',
+                            dnstt_telemetry: this.getDnsttTelemetry(),
                             dnstt_pubkey: (this.generalForm.dnstt_pubkey || '').trim() || null,
                             dnstt_privkey: (this.generalForm.dnstt_privkey || '').trim() || null,
                         };
@@ -3150,6 +3250,7 @@
                             tunnel_architecture: updated.tunnel_architecture || 'standalone',
                             dnstt_domain: updated.dnstt_domain || '',
                             dnstt_dns_resolver: updated.dnstt_dns_resolver || '8.8.8.8',
+                            dnstt_telemetry: updated.dnstt_telemetry || null,
                             dnstt_pubkey: updated.dnstt_pubkey || '',
                             dnstt_privkey: updated.dnstt_privkey || '',
                         };

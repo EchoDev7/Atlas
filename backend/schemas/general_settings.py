@@ -1,6 +1,6 @@
 from datetime import datetime
 import ipaddress
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -42,6 +42,7 @@ class GeneralSettingsBase(BaseModel):
     tunnel_architecture: Literal["relay", "standalone"] = Field("standalone")
     dnstt_domain: Optional[str] = Field(default=None, max_length=255)
     dnstt_dns_resolver: str = Field("8.8.8.8", min_length=3, max_length=1024)
+    dnstt_telemetry: Optional[Dict[str, Any]] = Field(default=None)
     dnstt_pubkey: Optional[str] = Field(default=None)
     dnstt_privkey: Optional[str] = Field(default=None)
 

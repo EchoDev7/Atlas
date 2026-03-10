@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
 
 from backend.database import Base
 
@@ -46,6 +46,7 @@ class GeneralSettings(Base):
     tunnel_architecture = Column(String(32), nullable=False, default="standalone")
     dnstt_domain = Column(String(255), nullable=True)
     dnstt_dns_resolver = Column(String(1024), nullable=False, default="8.8.8.8")
+    dnstt_telemetry = Column(JSON, nullable=True)
     dnstt_pubkey = Column(Text, nullable=True)
     dnstt_privkey = Column(Text, nullable=True)
 

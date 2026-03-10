@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import re
 import shlex
 import socket
 import ssl
 import subprocess
+import time
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 import paramiko
+from sqlalchemy.orm import object_session
 
 from backend.core.tunnels.base import BaseTunnel
 
@@ -60,58 +63,97 @@ class DNSTTTunnel(BaseTunnel):
             return trimmed
         return f"https://{trimmed}/dns-query"
 
-    def _probe_url(self, endpoint: str, timeout_seconds: float = 2.0) -> bool:
+    def _probe_url(self, endpoint: str, timeout_seconds: float = 2.0) -> tuple[bool, float | None, str | None]:
         request = Request(endpoint, method="GET", headers={"Accept": "application/dns-message"})
+        started_at = time.perf_counter()
         try:
             with urlopen(request, timeout=timeout_seconds, context=ssl._create_unverified_context()) as response:  # nosec B310
                 _ = response.read(1)
-            return True
+            latency_ms = (time.perf_counter() - started_at) * 1000.0
+            return True, latency_ms, None
         except HTTPError:
             # An HTTP response still proves endpoint reachability.
-            return True
+            latency_ms = (time.perf_counter() - started_at) * 1000.0
+            return True, latency_ms, None
         except (URLError, ValueError, TimeoutError, socket.timeout):
-            return False
-        except Exception:
-            return False
+            return False, None, "url_probe_failed"
+        except Exception as exc:
+            return False, None, str(exc)
 
-    def _probe_ip(self, ip_address: str, timeout_seconds: float = 2.0) -> bool:
+    def _probe_ip(self, ip_address: str, timeout_seconds: float = 2.0) -> tuple[bool, float | None, str | None]:
+        best_latency_ms: float | None = None
+        last_error: str | None = None
         for port in (53, 443):
+            started_at = time.perf_counter()
             try:
                 with socket.create_connection((ip_address, port), timeout=timeout_seconds):
-                    return True
-            except (socket.timeout, OSError):
+                    latency_ms = (time.perf_counter() - started_at) * 1000.0
+                    if best_latency_ms is None or latency_ms < best_latency_ms:
+                        best_latency_ms = latency_ms
+            except (socket.timeout, OSError) as exc:
+                last_error = str(exc) or "ip_probe_failed"
                 continue
-        return False
+        if best_latency_ms is not None:
+            return True, best_latency_ms, None
+        return False, None, last_error or "ip_probe_failed"
 
-    def _select_healthy_doh_endpoint(self) -> tuple[str, list[dict]]:
-        probe_report: list[dict] = []
+    def _select_healthy_doh_endpoint(self) -> tuple[str, dict]:
+        probe_results: list[dict] = []
         candidates = self._resolver_candidates()
+        ranked_healthy: list[dict] = []
 
         for candidate in candidates:
             selected_endpoint = self._normalize_doh_endpoint(candidate)
             parsed = urlparse(candidate)
             is_url = parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
+            healthy = False
+            latency_ms: float | None = None
+            error: str | None = None
+
             if is_url:
-                healthy = self._probe_url(candidate)
+                healthy, latency_ms, error = self._probe_url(candidate)
             else:
-                healthy = self._probe_ip(candidate)
+                healthy, latency_ms, error = self._probe_ip(candidate)
                 if not healthy:
-                    healthy = self._probe_url(selected_endpoint)
+                    healthy, latency_ms, error = self._probe_url(selected_endpoint)
 
-            probe_report.append(
-                {
-                    "candidate": candidate,
-                    "selected_doh": selected_endpoint,
-                    "healthy": healthy,
-                }
-            )
+            status = "healthy" if healthy else "failed"
+            probe_result = {
+                "resolver": candidate,
+                "selected_doh": selected_endpoint,
+                "latency_ms": round(latency_ms, 2) if latency_ms is not None else None,
+                "status": status,
+                "error": error,
+            }
+            probe_results.append(probe_result)
 
-            if healthy:
-                return selected_endpoint, probe_report
+            if healthy and latency_ms is not None:
+                ranked_healthy.append(probe_result)
 
-        # Fallback for heavily filtered networks: still use first configured endpoint.
-        return self._normalize_doh_endpoint(candidates[0]), probe_report
+        ranked_healthy.sort(key=lambda item: item["latency_ms"])
+        selected_doh = ranked_healthy[0]["selected_doh"] if ranked_healthy else self._normalize_doh_endpoint(candidates[0])
+
+        telemetry = {
+            "selected_resolver": selected_doh,
+            "last_update_timestamp": datetime.now(timezone.utc).isoformat(),
+            "probe_results": probe_results,
+        }
+        return selected_doh, telemetry
+
+    def _persist_telemetry(self, telemetry: dict) -> None:
+        if not hasattr(self.settings, "dnstt_telemetry"):
+            return
+
+        self.settings.dnstt_telemetry = telemetry
+        session = object_session(self.settings)
+        if session is None:
+            return
+
+        self.settings.updated_at = datetime.utcnow()
+        session.add(self.settings)
+        session.commit()
+        session.refresh(self.settings)
 
     def _ssh_target(self) -> tuple[str, int, str, str]:
         host = (getattr(self.settings, "foreign_server_ip", "") or "").strip()
@@ -278,7 +320,7 @@ class DNSTTTunnel(BaseTunnel):
         domain_q = shlex.quote(domain)
         privkey_q = shlex.quote(privkey)
         service_steps = [
-            "cat > /etc/systemd/system/dnstt-server.service <<'EOF'\n[Unit]\nDescription=DNSTT Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey {privkey} -domain {domain} 127.0.0.1:5300\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(privkey=privkey_q, domain=domain_q),
+            "cat > /etc/systemd/system/dnstt-server.service <<'EOF'\n[Unit]\nDescription=DNSTT Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey {privkey} -domain {domain} 127.0.0.1:5300\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(privkey=privkey_q, domain=domain_q),
             "systemctl daemon-reload",
             "systemctl enable dnstt-server.service",
             "systemctl restart dnstt-server.service",
@@ -301,10 +343,11 @@ class DNSTTTunnel(BaseTunnel):
 
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
-        doh_resolver, resolver_probe_report = self._select_healthy_doh_endpoint()
+        doh_resolver, resolver_telemetry = self._select_healthy_doh_endpoint()
+        self._persist_telemetry(resolver_telemetry)
         doh_resolver_q = shlex.quote(doh_resolver)
         service_steps = [
-            "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q),
+            "cat > /etc/systemd/system/dnstt-client.service <<'EOF'\n[Unit]\nDescription=DNSTT Client\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(doh=doh_resolver_q, pubkey=pubkey_q, domain=domain_q),
             "systemctl daemon-reload",
             "systemctl enable dnstt-client.service",
             "systemctl restart dnstt-client.service",
@@ -315,7 +358,8 @@ class DNSTTTunnel(BaseTunnel):
             "message": "DNSTT client configured" if result.get("success") else "DNSTT client setup failed",
             "target": "local",
             "selected_doh_resolver": doh_resolver,
-            "resolver_probe_report": resolver_probe_report,
+            "resolver_probe_report": resolver_telemetry.get("probe_results", []),
+            "dnstt_telemetry": resolver_telemetry,
             "details": result,
         }
 

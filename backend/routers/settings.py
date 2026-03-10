@@ -525,6 +525,7 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         tunnel_architecture=settings.tunnel_architecture,
         dnstt_domain=settings.dnstt_domain,
         dnstt_dns_resolver=settings.dnstt_dns_resolver,
+        dnstt_telemetry=settings.dnstt_telemetry,
         dnstt_pubkey=settings.dnstt_pubkey,
         dnstt_privkey=settings.dnstt_privkey,
         created_at=settings.created_at,
@@ -712,6 +713,7 @@ def update_general_settings(
     settings.tunnel_architecture = payload.tunnel_architecture
     settings.dnstt_domain = payload.dnstt_domain
     settings.dnstt_dns_resolver = payload.dnstt_dns_resolver
+    settings.dnstt_telemetry = payload.dnstt_telemetry
     settings.dnstt_pubkey = payload.dnstt_pubkey
     settings.dnstt_privkey = payload.dnstt_privkey
     settings.updated_at = datetime.utcnow()
