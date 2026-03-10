@@ -2,6 +2,7 @@ from datetime import datetime
 import ipaddress
 import logging
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
