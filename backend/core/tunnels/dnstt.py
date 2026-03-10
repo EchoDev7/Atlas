@@ -979,7 +979,10 @@ class DNSTTTunnel(BaseTunnel):
 
         resolver_list = self._resolver_candidates()
         configured_ssh_host = str(getattr(self.settings, "server_address", "") or "").strip()
-        configured_ssh_port = 443
+        if not configured_ssh_host:
+            configured_ssh_host = str(getattr(self.settings, "foreign_server_ip", "") or "").strip()
+        configured_ssh_host = configured_ssh_host or "<set-in-app>"
+        configured_ssh_port = self._safe_int(getattr(self.settings, "foreign_server_port", 22), 22, minimum=1, maximum=65535)
         configured_sni = domain
 
         starter = {
@@ -999,6 +1002,43 @@ class DNSTTTunnel(BaseTunnel):
                 "Fill SSH/SSL credentials in app settings.",
                 "Test connection, then use Export Config to create final .ehi.",
             ],
+            "http_injector_input_catalog": {
+                "sections": [
+                    {
+                        "name": "SSH Settings",
+                        "fields": [
+                            "Host",
+                            "Port",
+                            "Username",
+                            "Password",
+                        ],
+                    },
+                    {
+                        "name": "Payload Settings",
+                        "fields": [
+                            "Enable Custom Payload",
+                            "Payload Text",
+                        ],
+                    },
+                    {
+                        "name": "Remote Proxy",
+                        "fields": [
+                            "Use Remote Proxy",
+                            "Proxy Host",
+                            "Proxy Port",
+                            "Proxy Username",
+                            "Proxy Password",
+                        ],
+                    },
+                    {
+                        "name": "SSL/TLS Settings",
+                        "fields": [
+                            "Enable SSL/TLS",
+                            "SNI Host",
+                        ],
+                    },
+                ],
+            },
             "scenarios": [
                 {
                     "id": "ssh_custom_payload_direct",
@@ -1006,22 +1046,36 @@ class DNSTTTunnel(BaseTunnel):
                     "matches_http_injector_docs": True,
                     "tunnel_type": "Secure Shell (SSH)",
                     "connect_from": "None (Direct)",
-                    "options": {
-                        "custom_payload": True,
-                        "remote_proxy": False,
-                        "sni": False,
+                    "http_injector_mode": {
+                        "tunnel_type": "SSH",
+                        "connect_from": "Direct",
                     },
-                    "payload_templates": [
-                        "CONNECT [host_port] [protocol][crlf]Host: [host][crlf]X-Online-Host: [host][crlf]X-Forward-Host: [host][crlf]Connection: Keep-Alive[crlf][crlf]",
-                        "CONNECT [host_port] HTTP/1.1[crlf]Host: [host][crlf]Connection: keep-alive[crlf][crlf]",
+                    "injector_fields": {
+                        "ssh_settings": {
+                            "host": configured_ssh_host,
+                            "port": configured_ssh_port,
+                            "username": "<set-in-app>",
+                            "password": "<set-in-app>",
+                        },
+                        "payload_settings": {
+                            "enable_custom_payload": True,
+                            "payload_templates": [
+                                "CONNECT [host_port] [protocol][crlf]Host: [host][crlf]X-Online-Host: [host][crlf]X-Forward-Host: [host][crlf]Connection: Keep-Alive[crlf][crlf]",
+                                "CONNECT [host_port] HTTP/1.1[crlf]Host: [host][crlf]Connection: keep-alive[crlf][crlf]",
+                            ],
+                            "recommended_host_placeholder": domain,
+                        },
+                        "remote_proxy": {
+                            "enabled": False,
+                        },
+                        "ssl_tls": {
+                            "enabled": False,
+                        },
+                    },
+                    "user_must_provide": [
+                        "ssh_settings.username",
+                        "ssh_settings.password",
                     ],
-                    "required_user_inputs": {
-                        "ssh_host": configured_ssh_host,
-                        "ssh_port": configured_ssh_port,
-                        "ssh_username": "<set-in-app>",
-                        "ssh_password": "<set-in-app>",
-                    },
-                    "recommended_host_placeholder": domain,
                 },
                 {
                     "id": "ssh_custom_payload_proxy",
@@ -1029,25 +1083,40 @@ class DNSTTTunnel(BaseTunnel):
                     "matches_http_injector_docs": True,
                     "tunnel_type": "Secure Shell (SSH)",
                     "connect_from": "Proxy",
-                    "options": {
-                        "custom_payload": True,
-                        "remote_proxy": True,
-                        "sni": False,
+                    "http_injector_mode": {
+                        "tunnel_type": "SSH",
+                        "connect_from": "Proxy",
                     },
-                    "payload_templates": [
-                        "CONNECT [host_port] [protocol][crlf]Host: [host][crlf]Proxy-Connection: Keep-Alive[crlf][crlf]",
+                    "injector_fields": {
+                        "ssh_settings": {
+                            "host": configured_ssh_host,
+                            "port": configured_ssh_port,
+                            "username": "<set-in-app>",
+                            "password": "<set-in-app>",
+                        },
+                        "payload_settings": {
+                            "enable_custom_payload": True,
+                            "payload_templates": [
+                                "CONNECT [host_port] [protocol][crlf]Host: [host][crlf]Proxy-Connection: Keep-Alive[crlf][crlf]",
+                            ],
+                            "recommended_host_placeholder": domain,
+                        },
+                        "remote_proxy": {
+                            "enabled": True,
+                            "host": "<set-in-app>",
+                            "port": 8080,
+                            "username": "<optional>",
+                            "password": "<optional>",
+                        },
+                        "ssl_tls": {
+                            "enabled": False,
+                        },
+                    },
+                    "user_must_provide": [
+                        "ssh_settings.username",
+                        "ssh_settings.password",
+                        "remote_proxy.host",
                     ],
-                    "required_user_inputs": {
-                        "remote_proxy_host": "<set-in-app>",
-                        "remote_proxy_port": 8080,
-                        "remote_proxy_username": "<optional>",
-                        "remote_proxy_password": "<optional>",
-                        "ssh_host": configured_ssh_host,
-                        "ssh_port": configured_ssh_port,
-                        "ssh_username": "<set-in-app>",
-                        "ssh_password": "<set-in-app>",
-                    },
-                    "recommended_host_placeholder": domain,
                 },
                 {
                     "id": "ssh_ssl_sni",
@@ -1055,18 +1124,32 @@ class DNSTTTunnel(BaseTunnel):
                     "matches_http_injector_docs": True,
                     "tunnel_type": "Secure Shell (SSH)",
                     "connect_from": "SSL/TLS",
-                    "options": {
-                        "custom_payload": False,
-                        "remote_proxy": False,
-                        "sni": True,
+                    "http_injector_mode": {
+                        "tunnel_type": "SSH",
+                        "connect_from": "SSL/TLS",
                     },
-                    "required_user_inputs": {
-                        "ssh_host": configured_ssh_host,
-                        "ssh_port": configured_ssh_port,
-                        "ssh_username": "<set-in-app>",
-                        "ssh_password": "<set-in-app>",
-                        "sni_host": configured_sni,
+                    "injector_fields": {
+                        "ssh_settings": {
+                            "host": configured_ssh_host,
+                            "port": configured_ssh_port,
+                            "username": "<set-in-app>",
+                            "password": "<set-in-app>",
+                        },
+                        "payload_settings": {
+                            "enable_custom_payload": False,
+                        },
+                        "remote_proxy": {
+                            "enabled": False,
+                        },
+                        "ssl_tls": {
+                            "enabled": True,
+                            "sni_host": configured_sni,
+                        },
                     },
+                    "user_must_provide": [
+                        "ssh_settings.username",
+                        "ssh_settings.password",
+                    ],
                     "notes": [
                         "Use when payload-based direct/proxy paths are unstable.",
                         "In high filtering environments, rotate SNI host and SSH endpoint when blocked.",
