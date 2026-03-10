@@ -45,8 +45,19 @@ class GeneralSettingsBase(BaseModel):
     dnstt_dns_resolver: str = Field("8.8.8.8", min_length=3, max_length=1024)
     dnstt_resolver_strategy: Literal["failover", "least-latency", "round-robin"] = Field("failover")
     dnstt_duplication_mode: Literal[1, 2, 3] = Field(1)
-    dnstt_mtu: Literal[1232, 900, 500] = Field(1232)
+    dnstt_mtu_mode: Literal["preset", "adaptive"] = Field("preset")
+    dnstt_mtu: int = Field(1232, ge=500, le=1400)
+    dnstt_mtu_upload_min: int = Field(472, ge=256, le=1400)
+    dnstt_mtu_upload_max: int = Field(1204, ge=256, le=1400)
+    dnstt_mtu_download_min: int = Field(472, ge=256, le=1400)
+    dnstt_mtu_download_max: int = Field(1204, ge=256, le=1400)
+    dnstt_adaptive_per_resolver: bool = Field(True)
+    dnstt_transport_probe_workers: int = Field(2, ge=1, le=8)
+    dnstt_transport_retry_count: int = Field(2, ge=0, le=10)
+    dnstt_transport_probe_timeout_ms: int = Field(2000, ge=500, le=15000)
+    dnstt_transport_switch_threshold_percent: int = Field(20, ge=5, le=80)
     dnstt_telemetry: Optional[Dict[str, Any]] = Field(default=None)
+    dnstt_telemetry_history: Optional[List[Dict[str, Any]]] = Field(default=None)
     dnstt_pubkey: Optional[str] = Field(default=None)
     dnstt_privkey: Optional[str] = Field(default=None)
 
@@ -139,6 +150,25 @@ class GeneralSettingsBase(BaseModel):
     def validate_dnstt_mtu(cls, value: int) -> int:
         return int(value)
 
+    @field_validator("dnstt_mtu_mode")
+    @classmethod
+    def validate_dnstt_mtu_mode(cls, value: str) -> str:
+        return value.strip().lower()
+
+    @field_validator(
+        "dnstt_mtu_upload_min",
+        "dnstt_mtu_upload_max",
+        "dnstt_mtu_download_min",
+        "dnstt_mtu_download_max",
+        "dnstt_transport_probe_workers",
+        "dnstt_transport_retry_count",
+        "dnstt_transport_probe_timeout_ms",
+        "dnstt_transport_switch_threshold_percent",
+    )
+    @classmethod
+    def validate_dnstt_int_knobs(cls, value: int) -> int:
+        return int(value)
+
     @field_validator("dnstt_domain")
     @classmethod
     def validate_dnstt_domain(cls, value: Optional[str]) -> Optional[str]:
@@ -180,6 +210,14 @@ class GeneralSettingsBase(BaseModel):
             return None
         normalized = value.strip().rstrip(".")
         return normalized or None
+
+    @model_validator(mode="after")
+    def validate_dnstt_mtu_ranges(self):
+        if self.dnstt_mtu_upload_min > self.dnstt_mtu_upload_max:
+            raise ValueError("DNSTT upload MTU min cannot be greater than max")
+        if self.dnstt_mtu_download_min > self.dnstt_mtu_download_max:
+            raise ValueError("DNSTT download MTU min cannot be greater than max")
+        return self
 
     @field_validator("foreign_server_ip")
     @classmethod

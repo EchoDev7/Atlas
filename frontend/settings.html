@@ -676,6 +676,9 @@
                                                 <option :value="1232">1232 (Default - Fast)</option>
                                                 <option :value="900">900 (Safe - Moderate DPI)</option>
                                                 <option :value="500">500 (Extreme - Severe DPI/Blackout)</option>
+                                                <template x-if="![1232, 900, 500].includes(Number(generalForm.dnstt_mtu))">
+                                                    <option :value="Number(generalForm.dnstt_mtu)" x-text="`${Number(generalForm.dnstt_mtu)} (Adaptive Detected)`"></option>
+                                                </template>
                                             </select>
                                             <button
                                                 type="button"
@@ -695,6 +698,108 @@
                                             </button>
                                         </div>
                                     </label>
+                                    <div class="md:col-span-3 rounded-2xl border p-4 space-y-4" :class="darkMode ? 'border-cyan-500/40 bg-cyan-500/5' : 'border-cyan-200 bg-cyan-50/60'">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <h4 class="text-xs font-bold uppercase tracking-wide" :class="darkMode ? 'text-cyan-300' : 'text-cyan-700'">Advanced MTU & Transport Controls</h4>
+                                            <span class="text-[11px]" :class="darkMode ? 'text-cyan-200/80' : 'text-cyan-800/80'">Operational tuning</span>
+                                        </div>
+                                        <p class="text-[11px]" :class="darkMode ? 'text-slate-300' : 'text-slate-600'">
+                                            Use adaptive mode for difficult networks. Keep tighter bounds when you need stability and wider bounds when you need survivability.
+                                        </p>
+
+                                        <div class="grid md:grid-cols-3 gap-3">
+                                            <label class="block">
+                                                <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                    MTU Tuning Mode
+                                                    <span title="Preset uses fixed MTU. Adaptive probes resolver paths and chooses best MTU within your bounds." style="cursor:help;">❓</span>
+                                                </span>
+                                                <select x-model="generalForm.dnstt_mtu_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                                    <option value="preset">Preset (Manual)</option>
+                                                    <option value="adaptive">Adaptive (Auto per path)</option>
+                                                </select>
+                                            </label>
+                                            <label class="block md:col-span-2">
+                                                <span class="text-sm font-medium theme-transition inline-flex items-center gap-1" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                    Adaptive Per Resolver
+                                                    <span title="When enabled, each resolver instance can run with its own MTU for better survivability under uneven filtering." style="cursor:help;">❓</span>
+                                                </span>
+                                                <div class="mt-2 flex items-center gap-2 text-xs" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">
+                                                    <input type="checkbox" x-model="generalForm.dnstt_adaptive_per_resolver" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                                                    <span>Enable resolver-specific MTU selection (adaptive mode only)</span>
+                                                </div>
+                                            </label>
+                                        </div>
+
+                                        <div class="grid md:grid-cols-4 gap-3">
+                                            <label class="block">
+                                                <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Upload Min (bytes)</span>
+                                                <input type="number" x-model.number="generalForm.dnstt_mtu_upload_min" min="256" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            </label>
+                                            <label class="block">
+                                                <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Upload Max (bytes)</span>
+                                                <input type="number" x-model.number="generalForm.dnstt_mtu_upload_max" min="256" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            </label>
+                                            <label class="block">
+                                                <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Download Min (bytes)</span>
+                                                <input type="number" x-model.number="generalForm.dnstt_mtu_download_min" min="256" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            </label>
+                                            <label class="block">
+                                                <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Download Max (bytes)</span>
+                                                <input type="number" x-model.number="generalForm.dnstt_mtu_download_max" min="256" max="1400" :disabled="generalForm.dnstt_mtu_mode !== 'adaptive'" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition disabled:opacity-60 disabled:cursor-not-allowed" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            </label>
+                                        </div>
+
+                                        <div class="grid md:grid-cols-4 gap-3">
+                                            <label class="block">
+                                                <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Probe Workers</span>
+                                                <input type="number" x-model.number="generalForm.dnstt_transport_probe_workers" min="1" max="8" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            </label>
+                                            <label class="block">
+                                                <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Retry Count</span>
+                                                <input type="number" x-model.number="generalForm.dnstt_transport_retry_count" min="0" max="10" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            </label>
+                                            <label class="block">
+                                                <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Probe Timeout (ms)</span>
+                                                <input type="number" x-model.number="generalForm.dnstt_transport_probe_timeout_ms" min="500" max="15000" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            </label>
+                                            <label class="block">
+                                                <span class="text-xs font-semibold" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Switch Threshold (%)</span>
+                                                <input type="number" x-model.number="generalForm.dnstt_transport_switch_threshold_percent" min="5" max="80" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                            </label>
+                                        </div>
+                                        <p class="text-[11px]" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                            Higher switch threshold reduces flapping; lower threshold reacts faster to degraded resolvers.
+                                        </p>
+
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                @click="runDnsttDiagnostics()"
+                                                :disabled="dnsttDiagnosticsLoading"
+                                                class="px-3 py-2 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                :class="darkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-800 hover:bg-slate-900'"
+                                            >
+                                                <span x-show="!dnsttDiagnosticsLoading">🧰 Run DNSTT Diagnostics</span>
+                                                <span x-show="dnsttDiagnosticsLoading">Collecting...</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                @click="dnsttDiagnosticsReport = null"
+                                                x-show="dnsttDiagnosticsReport"
+                                                class="px-3 py-2 rounded-xl text-xs font-semibold transition"
+                                                :class="darkMode ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'"
+                                            >
+                                                Clear Report
+                                            </button>
+                                        </div>
+
+                                        <template x-if="dnsttDiagnosticsReport">
+                                            <div class="rounded-xl border p-3" :class="darkMode ? 'border-slate-700 bg-slate-950/70' : 'border-slate-200 bg-white'">
+                                                <p class="text-xs font-semibold mb-2" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Diagnostics Report</p>
+                                                <pre class="text-[11px] overflow-auto max-h-56" :class="darkMode ? 'text-slate-200' : 'text-slate-700'" x-text="formatJson(dnsttDiagnosticsReport)"></pre>
+                                            </div>
+                                        </template>
+                                    </div>
                                     <div class="md:col-span-3 rounded-2xl border p-4" :class="darkMode ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50/50'">
                                         <div class="flex items-center justify-between gap-3 mb-3">
                                             <h4 class="text-xs font-bold uppercase tracking-wide" :class="darkMode ? 'text-emerald-300' : 'text-emerald-700'">Live Telemetry &amp; Health</h4>
@@ -741,6 +846,61 @@
                                                         </tbody>
                                                     </table>
                                                 </div>
+
+                                                <template x-if="getDnsttTelemetry().analytics">
+                                                    <div class="space-y-3">
+                                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                                                            <div class="rounded-xl border px-3 py-2" :class="darkMode ? 'border-slate-700 bg-slate-900/40 text-slate-200' : 'border-slate-200 bg-white text-slate-700'">
+                                                                <p class="uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Telemetry Samples</p>
+                                                                <p class="mt-1 font-semibold" x-text="getDnsttTelemetry().analytics.sample_count || 0"></p>
+                                                            </div>
+                                                            <div class="rounded-xl border px-3 py-2" :class="darkMode ? 'border-slate-700 bg-slate-900/40 text-slate-200' : 'border-slate-200 bg-white text-slate-700'">
+                                                                <p class="uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Overall Avg Latency</p>
+                                                                <p class="mt-1 font-semibold" x-text="typeof getDnsttTelemetry().analytics.overall_avg_latency_ms === 'number' ? `${getDnsttTelemetry().analytics.overall_avg_latency_ms} ms` : 'N/A'"></p>
+                                                            </div>
+                                                            <div class="rounded-xl border px-3 py-2" :class="darkMode ? 'border-slate-700 bg-slate-900/40 text-slate-200' : 'border-slate-200 bg-white text-slate-700'">
+                                                                <p class="uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Resolver Switches</p>
+                                                                <p class="mt-1 font-semibold" x-text="getDnsttTelemetry().analytics.resolver_switches_recent || 0"></p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="rounded-xl border p-3 text-xs" :class="darkMode ? 'border-slate-700 bg-slate-900/40 text-slate-200' : 'border-slate-200 bg-white text-slate-700'">
+                                                            <p class="mb-2 font-semibold">Latency Histogram</p>
+                                                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                                <div>&lt;50ms: <span class="font-semibold" x-text="getDnsttTelemetry().analytics.latency_histogram?.lt_50 ?? 0"></span></div>
+                                                                <div>50-100ms: <span class="font-semibold" x-text="getDnsttTelemetry().analytics.latency_histogram?.['50_100'] ?? 0"></span></div>
+                                                                <div>100-200ms: <span class="font-semibold" x-text="getDnsttTelemetry().analytics.latency_histogram?.['100_200'] ?? 0"></span></div>
+                                                                <div>&ge;200ms: <span class="font-semibold" x-text="getDnsttTelemetry().analytics.latency_histogram?.gte_200 ?? 0"></span></div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="overflow-x-auto rounded-xl border" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                                                            <table class="min-w-full text-xs">
+                                                                <thead :class="darkMode ? 'bg-slate-900/60 text-slate-300' : 'bg-slate-100 text-slate-700'">
+                                                                    <tr>
+                                                                        <th class="px-3 py-2 text-left font-semibold">Resolver KPI</th>
+                                                                        <th class="px-3 py-2 text-left font-semibold">Success</th>
+                                                                        <th class="px-3 py-2 text-left font-semibold">Avg</th>
+                                                                        <th class="px-3 py-2 text-left font-semibold">Range</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    <template x-for="(kpi, idx) in (getDnsttTelemetry().analytics.resolver_kpis || [])" :key="`dnstt-kpi-${idx}`">
+                                                                        <tr :class="darkMode ? 'border-t border-slate-800 text-slate-200' : 'border-t border-slate-200 text-slate-700'">
+                                                                            <td class="px-3 py-2 font-mono break-all" x-text="kpi.resolver || 'N/A'"></td>
+                                                                            <td class="px-3 py-2" x-text="typeof kpi.success_rate_percent === 'number' ? `${kpi.success_rate_percent}%` : 'N/A'"></td>
+                                                                            <td class="px-3 py-2" x-text="typeof kpi.avg_latency_ms === 'number' ? `${kpi.avg_latency_ms} ms` : 'N/A'"></td>
+                                                                            <td class="px-3 py-2" x-text="(typeof kpi.min_latency_ms === 'number' && typeof kpi.max_latency_ms === 'number') ? `${kpi.min_latency_ms} - ${kpi.max_latency_ms} ms` : 'N/A'"></td>
+                                                                        </tr>
+                                                                    </template>
+                                                                    <tr x-show="(getDnsttTelemetry().analytics.resolver_kpis || []).length === 0" :class="darkMode ? 'border-t border-slate-800 text-slate-400' : 'border-t border-slate-200 text-slate-500'">
+                                                                        <td colspan="4" class="px-3 py-2">No KPI history yet.</td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </template>
                                             </div>
                                         </template>
 
@@ -1831,13 +1991,26 @@
                     dnstt_dns_resolver: '8.8.8.8',
                     dnstt_resolver_strategy: 'failover',
                     dnstt_duplication_mode: 1,
+                    dnstt_mtu_mode: 'preset',
                     dnstt_mtu: 1232,
+                    dnstt_mtu_upload_min: 472,
+                    dnstt_mtu_upload_max: 1204,
+                    dnstt_mtu_download_min: 472,
+                    dnstt_mtu_download_max: 1204,
+                    dnstt_adaptive_per_resolver: true,
+                    dnstt_transport_probe_workers: 2,
+                    dnstt_transport_retry_count: 2,
+                    dnstt_transport_probe_timeout_ms: 2000,
+                    dnstt_transport_switch_threshold_percent: 20,
                     dnstt_telemetry: null,
+                    dnstt_telemetry_history: null,
                     dnstt_pubkey: '',
                     dnstt_privkey: '',
                 },
                 dnsttInstallLoading: false,
                 dnsttMtuProbeLoading: false,
+                dnsttDiagnosticsLoading: false,
+                dnsttDiagnosticsReport: null,
                 localTunnelTerminalLines: ['[local] master orchestrator terminal ready'],
                 foreignTunnelTerminalLines: ['[foreign] exit node terminal ready'],
                 localTunnelCommand: '',
@@ -2699,8 +2872,19 @@
                             dnstt_dns_resolver: generalData.dnstt_dns_resolver || '8.8.8.8',
                             dnstt_resolver_strategy: generalData.dnstt_resolver_strategy || 'failover',
                             dnstt_duplication_mode: Number(generalData.dnstt_duplication_mode) || 1,
+                            dnstt_mtu_mode: generalData.dnstt_mtu_mode || 'preset',
                             dnstt_mtu: Number(generalData.dnstt_mtu) || 1232,
+                            dnstt_mtu_upload_min: Number(generalData.dnstt_mtu_upload_min) || 472,
+                            dnstt_mtu_upload_max: Number(generalData.dnstt_mtu_upload_max) || 1204,
+                            dnstt_mtu_download_min: Number(generalData.dnstt_mtu_download_min) || 472,
+                            dnstt_mtu_download_max: Number(generalData.dnstt_mtu_download_max) || 1204,
+                            dnstt_adaptive_per_resolver: generalData.dnstt_adaptive_per_resolver !== false,
+                            dnstt_transport_probe_workers: Number(generalData.dnstt_transport_probe_workers) || 2,
+                            dnstt_transport_retry_count: Number(generalData.dnstt_transport_retry_count) || 2,
+                            dnstt_transport_probe_timeout_ms: Number(generalData.dnstt_transport_probe_timeout_ms) || 2000,
+                            dnstt_transport_switch_threshold_percent: Number(generalData.dnstt_transport_switch_threshold_percent) || 20,
                             dnstt_telemetry: generalData.dnstt_telemetry || null,
+                            dnstt_telemetry_history: generalData.dnstt_telemetry_history || null,
                             dnstt_pubkey: generalData.dnstt_pubkey || '',
                             dnstt_privkey: generalData.dnstt_privkey || '',
                         };
@@ -3315,8 +3499,19 @@
                             dnstt_dns_resolver: (this.generalForm.dnstt_dns_resolver || '8.8.8.8').trim() || '8.8.8.8',
                             dnstt_resolver_strategy: (this.generalForm.dnstt_resolver_strategy || 'failover').trim().toLowerCase() || 'failover',
                             dnstt_duplication_mode: Number(this.generalForm.dnstt_duplication_mode) || 1,
+                            dnstt_mtu_mode: (this.generalForm.dnstt_mtu_mode || 'preset').trim().toLowerCase() || 'preset',
                             dnstt_mtu: Number(this.generalForm.dnstt_mtu) || 1232,
+                            dnstt_mtu_upload_min: Number(this.generalForm.dnstt_mtu_upload_min) || 472,
+                            dnstt_mtu_upload_max: Number(this.generalForm.dnstt_mtu_upload_max) || 1204,
+                            dnstt_mtu_download_min: Number(this.generalForm.dnstt_mtu_download_min) || 472,
+                            dnstt_mtu_download_max: Number(this.generalForm.dnstt_mtu_download_max) || 1204,
+                            dnstt_adaptive_per_resolver: !!this.generalForm.dnstt_adaptive_per_resolver,
+                            dnstt_transport_probe_workers: Number(this.generalForm.dnstt_transport_probe_workers) || 2,
+                            dnstt_transport_retry_count: Number(this.generalForm.dnstt_transport_retry_count) || 2,
+                            dnstt_transport_probe_timeout_ms: Number(this.generalForm.dnstt_transport_probe_timeout_ms) || 2000,
+                            dnstt_transport_switch_threshold_percent: Number(this.generalForm.dnstt_transport_switch_threshold_percent) || 20,
                             dnstt_telemetry: this.getDnsttTelemetry(),
+                            dnstt_telemetry_history: this.generalForm.dnstt_telemetry_history || null,
                             dnstt_pubkey: (this.generalForm.dnstt_pubkey || '').trim() || null,
                             dnstt_privkey: (this.generalForm.dnstt_privkey || '').trim() || null,
                         };
@@ -3382,8 +3577,19 @@
                             dnstt_dns_resolver: updated.dnstt_dns_resolver || '8.8.8.8',
                             dnstt_resolver_strategy: updated.dnstt_resolver_strategy || 'failover',
                             dnstt_duplication_mode: Number(updated.dnstt_duplication_mode) || 1,
+                            dnstt_mtu_mode: updated.dnstt_mtu_mode || 'preset',
                             dnstt_mtu: Number(updated.dnstt_mtu) || 1232,
+                            dnstt_mtu_upload_min: Number(updated.dnstt_mtu_upload_min) || 472,
+                            dnstt_mtu_upload_max: Number(updated.dnstt_mtu_upload_max) || 1204,
+                            dnstt_mtu_download_min: Number(updated.dnstt_mtu_download_min) || 472,
+                            dnstt_mtu_download_max: Number(updated.dnstt_mtu_download_max) || 1204,
+                            dnstt_adaptive_per_resolver: updated.dnstt_adaptive_per_resolver !== false,
+                            dnstt_transport_probe_workers: Number(updated.dnstt_transport_probe_workers) || 2,
+                            dnstt_transport_retry_count: Number(updated.dnstt_transport_retry_count) || 2,
+                            dnstt_transport_probe_timeout_ms: Number(updated.dnstt_transport_probe_timeout_ms) || 2000,
+                            dnstt_transport_switch_threshold_percent: Number(updated.dnstt_transport_switch_threshold_percent) || 20,
                             dnstt_telemetry: updated.dnstt_telemetry || null,
+                            dnstt_telemetry_history: updated.dnstt_telemetry_history || null,
                             dnstt_pubkey: updated.dnstt_pubkey || '',
                             dnstt_privkey: updated.dnstt_privkey || '',
                         };
@@ -3481,12 +3687,57 @@
 
                         const result = await response.json();
                         const recommended = Number(result.recommended_mtu) || 500;
-                        this.generalForm.dnstt_mtu = [1232, 900, 500].includes(recommended) ? recommended : 500;
+                        this.generalForm.dnstt_mtu = (recommended >= 500 && recommended <= 1400) ? recommended : 500;
                         this.showToast(`Optimal MTU detected: ${this.generalForm.dnstt_mtu}`, 'success');
                     } catch (error) {
                         this.showToast(error.message || 'DNSTT MTU probe failed', 'error');
                     } finally {
                         this.dnsttMtuProbeLoading = false;
+                    }
+                },
+
+                async runDnsttDiagnostics() {
+                    this.dnsttDiagnosticsLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/settings/tunnel/dnstt/diagnostics', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'DNSTT diagnostics failed';
+                            try {
+                                const error = await response.json();
+                                if (typeof error.detail === 'string') {
+                                    message = error.detail;
+                                }
+                            } catch (_) {
+                                // Keep default message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const result = await response.json();
+                        this.dnsttDiagnosticsReport = result;
+                        this.showToast('DNSTT diagnostics collected', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'DNSTT diagnostics failed', 'error');
+                    } finally {
+                        this.dnsttDiagnosticsLoading = false;
+                    }
+                },
+
+                formatJson(value) {
+                    try {
+                        return JSON.stringify(value || {}, null, 2);
+                    } catch (_) {
+                        return '{}';
                     }
                 },
 

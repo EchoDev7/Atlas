@@ -528,8 +528,19 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         dnstt_dns_resolver=settings.dnstt_dns_resolver,
         dnstt_resolver_strategy=settings.dnstt_resolver_strategy,
         dnstt_duplication_mode=settings.dnstt_duplication_mode,
+        dnstt_mtu_mode=settings.dnstt_mtu_mode,
         dnstt_mtu=settings.dnstt_mtu,
+        dnstt_mtu_upload_min=settings.dnstt_mtu_upload_min,
+        dnstt_mtu_upload_max=settings.dnstt_mtu_upload_max,
+        dnstt_mtu_download_min=settings.dnstt_mtu_download_min,
+        dnstt_mtu_download_max=settings.dnstt_mtu_download_max,
+        dnstt_adaptive_per_resolver=settings.dnstt_adaptive_per_resolver,
+        dnstt_transport_probe_workers=settings.dnstt_transport_probe_workers,
+        dnstt_transport_retry_count=settings.dnstt_transport_retry_count,
+        dnstt_transport_probe_timeout_ms=settings.dnstt_transport_probe_timeout_ms,
+        dnstt_transport_switch_threshold_percent=settings.dnstt_transport_switch_threshold_percent,
         dnstt_telemetry=settings.dnstt_telemetry,
+        dnstt_telemetry_history=settings.dnstt_telemetry_history,
         dnstt_pubkey=settings.dnstt_pubkey,
         dnstt_privkey=settings.dnstt_privkey,
         created_at=settings.created_at,
@@ -667,10 +678,31 @@ def probe_dnstt_mtu(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"DNSTT MTU probe failed: {exc}") from exc
 
-    if recommended_mtu not in {1232, 900, 500}:
+    if not 500 <= recommended_mtu <= 1400:
         recommended_mtu = 500
 
     return {"recommended_mtu": recommended_mtu}
+
+
+@router.get("/tunnel/dnstt/diagnostics")
+def dnstt_diagnostics(
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    settings = _get_or_create_general_settings(db)
+    settings.tunnel_mode = "dnstt"
+    tunnel = tunnel_manager.get_tunnel(settings)
+
+    if not hasattr(tunnel, "collect_diagnostics"):
+        raise HTTPException(status_code=400, detail="DNSTT diagnostics is not available")
+
+    try:
+        report = tunnel.collect_diagnostics()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"DNSTT diagnostics failed: {exc}") from exc
+
+    return report
 
 
 @router.get("/server-ips")
@@ -746,8 +778,19 @@ def update_general_settings(
     settings.dnstt_dns_resolver = payload.dnstt_dns_resolver
     settings.dnstt_resolver_strategy = payload.dnstt_resolver_strategy
     settings.dnstt_duplication_mode = payload.dnstt_duplication_mode
+    settings.dnstt_mtu_mode = payload.dnstt_mtu_mode
     settings.dnstt_mtu = payload.dnstt_mtu
+    settings.dnstt_mtu_upload_min = payload.dnstt_mtu_upload_min
+    settings.dnstt_mtu_upload_max = payload.dnstt_mtu_upload_max
+    settings.dnstt_mtu_download_min = payload.dnstt_mtu_download_min
+    settings.dnstt_mtu_download_max = payload.dnstt_mtu_download_max
+    settings.dnstt_adaptive_per_resolver = payload.dnstt_adaptive_per_resolver
+    settings.dnstt_transport_probe_workers = payload.dnstt_transport_probe_workers
+    settings.dnstt_transport_retry_count = payload.dnstt_transport_retry_count
+    settings.dnstt_transport_probe_timeout_ms = payload.dnstt_transport_probe_timeout_ms
+    settings.dnstt_transport_switch_threshold_percent = payload.dnstt_transport_switch_threshold_percent
     settings.dnstt_telemetry = payload.dnstt_telemetry
+    settings.dnstt_telemetry_history = payload.dnstt_telemetry_history
     settings.dnstt_pubkey = payload.dnstt_pubkey
     settings.dnstt_privkey = payload.dnstt_privkey
     settings.updated_at = datetime.utcnow()

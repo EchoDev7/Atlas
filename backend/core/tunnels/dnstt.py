@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import ipaddress
 import json
 from pathlib import Path
@@ -78,65 +79,121 @@ class DNSTTTunnel(BaseTunnel):
     def _multiplexer_script_source_path(self) -> str:
         return str((Path(__file__).resolve().parent / "scripts" / "dnstt_multiplexer.py"))
 
-    def _mtu_value(self) -> int:
-        raw_value = getattr(self.settings, "dnstt_mtu", 1232)
+    def _safe_int(self, raw_value: object, default: int, *, minimum: int, maximum: int) -> int:
         try:
             value = int(raw_value)
         except (TypeError, ValueError):
-            return 1232
-        return value if value in {1232, 900, 500} else 1232
+            return default
+        return max(minimum, min(maximum, value))
 
-    def probe_optimal_mtu(self, resolver_list_string: str) -> int:
-        candidates = [item.strip() for item in str(resolver_list_string or "").split(",") if item and item.strip()]
+    def _mtu_mode(self) -> str:
+        mode = str(getattr(self.settings, "dnstt_mtu_mode", "preset") or "preset").strip().lower()
+        return mode if mode in {"preset", "adaptive"} else "preset"
 
-        probe_target = ""
+    def _adaptive_per_resolver_enabled(self) -> bool:
+        return bool(getattr(self.settings, "dnstt_adaptive_per_resolver", True))
+
+    def _mtu_payload_bounds(self) -> tuple[int, int]:
+        payload_min = self._safe_int(getattr(self.settings, "dnstt_mtu_upload_min", 472), 472, minimum=256, maximum=1400)
+        payload_max = self._safe_int(getattr(self.settings, "dnstt_mtu_upload_max", 1204), 1204, minimum=256, maximum=1400)
+        if payload_min > payload_max:
+            payload_min, payload_max = payload_max, payload_min
+        return payload_min, payload_max
+
+    def _transport_retry_count(self) -> int:
+        return self._safe_int(getattr(self.settings, "dnstt_transport_retry_count", 2), 2, minimum=0, maximum=10)
+
+    def _transport_probe_timeout_seconds(self) -> float:
+        timeout_ms = self._safe_int(
+            getattr(self.settings, "dnstt_transport_probe_timeout_ms", 2000),
+            2000,
+            minimum=500,
+            maximum=15000,
+        )
+        return timeout_ms / 1000.0
+
+    def _transport_probe_workers(self) -> int:
+        return self._safe_int(getattr(self.settings, "dnstt_transport_probe_workers", 2), 2, minimum=1, maximum=8)
+
+    def _transport_switch_threshold_ratio(self) -> float:
+        percent = self._safe_int(
+            getattr(self.settings, "dnstt_transport_switch_threshold_percent", 20),
+            20,
+            minimum=5,
+            maximum=80,
+        )
+        return (100 - percent) / 100.0
+
+    def _mtu_candidates(self) -> list[int]:
+        payload_min, payload_max = self._mtu_payload_bounds()
+        mtu_min = max(500, min(1400, payload_min + 28))
+        mtu_max = max(500, min(1400, payload_max + 28))
+        if mtu_min > mtu_max:
+            mtu_min, mtu_max = mtu_max, mtu_min
+
+        baseline = [1400, 1320, 1232, 1200, 1100, 1000, 900, 800, 700, 600, 500]
+        chosen: list[int] = []
+        for candidate in baseline:
+            if mtu_min <= candidate <= mtu_max:
+                chosen.append(candidate)
+
+        if not chosen:
+            fallback = self._safe_int(self._mtu_value(), 1232, minimum=500, maximum=1400)
+            chosen = [fallback]
+
+        chosen.append(self._safe_int(self._mtu_value(), 1232, minimum=500, maximum=1400))
+        unique_desc = sorted(set(chosen), reverse=True)
+        return unique_desc
+
+    def _probe_target_from_resolver(self, resolver_string: str) -> str:
+        candidates = [item.strip() for item in str(resolver_string or "").split(",") if item and item.strip()]
         for candidate in candidates:
             parsed = urlparse(candidate)
             if parsed.scheme in {"http", "https"} and parsed.netloc:
-                probe_target = (parsed.hostname or "").strip()
-                if probe_target:
-                    break
+                host = (parsed.hostname or "").strip()
+                if host:
+                    return host
                 continue
 
             try:
                 ipaddress.ip_address(candidate)
-                probe_target = candidate
-                break
+                return candidate
             except ValueError:
                 host_candidate = candidate.split("/", 1)[0].split(":", 1)[0].strip()
                 if host_candidate:
-                    probe_target = host_candidate
-                    break
+                    return host_candidate
+        return ""
 
+    def _probe_mtu_for_target(self, probe_target: str, mtu_candidates: list[int]) -> int:
         if not probe_target:
             return 500
 
-        probe_matrix = [
-            (1232, 1204),
-            (900, 872),
-            (500, 472),
-        ]
-        results: dict[int, bool] = {}
-        for mtu_value, payload_size in probe_matrix:
-            try:
-                completed = subprocess.run(
-                    ["ping", "-c", "1", "-M", "do", "-s", str(payload_size), "-W", "2", probe_target],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=4,
-                )
-                results[mtu_value] = completed.returncode == 0
-            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-                results[mtu_value] = False
+        for mtu_value in mtu_candidates:
+            payload_size = max(0, mtu_value - 28)
+            for _ in range(self._transport_retry_count() + 1):
+                try:
+                    completed = subprocess.run(
+                        ["ping", "-c", "1", "-M", "do", "-s", str(payload_size), "-W", "2", probe_target],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=self._transport_probe_timeout_seconds() + 2.0,
+                    )
+                    if completed.returncode == 0:
+                        return mtu_value
+                except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                    continue
 
-        if results.get(1232):
-            return 1232
-        if results.get(900):
-            return 900
-        if results.get(500):
-            return 500
         return 500
+
+    def _mtu_value(self) -> int:
+        raw_value = getattr(self.settings, "dnstt_mtu", 1232)
+        return self._safe_int(raw_value, 1232, minimum=500, maximum=1400)
+
+    def probe_optimal_mtu(self, resolver_list_string: str) -> int:
+        probe_target = self._probe_target_from_resolver(resolver_list_string)
+        mtu_candidates = self._mtu_candidates()
+        return self._probe_mtu_for_target(probe_target, mtu_candidates)
 
     def _domain_candidates(self) -> list[str]:
         domains_raw = str(getattr(self.settings, "dnstt_domain", "") or "").strip()
@@ -168,74 +225,202 @@ class DNSTTTunnel(BaseTunnel):
             return trimmed
         return f"https://{trimmed}/dns-query"
 
-    def _probe_url(self, endpoint: str, timeout_seconds: float = 2.0) -> tuple[bool, float | None, str | None]:
+    def _probe_url(self, endpoint: str, timeout_seconds: float | None = None) -> tuple[bool, float | None, str | None]:
+        timeout_seconds = timeout_seconds or self._transport_probe_timeout_seconds()
         request = Request(endpoint, method="GET", headers={"Accept": "application/dns-message"})
-        started_at = time.perf_counter()
-        try:
-            with urlopen(request, timeout=timeout_seconds, context=ssl._create_unverified_context()) as response:  # nosec B310
-                _ = response.read(1)
-            latency_ms = (time.perf_counter() - started_at) * 1000.0
-            return True, latency_ms, None
-        except HTTPError:
-            # An HTTP response still proves endpoint reachability.
-            latency_ms = (time.perf_counter() - started_at) * 1000.0
-            return True, latency_ms, None
-        except (URLError, ValueError, TimeoutError, socket.timeout):
-            return False, None, "url_probe_failed"
-        except Exception as exc:
-            return False, None, str(exc)
-
-    def _probe_ip(self, ip_address: str, timeout_seconds: float = 2.0) -> tuple[bool, float | None, str | None]:
-        best_latency_ms: float | None = None
-        last_error: str | None = None
-        for port in (53, 443):
+        last_error = "url_probe_failed"
+        for _ in range(self._transport_retry_count() + 1):
             started_at = time.perf_counter()
             try:
-                with socket.create_connection((ip_address, port), timeout=timeout_seconds):
-                    latency_ms = (time.perf_counter() - started_at) * 1000.0
-                    if best_latency_ms is None or latency_ms < best_latency_ms:
-                        best_latency_ms = latency_ms
-            except (socket.timeout, OSError) as exc:
-                last_error = str(exc) or "ip_probe_failed"
+                with urlopen(request, timeout=timeout_seconds, context=ssl._create_unverified_context()) as response:  # nosec B310
+                    _ = response.read(1)
+                latency_ms = (time.perf_counter() - started_at) * 1000.0
+                return True, latency_ms, None
+            except HTTPError:
+                # An HTTP response still proves endpoint reachability.
+                latency_ms = (time.perf_counter() - started_at) * 1000.0
+                return True, latency_ms, None
+            except (URLError, ValueError, TimeoutError, socket.timeout):
+                last_error = "url_probe_failed"
                 continue
+            except Exception as exc:
+                last_error = str(exc)
+                continue
+        return False, None, last_error
+
+    def _probe_ip(self, ip_address: str, timeout_seconds: float | None = None) -> tuple[bool, float | None, str | None]:
+        timeout_seconds = timeout_seconds or self._transport_probe_timeout_seconds()
+        best_latency_ms: float | None = None
+        last_error: str | None = None
+        for _ in range(self._transport_retry_count() + 1):
+            for port in (53, 443):
+                started_at = time.perf_counter()
+                try:
+                    with socket.create_connection((ip_address, port), timeout=timeout_seconds):
+                        latency_ms = (time.perf_counter() - started_at) * 1000.0
+                        if best_latency_ms is None or latency_ms < best_latency_ms:
+                            best_latency_ms = latency_ms
+                except (socket.timeout, OSError) as exc:
+                    last_error = str(exc) or "ip_probe_failed"
+                    continue
         if best_latency_ms is not None:
             return True, best_latency_ms, None
         return False, None, last_error or "ip_probe_failed"
 
+    def _probe_resolver_candidate(self, candidate: str) -> dict:
+        selected_endpoint = self._normalize_doh_endpoint(candidate)
+        parsed = urlparse(candidate)
+        is_url = parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+        healthy = False
+        latency_ms: float | None = None
+        error: str | None = None
+
+        if is_url:
+            healthy, latency_ms, error = self._probe_url(candidate)
+        else:
+            healthy, latency_ms, error = self._probe_ip(candidate)
+            if not healthy:
+                healthy, latency_ms, error = self._probe_url(selected_endpoint)
+
+        recommended_mtu = self._mtu_value()
+        if healthy and self._mtu_mode() == "adaptive":
+            probe_target = self._probe_target_from_resolver(candidate)
+            recommended_mtu = self._probe_mtu_for_target(probe_target, self._mtu_candidates())
+
+        return {
+            "resolver": candidate,
+            "selected_doh": selected_endpoint,
+            "latency_ms": round(latency_ms, 2) if latency_ms is not None else None,
+            "status": "healthy" if healthy else "failed",
+            "error": error,
+            "recommended_mtu": int(recommended_mtu),
+        }
+
     def _probe_resolver_candidates(self) -> tuple[list[dict], list[dict]]:
         probe_results: list[dict] = []
-        ranked_healthy: list[dict] = []
+        candidates = self._resolver_candidates()
+        workers = min(self._transport_probe_workers(), max(1, len(candidates)))
 
-        for candidate in self._resolver_candidates():
-            selected_endpoint = self._normalize_doh_endpoint(candidate)
-            parsed = urlparse(candidate)
-            is_url = parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+        if workers <= 1:
+            probe_results = [self._probe_resolver_candidate(candidate) for candidate in candidates]
+        else:
+            future_map = {}
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                for index, candidate in enumerate(candidates):
+                    future_map[executor.submit(self._probe_resolver_candidate, candidate)] = index
+                ordered_results: list[dict | None] = [None] * len(candidates)
+                for future in as_completed(future_map):
+                    index = future_map[future]
+                    try:
+                        ordered_results[index] = future.result()
+                    except Exception as exc:
+                        selected = self._normalize_doh_endpoint(candidates[index])
+                        ordered_results[index] = {
+                            "resolver": candidates[index],
+                            "selected_doh": selected,
+                            "latency_ms": None,
+                            "status": "failed",
+                            "error": str(exc),
+                            "recommended_mtu": int(self._mtu_value()),
+                        }
+                probe_results = [item for item in ordered_results if item is not None]
 
-            healthy = False
-            latency_ms: float | None = None
-            error: str | None = None
-
-            if is_url:
-                healthy, latency_ms, error = self._probe_url(candidate)
-            else:
-                healthy, latency_ms, error = self._probe_ip(candidate)
-                if not healthy:
-                    healthy, latency_ms, error = self._probe_url(selected_endpoint)
-
-            probe_result = {
-                "resolver": candidate,
-                "selected_doh": selected_endpoint,
-                "latency_ms": round(latency_ms, 2) if latency_ms is not None else None,
-                "status": "healthy" if healthy else "failed",
-                "error": error,
-            }
-            probe_results.append(probe_result)
-
-            if healthy and latency_ms is not None:
-                ranked_healthy.append(probe_result)
+        ranked_healthy: list[dict] = [
+            result for result in probe_results if result.get("status") == "healthy" and result.get("latency_ms") is not None
+        ]
 
         ranked_healthy.sort(key=lambda item: item["latency_ms"])
         return probe_results, ranked_healthy
+
+    def _selected_mtu_for_resolver(self, resolver_info: dict | None) -> int:
+        if self._mtu_mode() != "adaptive":
+            return self._mtu_value()
+        if not self._adaptive_per_resolver_enabled():
+            return self._mtu_value()
+        if resolver_info is None:
+            return self._mtu_value()
+        return self._safe_int(resolver_info.get("recommended_mtu"), self._mtu_value(), minimum=500, maximum=1400)
+
+    def _resolver_info_by_selected_doh(self, telemetry: dict, selected_doh: str) -> dict | None:
+        selected = str(selected_doh or "").strip()
+        if not selected:
+            return None
+        for probe in telemetry.get("probe_results", []) or []:
+            if str(probe.get("selected_doh") or "").strip() == selected:
+                return probe
+        return None
+
+    def _build_telemetry_analytics(self, history: list[dict]) -> dict:
+        resolver_stats: dict[str, dict] = {}
+        latency_values: list[float] = []
+        histogram = {"lt_50": 0, "50_100": 0, "100_200": 0, "gte_200": 0}
+
+        for snapshot in history:
+            for probe in snapshot.get("probe_results", []) or []:
+                resolver = str(probe.get("selected_doh") or probe.get("resolver") or "").strip()
+                if not resolver:
+                    continue
+                if resolver not in resolver_stats:
+                    resolver_stats[resolver] = {
+                        "resolver": resolver,
+                        "total_samples": 0,
+                        "healthy_samples": 0,
+                        "latency_samples": [],
+                    }
+                stat = resolver_stats[resolver]
+                stat["total_samples"] += 1
+                if probe.get("status") == "healthy":
+                    stat["healthy_samples"] += 1
+
+                latency = probe.get("latency_ms")
+                if isinstance(latency, (int, float)):
+                    latency_float = float(latency)
+                    stat["latency_samples"].append(latency_float)
+                    latency_values.append(latency_float)
+                    if latency_float < 50:
+                        histogram["lt_50"] += 1
+                    elif latency_float < 100:
+                        histogram["50_100"] += 1
+                    elif latency_float < 200:
+                        histogram["100_200"] += 1
+                    else:
+                        histogram["gte_200"] += 1
+
+        resolver_kpis: list[dict] = []
+        for resolver, stat in resolver_stats.items():
+            samples = stat["latency_samples"]
+            success_rate = (stat["healthy_samples"] / stat["total_samples"] * 100.0) if stat["total_samples"] else 0.0
+            resolver_kpis.append(
+                {
+                    "resolver": resolver,
+                    "success_rate_percent": round(success_rate, 2),
+                    "avg_latency_ms": round(sum(samples) / len(samples), 2) if samples else None,
+                    "min_latency_ms": round(min(samples), 2) if samples else None,
+                    "max_latency_ms": round(max(samples), 2) if samples else None,
+                    "sample_count": stat["total_samples"],
+                }
+            )
+
+        resolver_kpis.sort(key=lambda item: (item["avg_latency_ms"] is None, item["avg_latency_ms"] or 10_000))
+
+        recent_snapshots = history[-288:]
+        switch_count = 0
+        previous = None
+        for snapshot in recent_snapshots:
+            current = snapshot.get("selected_resolver")
+            if current and previous and current != previous:
+                switch_count += 1
+            if current:
+                previous = current
+
+        return {
+            "sample_count": len(history),
+            "resolver_kpis": resolver_kpis,
+            "latency_histogram": histogram,
+            "overall_avg_latency_ms": round(sum(latency_values) / len(latency_values), 2) if latency_values else None,
+            "resolver_switches_recent": switch_count,
+        }
 
     def _select_healthy_doh_endpoint(self) -> tuple[str, dict]:
         probe_results, ranked_healthy = self._probe_resolver_candidates()
@@ -265,7 +450,25 @@ class DNSTTTunnel(BaseTunnel):
         if not hasattr(self.settings, "dnstt_telemetry"):
             return
 
+        existing_history = getattr(self.settings, "dnstt_telemetry_history", None)
+        history: list[dict] = existing_history if isinstance(existing_history, list) else []
+        snapshot = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "selected_resolver": telemetry.get("selected_resolver"),
+            "strategy": telemetry.get("strategy"),
+            "probe_results": telemetry.get("probe_results", []),
+        }
+        history.append(snapshot)
+        history = history[-300:]
+
+        telemetry = {
+            **telemetry,
+            "analytics": self._build_telemetry_analytics(history),
+        }
+
         self.settings.dnstt_telemetry = telemetry
+        if hasattr(self.settings, "dnstt_telemetry_history"):
+            self.settings.dnstt_telemetry_history = history
         session = object_session(self.settings)
         if session is None:
             return
@@ -274,6 +477,51 @@ class DNSTTTunnel(BaseTunnel):
         session.add(self.settings)
         session.commit()
         session.refresh(self.settings)
+
+    def collect_diagnostics(self) -> dict:
+        local_commands = [
+            ("service_state", "systemctl is-active dnstt-server.service dnstt-client.service dnstt-optimizer.service dnstt-multiplexer.service || true"),
+            ("service_status", "systemctl --no-pager --full status dnstt-server.service dnstt-client.service dnstt-optimizer.service dnstt-multiplexer.service || true"),
+            ("recent_logs", "journalctl --no-pager -n 120 -u dnstt-server.service -u dnstt-client.service -u dnstt-optimizer.service -u dnstt-multiplexer.service || true"),
+            ("socket_ports", "ss -tulnp | grep -E '(:53|:5300|:5301|:9000|:1080)' || true"),
+            ("nat_rules", "iptables -t nat -S | grep -E 'DNSTT|5300|5301|9000' || true"),
+        ]
+
+        diagnostics = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "tunnel_architecture": "relay" if self._is_relay_mode() else "standalone",
+            "local": {},
+            "foreign": {},
+            "telemetry": getattr(self.settings, "dnstt_telemetry", None),
+        }
+
+        for key, command in local_commands:
+            result = self._run_on_target(command=command, target="local", timeout=30)
+            diagnostics["local"][key] = {
+                "success": result.success,
+                "return_code": result.return_code,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+
+        if self._is_relay_mode():
+            foreign_commands = [
+                ("service_state", "systemctl is-active dnstt-server.service || true"),
+                ("service_status", "systemctl --no-pager --full status dnstt-server.service || true"),
+                ("recent_logs", "journalctl --no-pager -n 80 -u dnstt-server.service || true"),
+                ("socket_ports", "ss -tulnp | grep -E '(:53|:5300)' || true"),
+                ("nat_rules", "iptables -t nat -S | grep -E '5300|PREROUTING' || true"),
+            ]
+            for key, command in foreign_commands:
+                result = self._run_on_target(command=command, target="foreign", timeout=30)
+                diagnostics["foreign"][key] = {
+                    "success": result.success,
+                    "return_code": result.return_code,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                }
+
+        return diagnostics
 
     def _ssh_target(self) -> tuple[str, int, str, str]:
         host = (getattr(self.settings, "foreign_server_ip", "") or "").strip()
@@ -612,7 +860,6 @@ class DNSTTTunnel(BaseTunnel):
     def _setup_client_duplication(self, *, domain: str, pubkey: str, duplication_mode: int) -> dict:
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
-        mtu_q = shlex.quote(str(self._mtu_value()))
         healthy_resolvers, resolver_telemetry = self._select_all_healthy_doh_endpoints()
         selected_resolvers = healthy_resolvers[:duplication_mode]
         if len(selected_resolvers) < duplication_mode:
@@ -648,6 +895,7 @@ class DNSTTTunnel(BaseTunnel):
             service_name = f"dnstt-client-{idx}.service"
             service_name_q = shlex.quote(service_name)
             doh_resolver_q = shlex.quote(resolver["selected_doh"])
+            mtu_q = shlex.quote(str(self._selected_mtu_for_resolver(resolver)))
             service_steps.append(
                 "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Duplication Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
                     service_name=service_name,
@@ -696,9 +944,10 @@ class DNSTTTunnel(BaseTunnel):
     def _setup_client_failover(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
-        mtu_q = shlex.quote(str(self._mtu_value()))
         doh_resolver, resolver_telemetry = self._select_healthy_doh_endpoint()
         resolver_telemetry["strategy"] = "failover"
+        selected_resolver_info = self._resolver_info_by_selected_doh(resolver_telemetry, doh_resolver)
+        mtu_q = shlex.quote(str(self._selected_mtu_for_resolver(selected_resolver_info)))
         self._persist_telemetry(resolver_telemetry)
         doh_resolver_q = shlex.quote(doh_resolver)
         service_steps = [
@@ -730,7 +979,6 @@ class DNSTTTunnel(BaseTunnel):
     def _setup_client_round_robin(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
-        mtu_q = shlex.quote(str(self._mtu_value()))
         healthy_resolvers, resolver_telemetry = self._select_all_healthy_doh_endpoints()
         if not healthy_resolvers:
             return {
@@ -763,6 +1011,7 @@ class DNSTTTunnel(BaseTunnel):
             service_name = f"dnstt-client-{idx}.service"
             service_name_q = shlex.quote(service_name)
             doh_resolver_q = shlex.quote(resolver["selected_doh"])
+            mtu_q = shlex.quote(str(self._selected_mtu_for_resolver(resolver)))
             service_steps.append(
                 "cat > /etc/systemd/system/{service_name} <<'EOF'\n[Unit]\nDescription=DNSTT Client Instance {idx}\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(
                     service_name=service_name,
@@ -810,17 +1059,28 @@ class DNSTTTunnel(BaseTunnel):
     def _setup_client_least_latency(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
         pubkey_q = shlex.quote(pubkey)
-        mtu_q = shlex.quote(str(self._mtu_value()))
         doh_resolver, resolver_telemetry = self._select_healthy_doh_endpoint()
         resolver_telemetry["strategy"] = "least-latency"
+        selected_resolver_info = self._resolver_info_by_selected_doh(resolver_telemetry, doh_resolver)
+        selected_mtu = self._selected_mtu_for_resolver(selected_resolver_info)
+        mtu_q = shlex.quote(str(selected_mtu))
         self._persist_telemetry(resolver_telemetry)
         doh_resolver_q = shlex.quote(doh_resolver)
+        resolver_mtu_map = {
+            item["selected_doh"]: self._selected_mtu_for_resolver(item)
+            for item in resolver_telemetry.get("probe_results", [])
+            if item.get("selected_doh")
+        }
         optimizer_payload = {
             "domain": domain,
             "pubkey": pubkey,
-            "mtu": self._mtu_value(),
+            "mtu": selected_mtu,
+            "mtu_map": resolver_mtu_map,
             "resolvers": self._resolver_candidates(),
             "initial_doh": doh_resolver,
+            "probe_timeout_seconds": self._transport_probe_timeout_seconds(),
+            "switch_threshold_ratio": self._transport_switch_threshold_ratio(),
+            "interval_seconds": 180,
         }
         optimizer_script = """#!/usr/bin/env python3
 import json
@@ -836,8 +1096,9 @@ from urllib.request import Request, urlopen
 CONFIG = json.loads(__ATLAS_OPTIMIZER_PAYLOAD__)
 STATE_FILE = Path('/var/lib/dnstt/current_resolver')
 SERVICE_PATH = Path('/etc/systemd/system/dnstt-client.service')
-THRESHOLD = 0.8
-INTERVAL_SECONDS = 180
+THRESHOLD = float(CONFIG.get('switch_threshold_ratio', 0.8) or 0.8)
+INTERVAL_SECONDS = int(CONFIG.get('interval_seconds', 180) or 180)
+PROBE_TIMEOUT_SECONDS = float(CONFIG.get('probe_timeout_seconds', 2.0) or 2.0)
 
 
 def normalize_doh(candidate: str) -> str:
@@ -847,7 +1108,7 @@ def normalize_doh(candidate: str) -> str:
     return f'https://{candidate}/dns-query'
 
 
-def probe_url(endpoint: str, timeout_seconds: float = 2.0):
+def probe_url(endpoint: str, timeout_seconds: float = PROBE_TIMEOUT_SECONDS):
     request = Request(endpoint, method='GET', headers={'Accept': 'application/dns-message'})
     started_at = time.perf_counter()
     try:
@@ -860,7 +1121,7 @@ def probe_url(endpoint: str, timeout_seconds: float = 2.0):
         return False, None
 
 
-def probe_ip(ip_address: str, timeout_seconds: float = 2.0):
+def probe_ip(ip_address: str, timeout_seconds: float = PROBE_TIMEOUT_SECONDS):
     best_latency = None
     for port in (53, 443):
         started_at = time.perf_counter()
@@ -904,11 +1165,13 @@ def best_resolver():
 
 
 def render_service(selected_doh: str) -> str:
+    mtu_map = CONFIG.get('mtu_map') or {}
+    mapped_mtu = mtu_map.get(selected_doh, CONFIG.get('mtu', 1232))
     cmd = '/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080'.format(
         doh=shlex.quote(selected_doh),
         pubkey=shlex.quote(CONFIG.get('pubkey', '')),
         domain=shlex.quote(CONFIG.get('domain', '')),
-        mtu=shlex.quote(str(int(CONFIG.get('mtu', 1232) or 1232))),
+        mtu=shlex.quote(str(int(mapped_mtu or 1232))),
     )
     return '\n'.join([
         '[Unit]',
