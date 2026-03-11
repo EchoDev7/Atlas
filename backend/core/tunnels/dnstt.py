@@ -383,7 +383,7 @@ class DNSTTTunnel(BaseTunnel):
             "After=network.target\n\n"
             "[Service]\n"
             "Type=simple\n"
-            "ExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080\n"
+            "ExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -mtu {mtu} {domain} 127.0.0.1:1080\n"
             "Restart=always\n"
             "RestartSec=3\n"
             "NoNewPrivileges=true\n"
@@ -1191,7 +1191,7 @@ class DNSTTTunnel(BaseTunnel):
         privkey_q = shlex.quote(privkey)
         mtu_q = shlex.quote(str(self._mtu_value()))
         service_steps = [
-            "cat > /etc/systemd/system/dnstt-server.service <<'EOF'\n[Unit]\nDescription=DNSTT Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey {privkey} -domain {domain} -mtu {mtu} 127.0.0.1:5300\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(privkey=privkey_q, domain=domain_q, mtu=mtu_q),
+            "cat > /etc/systemd/system/dnstt-server.service <<'EOF'\n[Unit]\nDescription=DNSTT Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey {privkey} -mtu {mtu} {domain} 127.0.0.1:22\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(privkey=privkey_q, domain=domain_q, mtu=mtu_q),
             "systemctl daemon-reload",
             "systemctl enable dnstt-server.service",
             "systemctl restart dnstt-server.service",
@@ -1523,7 +1523,7 @@ def best_resolver():
 def render_service(selected_doh: str) -> str:
     mtu_map = CONFIG.get('mtu_map') or {}
     mapped_mtu = mtu_map.get(selected_doh, CONFIG.get('mtu', 1232))
-    cmd = '/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -domain {domain} -mtu {mtu} 127.0.0.1:1080'.format(
+    cmd = '/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -mtu {mtu} {domain} 127.0.0.1:1080'.format(
         doh=shlex.quote(selected_doh),
         pubkey=shlex.quote(CONFIG.get('pubkey', '')),
         domain=shlex.quote(CONFIG.get('domain', '')),
