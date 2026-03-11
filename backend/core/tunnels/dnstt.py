@@ -43,6 +43,7 @@ class DNSTTTunnel(BaseTunnel):
         self.repo_dir = "/opt/dnstt"
         self.server_bin = "/usr/local/bin/dnstt-server"
         self.client_bin = "/usr/local/bin/dnstt-client"
+        self.keys_dir = "/opt/Atlas/backend/core/tunnels/keys/dnstt"
 
     def _is_relay_mode(self) -> bool:
         architecture = str(getattr(self.settings, "tunnel_architecture", "standalone") or "standalone").strip().lower()
@@ -221,6 +222,44 @@ class DNSTTTunnel(BaseTunnel):
                     return candidate
         return candidates[0]
 
+    def _key_file_paths(self, domain: str) -> tuple[str, str]:
+        normalized_domain = re.sub(r"[^A-Za-z0-9_.-]+", "_", (domain or "").strip().rstrip(".").lower()) or "dnstt"
+        return (
+            f"{self.keys_dir}/{normalized_domain}_server.key",
+            f"{self.keys_dir}/{normalized_domain}_server.pub",
+        )
+
+    def _key_file_steps(self, *, domain: str, privkey: str | None = None, pubkey: str | None = None) -> list[str]:
+        privkey_path, pubkey_path = self._key_file_paths(domain)
+        key_dir_q = shlex.quote(self.keys_dir)
+        privkey_path_q = shlex.quote(privkey_path)
+        pubkey_path_q = shlex.quote(pubkey_path)
+        steps = [
+            f"install -d -m 0755 {key_dir_q}",
+        ]
+        if privkey is not None:
+            privkey_q = shlex.quote(privkey.strip())
+            steps.append(f"printf '%s\\n' {privkey_q} > {privkey_path_q}")
+        if pubkey is not None:
+            pubkey_q = shlex.quote(pubkey.strip())
+            steps.append(f"printf '%s\\n' {pubkey_q} > {pubkey_path_q}")
+        steps.append(f"chmod 0644 {privkey_path_q} {pubkey_path_q} >/dev/null 2>&1 || chmod 0644 {pubkey_path_q}")
+        return steps
+
+    def verify_dns_delegation(self, domain: str | None = None) -> dict:
+        candidate = str(domain or self._active_domain() or "").strip().rstrip(".")
+        if not candidate:
+            return {"success": False, "message": "DNSTT tunnel domain is required before installation"}
+        try:
+            resolved_ip = socket.gethostbyname(candidate)
+        except socket.gaierror:
+            return {
+                "success": False,
+                "message": f"DNSTT domain '{candidate}' does not resolve. Configure your DNS NS/A records first.",
+                "domain": candidate,
+            }
+        return {"success": True, "domain": candidate, "resolved_ip": resolved_ip}
+
     def _normalize_doh_endpoint(self, candidate: str) -> str:
         trimmed = candidate.strip()
         if trimmed.startswith(("http://", "https://")):
@@ -371,7 +410,7 @@ class DNSTTTunnel(BaseTunnel):
         service_name: str,
         service_description: str,
         doh_q: str,
-        pubkey_q: str,
+        pubkey_file_q: str,
         domain_q: str,
         mtu_q: str,
         local_udp_port: int,
@@ -383,9 +422,11 @@ class DNSTTTunnel(BaseTunnel):
             "After=network.target\n\n"
             "[Service]\n"
             "Type=simple\n"
-            "ExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey {pubkey} -mtu {mtu} {domain} 127.0.0.1:1080\n"
+            "ExecStart=/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:{port} -pubkey-file {pubkey_file} -mtu {mtu} {domain} 127.0.0.1:1080\n"
             "Restart=always\n"
             "RestartSec=3\n"
+            "DynamicUser=yes\n"
+            "StateDirectory=dnstt\n"
             "NoNewPrivileges=true\n"
             "ProtectSystem=strict\n"
             "ProtectHome=true\n"
@@ -398,7 +439,7 @@ class DNSTTTunnel(BaseTunnel):
             service_description=service_description,
             doh=doh_q,
             port=local_udp_port,
-            pubkey=pubkey_q,
+            pubkey_file=pubkey_file_q,
             domain=domain_q,
             mtu=mtu_q,
         )
@@ -818,13 +859,23 @@ class DNSTTTunnel(BaseTunnel):
         return {"success": True, "message": "DNSTT dependencies installed on local node", "local": local_result}
 
     def generate_keys(self) -> dict:
+        domain = self._active_domain()
+        if not domain:
+            return {
+                "success": False,
+                "message": "DNSTT active domain is required before generating key files",
+            }
         target = "foreign" if self._is_relay_mode() else "local"
+        privkey_path, pubkey_path = self._key_file_paths(domain)
+        keys_dir_q = shlex.quote(self.keys_dir)
+        privkey_path_q = shlex.quote(privkey_path)
+        pubkey_path_q = shlex.quote(pubkey_path)
         command = (
-            "tmp_priv=$(mktemp) && tmp_pub=$(mktemp) && "
-            f"{self.server_bin} -gen-key -privkey-file \"$tmp_priv\" -pubkey-file \"$tmp_pub\" && "
-            "printf 'priv: %s\\n' \"$(cat \"$tmp_priv\")\" && "
-            "printf 'pub: %s\\n' \"$(cat \"$tmp_pub\")\" && "
-            "rm -f \"$tmp_priv\" \"$tmp_pub\""
+            f"install -d -m 0755 {keys_dir_q} && "
+            f"{self.server_bin} -gen-key -privkey-file {privkey_path_q} -pubkey-file {pubkey_path_q} && "
+            f"chmod 0644 {privkey_path_q} {pubkey_path_q} && "
+            f"printf 'priv: %s\\n' \"$(cat {privkey_path_q})\" && "
+            f"printf 'pub: %s\\n' \"$(cat {pubkey_path_q})\""
         )
         result = self._run_on_target(command=command, target=target, timeout=120)
         if not result.success:
@@ -1175,8 +1226,9 @@ class DNSTTTunnel(BaseTunnel):
     def setup_server(self) -> dict:
         domain = self._active_domain()
         privkey = (getattr(self.settings, "dnstt_privkey", "") or "").strip()
-        if not domain or not privkey:
-            return {"success": False, "message": "DNSTT active domain and private key are required for server setup"}
+        pubkey = (getattr(self.settings, "dnstt_pubkey", "") or "").strip()
+        if not domain or not privkey or not pubkey:
+            return {"success": False, "message": "DNSTT active domain, private key, and public key are required for server setup"}
 
         port_53_result = self._ensure_port_53_free()
         if not port_53_result.get("success"):
@@ -1188,10 +1240,12 @@ class DNSTTTunnel(BaseTunnel):
             }
 
         domain_q = shlex.quote(domain)
-        privkey_q = shlex.quote(privkey)
+        privkey_path, pubkey_path = self._key_file_paths(domain)
+        privkey_file_q = shlex.quote(privkey_path)
         mtu_q = shlex.quote(str(self._mtu_value()))
         service_steps = [
-            "cat > /etc/systemd/system/dnstt-server.service <<'EOF'\n[Unit]\nDescription=DNSTT Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey {privkey} -mtu {mtu} {domain} 127.0.0.1:22\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(privkey=privkey_q, domain=domain_q, mtu=mtu_q),
+            *self._key_file_steps(domain=domain, privkey=privkey, pubkey=pubkey),
+            "cat > /etc/systemd/system/dnstt-server.service <<'EOF'\n[Unit]\nDescription=DNSTT Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey-file {privkey_file} -mtu {mtu} {domain} 127.0.0.1:22\nRestart=always\nRestartSec=3\nDynamicUser=yes\nStateDirectory=dnstt\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(privkey_file=privkey_file_q, domain=domain_q, mtu=mtu_q),
             "systemctl daemon-reload",
             "systemctl enable dnstt-server.service",
             "systemctl restart dnstt-server.service",
@@ -1228,7 +1282,8 @@ class DNSTTTunnel(BaseTunnel):
 
     def _setup_client_duplication(self, *, domain: str, pubkey: str, duplication_mode: int) -> dict:
         domain_q = shlex.quote(domain)
-        pubkey_q = shlex.quote(pubkey)
+        _, pubkey_path = self._key_file_paths(domain)
+        pubkey_file_q = shlex.quote(pubkey_path)
         healthy_resolvers, resolver_telemetry = self._select_all_healthy_doh_endpoints()
         selected_resolvers = healthy_resolvers[:duplication_mode]
         if len(selected_resolvers) < duplication_mode:
@@ -1247,6 +1302,7 @@ class DNSTTTunnel(BaseTunnel):
         multiplexer_source_q = shlex.quote(self._multiplexer_script_source_path())
         service_steps = [
             *self._client_reset_steps(remove_multiplexer_script=False),
+            *self._key_file_steps(domain=domain, pubkey=pubkey),
             "install -m 0755 {source} /usr/local/bin/dnstt_multiplexer.py".format(source=multiplexer_source_q),
         ]
 
@@ -1263,7 +1319,7 @@ class DNSTTTunnel(BaseTunnel):
                     service_name=service_name,
                     service_description=f"DNSTT Client Duplication Instance {idx}",
                     doh_q=doh_resolver_q,
-                    pubkey_q=pubkey_q,
+                    pubkey_file_q=pubkey_file_q,
                     domain_q=domain_q,
                     mtu_q=mtu_q,
                     local_udp_port=local_udp_port,
@@ -1305,7 +1361,8 @@ class DNSTTTunnel(BaseTunnel):
 
     def _setup_client_failover(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
-        pubkey_q = shlex.quote(pubkey)
+        _, pubkey_path = self._key_file_paths(domain)
+        pubkey_file_q = shlex.quote(pubkey_path)
         doh_resolver, resolver_telemetry = self._select_healthy_doh_endpoint()
         resolver_telemetry["strategy"] = "failover"
         selected_resolver_info = self._resolver_info_by_selected_doh(resolver_telemetry, doh_resolver)
@@ -1314,11 +1371,12 @@ class DNSTTTunnel(BaseTunnel):
         doh_resolver_q = shlex.quote(doh_resolver)
         service_steps = [
             *self._client_reset_steps(remove_multiplexer_script=True),
+            *self._key_file_steps(domain=domain, pubkey=pubkey),
             self._client_service_unit_step(
                 service_name="dnstt-client.service",
                 service_description="DNSTT Client",
                 doh_q=doh_resolver_q,
-                pubkey_q=pubkey_q,
+                pubkey_file_q=pubkey_file_q,
                 domain_q=domain_q,
                 mtu_q=mtu_q,
                 local_udp_port=5301,
@@ -1342,7 +1400,8 @@ class DNSTTTunnel(BaseTunnel):
 
     def _setup_client_round_robin(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
-        pubkey_q = shlex.quote(pubkey)
+        _, pubkey_path = self._key_file_paths(domain)
+        pubkey_file_q = shlex.quote(pubkey_path)
         healthy_resolvers, resolver_telemetry = self._select_all_healthy_doh_endpoints()
         if not healthy_resolvers:
             return {
@@ -1358,6 +1417,7 @@ class DNSTTTunnel(BaseTunnel):
 
         service_steps = [
             *self._client_reset_steps(remove_multiplexer_script=True),
+            *self._key_file_steps(domain=domain, pubkey=pubkey),
             "systemctl daemon-reload",
         ]
 
@@ -1374,7 +1434,7 @@ class DNSTTTunnel(BaseTunnel):
                     service_name=service_name,
                     service_description=f"DNSTT Client Instance {idx}",
                     doh_q=doh_resolver_q,
-                    pubkey_q=pubkey_q,
+                    pubkey_file_q=pubkey_file_q,
                     domain_q=domain_q,
                     mtu_q=mtu_q,
                     local_udp_port=local_udp_port,
@@ -1415,7 +1475,8 @@ class DNSTTTunnel(BaseTunnel):
 
     def _setup_client_least_latency(self, *, domain: str, pubkey: str) -> dict:
         domain_q = shlex.quote(domain)
-        pubkey_q = shlex.quote(pubkey)
+        _, pubkey_path = self._key_file_paths(domain)
+        pubkey_file_q = shlex.quote(pubkey_path)
         doh_resolver, resolver_telemetry = self._select_healthy_doh_endpoint()
         resolver_telemetry["strategy"] = "least-latency"
         selected_resolver_info = self._resolver_info_by_selected_doh(resolver_telemetry, doh_resolver)
@@ -1430,7 +1491,7 @@ class DNSTTTunnel(BaseTunnel):
         }
         optimizer_payload = {
             "domain": domain,
-            "pubkey": pubkey,
+            "pubkey_file": pubkey_path,
             "mtu": selected_mtu,
             "mtu_map": resolver_mtu_map,
             "resolvers": self._resolver_candidates(),
@@ -1524,9 +1585,9 @@ def best_resolver():
 def render_service(selected_doh: str) -> str:
     mtu_map = CONFIG.get('mtu_map') or {}
     mapped_mtu = mtu_map.get(selected_doh, CONFIG.get('mtu', 1232))
-    cmd = '/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey {pubkey} -mtu {mtu} {domain} 127.0.0.1:1080'.format(
+    cmd = '/usr/local/bin/dnstt-client -doh {doh} -udp 127.0.0.1:5301 -pubkey-file {pubkey_file} -mtu {mtu} {domain} 127.0.0.1:1080'.format(
         doh=shlex.quote(selected_doh),
-        pubkey=shlex.quote(CONFIG.get('pubkey', '')),
+        pubkey_file=shlex.quote(CONFIG.get('pubkey_file', '')),
         domain=shlex.quote(CONFIG.get('domain', '')),
         mtu=shlex.quote(str(int(mapped_mtu or 1232))),
     )
@@ -1540,6 +1601,8 @@ def render_service(selected_doh: str) -> str:
         f'ExecStart={cmd}',
         'Restart=always',
         'RestartSec=3',
+        'DynamicUser=yes',
+        'StateDirectory=dnstt',
         'NoNewPrivileges=true',
         'ProtectSystem=strict',
         'ProtectHome=true',
@@ -1588,11 +1651,12 @@ if __name__ == '__main__':
         optimizer_script = optimizer_script.replace("__ATLAS_OPTIMIZER_PAYLOAD__", repr(json.dumps(optimizer_payload)))
         service_steps = [
             *self._client_reset_steps(remove_multiplexer_script=True),
+            *self._key_file_steps(domain=domain, pubkey=pubkey),
             self._client_service_unit_step(
                 service_name="dnstt-client.service",
                 service_description="DNSTT Client",
                 doh_q=doh_resolver_q,
-                pubkey_q=pubkey_q,
+                pubkey_file_q=pubkey_file_q,
                 domain_q=domain_q,
                 mtu_q=mtu_q,
                 local_udp_port=5301,
