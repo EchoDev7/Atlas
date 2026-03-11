@@ -1020,6 +1020,22 @@
                                                     Generating Starter...
                                                 </span>
                                             </button>
+                                            <button
+                                                type="button"
+                                                @click="generateDnsttClientCheatSheet()"
+                                                :disabled="dnsttClientCheatSheetGenerating"
+                                                class="px-4 py-2.5 rounded-xl text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'"
+                                            >
+                                                <span x-show="!dnsttClientCheatSheetGenerating">📄 Generate Client Cheat Sheet</span>
+                                                <span x-show="dnsttClientCheatSheetGenerating" class="inline-flex items-center gap-2">
+                                                    <svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                        <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                                    </svg>
+                                                    Generating Cheat Sheet...
+                                                </span>
+                                            </button>
                                         </div>
                                         <p class="mt-2 text-[11px]" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
                                             Exported profile uses the exact resolver list from Tunnel DNS Endpoint (DoH/UDP) as primary and fallback chain.
@@ -1027,6 +1043,26 @@
                                         <p class="mt-1 text-[11px]" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
                                             HTTP Injector Starter includes documented scenarios (Direct Payload, Proxy Payload, SSL/SNI) to help build final .ehi inside the app.
                                         </p>
+                                        <div x-show="dnsttClientCheatSheetText" class="mt-3 rounded-xl border p-3 space-y-2 theme-transition" :class="darkMode ? 'border-slate-700 bg-slate-900/40' : 'border-slate-300 bg-white'">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <p class="text-xs font-semibold theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">DNSTT Client Cheat Sheet</p>
+                                                <button
+                                                    type="button"
+                                                    @click="copyToClipboard(dnsttClientCheatSheetText, 'DNSTT cheat sheet')"
+                                                    class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white transition"
+                                                    :class="darkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-700 hover:bg-slate-800'"
+                                                >
+                                                    Copy Text
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                x-model="dnsttClientCheatSheetText"
+                                                rows="14"
+                                                readonly
+                                                class="w-full rounded-xl border px-3 py-2.5 font-mono text-xs leading-relaxed theme-transition"
+                                                :class="darkMode ? 'bg-slate-950 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-300 text-slate-900'"
+                                            ></textarea>
+                                        </div>
                                     </div>
                                 </div>
                                 </div>
@@ -2104,6 +2140,8 @@
                 dnsttInstallLoading: false,
                 dnsttProfileDownloading: false,
                 dnsttHttpInjectorStarterDownloading: false,
+                dnsttClientCheatSheetGenerating: false,
+                dnsttClientCheatSheetText: '',
                 dnsttMtuProbeLoading: false,
                 dnsttDiagnosticsLoading: false,
                 dnsttDiagnosticsReport: null,
@@ -3865,6 +3903,54 @@
                         this.showToast(error.message || 'Failed to generate HTTP Injector starter', 'error');
                     } finally {
                         this.dnsttHttpInjectorStarterDownloading = false;
+                    }
+                },
+
+                async generateDnsttClientCheatSheet() {
+                    this.dnsttClientCheatSheetGenerating = true;
+                    try {
+                        this.ensureDnsttActiveDomainSelection();
+                        const saved = await this.saveGeneralSettings();
+                        if (!saved) {
+                            throw new Error('Please fix settings validation errors before generating DNSTT cheat sheet');
+                        }
+
+                        const dnsResolver = (this.generalForm.dnstt_dns_resolver || '8.8.8.8').trim() || '8.8.8.8';
+                        const nameserverDomain = (this.generalForm.dnstt_active_domain || this.generalForm.dnstt_domain || '').trim();
+                        const publicKey = (this.generalForm.dnstt_pubkey || '').trim();
+                        const sshHost = (
+                            this.generalForm.server_address
+                            || this.generalForm.public_ipv4_address
+                            || this.generalForm.foreign_server_ip
+                            || '<server_ip_or_panel_domain>'
+                        ).trim();
+
+                        if (!nameserverDomain || !publicKey) {
+                            throw new Error('DNSTT active domain and public key are required to generate the cheat sheet');
+                        }
+
+                        this.dnsttClientCheatSheetText = `🌐 Atlas DNSTT Connection Details
+---------------------------------
+📌 Tunnel Type: DNSTT (SlowDNS) + SSH
+
+[ Core Options ]
+1. DNS Resolver: ${dnsResolver}
+2. Nameserver (Domain): ${nameserverDomain}
+3. Public Key: ${publicKey}
+
+[ SSH Credentials ]
+- Host: ${sshHost}
+- Port: 22
+- Username: (Enter your assigned username)
+- Password: (Enter your assigned password)
+---------------------------------
+💡 Guide: Select DNSTT in your app, paste the Core Options in the DNS settings, and enter the SSH Credentials in the SSH section.`;
+
+                        this.showToast('DNSTT client cheat sheet generated', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to generate DNSTT cheat sheet', 'error');
+                    } finally {
+                        this.dnsttClientCheatSheetGenerating = false;
                     }
                 },
 
