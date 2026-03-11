@@ -1044,18 +1044,9 @@ class DNSTTTunnel(BaseTunnel):
         privkey_file_q = shlex.quote(privkey_path)
         mtu_q = shlex.quote(str(self._mtu_value()))
         dns_redirect_steps = [
+            "while iptables -t nat -C OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300 >/dev/null 2>&1; do iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300; done",
             "iptables -t nat -C PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 || iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300",
         ]
-        if not self._is_relay_mode():
-            dns_redirect_steps.insert(
-                0,
-                "iptables -t nat -C OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300 || iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300",
-            )
-        else:
-            dns_redirect_steps.insert(
-                0,
-                "while iptables -t nat -C OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300 >/dev/null 2>&1; do iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300; done",
-            )
 
         service_steps = [
             *self._key_file_steps(domain=domain, privkey=privkey, pubkey=pubkey),
