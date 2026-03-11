@@ -388,6 +388,42 @@ def _get_or_create_general_settings(db: Session) -> GeneralSettings:
     return settings
 
 
+def _apply_dnstt_runtime(settings: GeneralSettings) -> dict:
+    settings.tunnel_mode = "dnstt"
+    tunnel = tunnel_manager.get_tunnel(settings)
+    if not hasattr(tunnel, "setup_server"):
+        return {"success": False, "message": "DNSTT server setup operation is not available"}
+
+    server_result = tunnel.setup_server()
+    if not server_result.get("success"):
+        return {
+            "success": False,
+            "message": server_result.get("message", "DNSTT server setup failed"),
+            "server": server_result,
+        }
+
+    architecture = str(getattr(settings, "tunnel_architecture", "standalone") or "standalone").strip().lower()
+    client_result = None
+    if architecture == "relay":
+        if not hasattr(tunnel, "setup_client"):
+            return {"success": False, "message": "DNSTT client setup operation is not available for relay mode", "server": server_result}
+        client_result = tunnel.setup_client()
+        if not client_result.get("success"):
+            return {
+                "success": False,
+                "message": client_result.get("message", "DNSTT client setup failed"),
+                "server": server_result,
+                "client": client_result,
+            }
+
+    return {
+        "success": True,
+        "message": "DNSTT runtime applied",
+        "server": server_result,
+        "client": client_result,
+    }
+
+
 def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
     allowed_ciphers = ["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"]
     raw_ciphers = (settings.data_ciphers or "").strip()
@@ -659,6 +695,24 @@ def install_and_generate_dnstt(
     settings.dnstt_pubkey = keys_result.get("dnstt_pubkey")
     settings.dnstt_privkey = keys_result.get("dnstt_privkey")
     settings.updated_at = datetime.utcnow()
+
+    runtime_result = _apply_dnstt_runtime(settings)
+    if not runtime_result.get("success"):
+        record_audit_event(
+            action="dnstt_install_generate",
+            success=False,
+            admin_username=current_user.username,
+            resource_type="system_tunnel",
+            resource_id="dnstt",
+            ip_address=extract_client_ip(request),
+            details={
+                "stage": "runtime_apply",
+                "message": runtime_result.get("message"),
+                "runtime_result": runtime_result,
+            },
+        )
+        raise HTTPException(status_code=500, detail=runtime_result.get("message", "DNSTT runtime apply failed"))
+
     db.commit()
     db.refresh(settings)
 
@@ -678,11 +732,12 @@ def install_and_generate_dnstt(
 
     return {
         "success": True,
-        "message": "DNSTT dependencies installed and keys generated",
+        "message": "DNSTT dependencies installed, keys generated, and runtime applied",
         "dnstt_pubkey": settings.dnstt_pubkey,
         "dnstt_privkey": settings.dnstt_privkey,
         "install_result": install_result,
         "keys_result": keys_result,
+        "runtime_result": runtime_result,
     }
 
 
@@ -919,6 +974,16 @@ def update_general_settings(
             detail=sync_result.get("message", "Failed to apply general system settings"),
         )
 
+    runtime_result = None
+    if settings.is_tunnel_enabled and str(settings.tunnel_mode or "").strip().lower() == "dnstt":
+        runtime_result = _apply_dnstt_runtime(settings)
+        if not runtime_result.get("success"):
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=runtime_result.get("message", "Failed to apply DNSTT runtime settings"),
+            )
+
     db.commit()
     _sync_openvpn_auth_db_snapshot()
     db.refresh(settings)
@@ -942,7 +1007,10 @@ def update_general_settings(
         resource_type="general_settings",
         resource_id=str(settings.id),
         ip_address=extract_client_ip(request),
-        details={"changed_fields": changed_fields},
+        details={
+            "changed_fields": changed_fields,
+            "dnstt_runtime_applied": bool(runtime_result and runtime_result.get("success")),
+        },
     )
 
     return _to_general_response(settings)
