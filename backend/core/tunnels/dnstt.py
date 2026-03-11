@@ -1195,6 +1195,7 @@ class DNSTTTunnel(BaseTunnel):
             "systemctl daemon-reload",
             "systemctl enable dnstt-server.service",
             "systemctl restart dnstt-server.service",
+            "while iptables -t nat -C OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300 >/dev/null 2>&1; do iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300; done",
             "iptables -t nat -C PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 || iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300",
         ]
         target = "foreign" if self._is_relay_mode() else "local"
