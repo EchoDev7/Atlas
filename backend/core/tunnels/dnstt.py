@@ -1043,14 +1043,27 @@ class DNSTTTunnel(BaseTunnel):
         privkey_path, pubkey_path = self._key_file_paths(domain)
         privkey_file_q = shlex.quote(privkey_path)
         mtu_q = shlex.quote(str(self._mtu_value()))
+        dns_redirect_steps = [
+            "iptables -t nat -C PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 || iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300",
+        ]
+        if not self._is_relay_mode():
+            dns_redirect_steps.insert(
+                0,
+                "iptables -t nat -C OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300 || iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300",
+            )
+        else:
+            dns_redirect_steps.insert(
+                0,
+                "while iptables -t nat -C OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300 >/dev/null 2>&1; do iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300; done",
+            )
+
         service_steps = [
             *self._key_file_steps(domain=domain, privkey=privkey, pubkey=pubkey),
             "cat > /etc/systemd/system/dnstt-server.service <<'EOF'\n[Unit]\nDescription=DNSTT Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey-file {privkey_file} -mtu {mtu} {domain} 127.0.0.1:22\nRestart=always\nRestartSec=3\nDynamicUser=yes\nStateDirectory=dnstt\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n\n[Install]\nWantedBy=multi-user.target\nEOF".format(privkey_file=privkey_file_q, domain=domain_q, mtu=mtu_q),
             "systemctl daemon-reload",
             "systemctl enable dnstt-server.service",
             "systemctl restart dnstt-server.service",
-            "while iptables -t nat -C OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300 >/dev/null 2>&1; do iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300; done",
-            "iptables -t nat -C PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 || iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300",
+            *dns_redirect_steps,
         ]
         target = "foreign" if self._is_relay_mode() else "local"
         result = self._run_steps(target=target, steps=service_steps)
