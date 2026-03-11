@@ -640,16 +640,13 @@ def install_and_generate_dnstt(
     if not hasattr(tunnel, "install_dependencies") or not hasattr(tunnel, "generate_keys"):
         raise HTTPException(status_code=400, detail="DNSTT engine is not available")
 
+    dns_preflight_ok = True
     if hasattr(tunnel, "verify_dns_delegation"):
-        dns_check = tunnel.verify_dns_delegation(getattr(settings, "dnstt_active_domain", None) or getattr(settings, "dnstt_domain", None))
-        if not dns_check.get("success"):
-            raise HTTPException(
-                status_code=400,
-                detail=dns_check.get(
-                    "message",
-                    "DNSTT DNS preflight failed. Configure NS/A records for the tunnel domain first.",
-                ),
+        dns_preflight_ok = bool(
+            tunnel.verify_dns_delegation(
+                getattr(settings, "dnstt_active_domain", None) or getattr(settings, "dnstt_domain", None)
             )
+        )
 
     install_result = tunnel.install_dependencies()
     if not install_result.get("success"):
@@ -744,6 +741,7 @@ def install_and_generate_dnstt(
     return {
         "success": True,
         "message": "DNSTT dependencies installed, keys generated, and runtime applied",
+        "dns_preflight_ok": dns_preflight_ok,
         "dnstt_pubkey": settings.dnstt_pubkey,
         "dnstt_privkey": settings.dnstt_privkey,
         "install_result": install_result,

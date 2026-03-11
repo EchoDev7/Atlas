@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import ipaddress
 import json
+import logging
 from pathlib import Path
 import re
 import shlex
@@ -17,9 +18,12 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 import paramiko
+import dns.resolver
 from sqlalchemy.orm import object_session
 
 from backend.core.tunnels.base import BaseTunnel
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -246,19 +250,19 @@ class DNSTTTunnel(BaseTunnel):
         steps.append(f"chmod 0644 {privkey_path_q} {pubkey_path_q} >/dev/null 2>&1 || chmod 0644 {pubkey_path_q}")
         return steps
 
-    def verify_dns_delegation(self, domain: str | None = None) -> dict:
+    def verify_dns_delegation(self, domain: str | None = None) -> bool:
         candidate = str(domain or self._active_domain() or "").strip().rstrip(".")
         if not candidate:
-            return {"success": False, "message": "DNSTT tunnel domain is required before installation"}
+            logger.warning("DNS NS record not found or not propagated yet for domain. Proceeding anyway...")
+            return False
         try:
-            resolved_ip = socket.gethostbyname(candidate)
-        except socket.gaierror:
-            return {
-                "success": False,
-                "message": f"DNSTT domain '{candidate}' does not resolve. Configure your DNS NS/A records first.",
-                "domain": candidate,
-            }
-        return {"success": True, "domain": candidate, "resolved_ip": resolved_ip}
+            answers = dns.resolver.resolve(candidate, "NS")
+            ns_records = [str(record).rstrip(".") for record in answers]
+            logger.info("DNS NS record check passed for domain '%s': %s", candidate, ns_records)
+            return True
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.Timeout, dns.resolver.NoNameservers, dns.exception.DNSException):
+            logger.warning("DNS NS record not found or not propagated yet for domain. Proceeding anyway...")
+            return False
 
     def _normalize_doh_endpoint(self, candidate: str) -> str:
         trimmed = candidate.strip()

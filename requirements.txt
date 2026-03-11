@@ -11,3 +11,4 @@ qrcode[pil]==7.4.2
 pillow==10.2.0
 apscheduler==3.10.4
 paramiko==3.4.0
+dnspython==2.6.1
