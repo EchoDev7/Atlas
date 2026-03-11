@@ -830,40 +830,6 @@ def dnstt_client_profile(
     }
 
 
-@router.get("/tunnel/dnstt/http-injector-starter")
-def dnstt_http_injector_starter(
-    current_user: Admin = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _ = current_user
-    settings = _get_or_create_general_settings(db)
-    settings.tunnel_mode = "dnstt"
-    tunnel = tunnel_manager.get_tunnel(settings)
-
-    if not hasattr(tunnel, "generate_http_injector_starter"):
-        raise HTTPException(status_code=400, detail="DNSTT HTTP Injector starter generator is not available")
-
-    try:
-        starter_result = tunnel.generate_http_injector_starter()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"DNSTT HTTP Injector starter generation failed: {exc}") from exc
-
-    if not starter_result.get("success"):
-        raise HTTPException(status_code=400, detail=starter_result.get("message", "DNSTT HTTP Injector starter generation failed"))
-
-    starter_payload = starter_result.get("starter") or {}
-    active_domain = str(starter_payload.get("dnstt_reference", {}).get("domain") or "dnstt-http-injector").strip()
-    safe_domain = re.sub(r"[^A-Za-z0-9_.-]+", "_", active_domain) or "dnstt-http-injector"
-    starter_filename = f"{safe_domain}-http-injector-starter.json"
-
-    return {
-        "success": True,
-        "message": starter_result.get("message", "HTTP Injector starter generated"),
-        "filename": starter_filename,
-        "starter": starter_payload,
-    }
-
-
 @router.get("/server-ips")
 def get_server_public_ips(current_user: Admin = Depends(get_current_user)):
     _ = current_user
