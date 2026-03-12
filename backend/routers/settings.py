@@ -6,11 +6,14 @@ import re
 import shutil
 import socket
 import subprocess
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from backend.core.routing.pbr_manager import PBRManager
+from backend.core.tunnels.dnstt import DNSTTTunnel
 from backend.core.tunnels.manager import TunnelManager
 from backend.core.obfuscation_manager import ObfuscationManager
 from backend.core.openvpn import OpenVPNManager
@@ -859,6 +862,12 @@ def update_general_settings(
     previous_admin_allowed_ips = settings.admin_allowed_ips or ""
     previous_login_max_failed_attempts = settings.login_max_failed_attempts
     previous_login_block_duration_minutes = settings.login_block_duration_minutes
+    previous_tunnel_mode = str(settings.tunnel_mode or "").strip().lower()
+    previous_tunnel_architecture = str(settings.tunnel_architecture or "standalone").strip().lower()
+    previous_foreign_server_ip = settings.foreign_server_ip
+    previous_foreign_server_port = settings.foreign_server_port
+    previous_foreign_ssh_user = settings.foreign_ssh_user
+    previous_foreign_ssh_password = settings.foreign_ssh_password
 
     if payload.panel_https_port == payload.subscription_https_port:
         raise HTTPException(
@@ -950,7 +959,39 @@ def update_general_settings(
         )
 
     runtime_result = None
-    if settings.is_tunnel_enabled and str(settings.tunnel_mode or "").strip().lower() == "dnstt":
+    teardown_result = None
+    routing_flush_result = None
+    if payload.is_tunnel_enabled is False:
+        active_tunnel_mode = previous_tunnel_mode or str(payload.tunnel_mode or "").strip().lower()
+        if active_tunnel_mode == "dnstt":
+            tunnel_settings = SimpleNamespace(
+                tunnel_mode="dnstt",
+                tunnel_architecture=previous_tunnel_architecture,
+                foreign_server_ip=previous_foreign_server_ip,
+                foreign_server_port=previous_foreign_server_port,
+                foreign_ssh_user=previous_foreign_ssh_user,
+                foreign_ssh_password=previous_foreign_ssh_password,
+            )
+            dnstt = DNSTTTunnel(settings=tunnel_settings)
+            teardown_result = dnstt.stop()
+            if not teardown_result.get("success"):
+                db.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail=teardown_result.get("message", "Failed to teardown DNSTT runtime while disabling tunnel"),
+                )
+
+        try:
+            pbr = PBRManager(db)
+            pbr.flush_routing_rules()
+            routing_flush_result = {"success": True}
+        except Exception as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to flush routing rules while disabling tunnel: {exc}",
+            ) from exc
+    elif settings.is_tunnel_enabled and str(settings.tunnel_mode or "").strip().lower() == "dnstt":
         runtime_result = _apply_dnstt_runtime(settings)
         if not runtime_result.get("success"):
             db.rollback()
@@ -985,6 +1026,8 @@ def update_general_settings(
         details={
             "changed_fields": changed_fields,
             "dnstt_runtime_applied": bool(runtime_result and runtime_result.get("success")),
+            "dnstt_teardown_applied": bool(teardown_result and teardown_result.get("success")),
+            "routing_rules_flushed": bool(routing_flush_result and routing_flush_result.get("success")),
         },
     )
 

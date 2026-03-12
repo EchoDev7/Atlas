@@ -1045,7 +1045,7 @@ class DNSTTTunnel(BaseTunnel):
         mtu_q = shlex.quote(str(self._mtu_value()))
         dns_redirect_steps = [
             "while iptables -t nat -C OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300 >/dev/null 2>&1; do iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300; done",
-            "iptables -t nat -C PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 || iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300",
+            "iptables -t nat -C PREROUTING -p udp --dport 53 -m comment --comment ATLAS_DNSTT -j REDIRECT --to-ports 5300 || iptables -t nat -A PREROUTING -p udp --dport 53 -m comment --comment ATLAS_DNSTT -j REDIRECT --to-ports 5300",
         ]
 
         service_steps = [
@@ -1519,23 +1519,40 @@ if __name__ == '__main__':
             "local": local_result,
         }
 
+    def teardown_network_rules(self) -> dict:
+        target = "foreign" if self._is_relay_mode() else "local"
+        teardown_steps = [
+            "iptables -t nat -S PREROUTING 2>/dev/null | while IFS= read -r line; do printf '%s\\n' \"$line\" | grep -Fq 'ATLAS_DNSTT' || continue; delete_line=$(printf '%s\\n' \"$line\" | sed 's/^-A /-D /'); iptables -t nat $delete_line >/dev/null 2>&1 || true; done",
+        ]
+        result = self._run_steps(target=target, steps=teardown_steps)
+        return {
+            "success": result.get("success", False),
+            "target": target,
+            "message": "DNSTT network rules removed" if result.get("success") else "Failed to remove DNSTT network rules",
+            "details": result,
+        }
+
     def stop(self) -> dict:
         if self._is_relay_mode():
             foreign_result = self._run_steps(target="foreign", steps=["systemctl stop dnstt-server.service"])
             local_result = self._run_steps(target="local", steps=["systemctl stop dnstt-client.service"])
-            success = bool(foreign_result.get("success") and local_result.get("success"))
+            teardown_result = self.teardown_network_rules()
+            success = bool(foreign_result.get("success") and local_result.get("success") and teardown_result.get("success"))
             return {
                 "success": success,
                 "mode": self.mode,
                 "message": "DNSTT services stopped" if success else "Failed to stop DNSTT services",
                 "foreign": foreign_result,
                 "local": local_result,
+                "network_teardown": teardown_result,
             }
 
         local_result = self._run_steps(target="local", steps=["systemctl stop dnstt-server.service", "systemctl stop dnstt-client.service"])
+        teardown_result = self.teardown_network_rules()
         return {
-            "success": local_result.get("success", False),
+            "success": bool(local_result.get("success", False) and teardown_result.get("success")),
             "mode": self.mode,
-            "message": "DNSTT services stopped" if local_result.get("success") else "Failed to stop DNSTT services",
+            "message": "DNSTT services stopped" if local_result.get("success") and teardown_result.get("success") else "Failed to stop DNSTT services",
             "local": local_result,
+            "network_teardown": teardown_result,
         }
