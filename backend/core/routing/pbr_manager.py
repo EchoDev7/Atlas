@@ -13,6 +13,7 @@ from typing import Iterator
 from sqlalchemy.orm import Session
 
 from backend.database import SessionLocal
+from backend.models.general_settings import GeneralSettings
 from backend.models.routing_rule import RoutingRule
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ class PBRManager:
     _RT_TABLES_PATH = Path("/etc/iproute2/rt_tables")
     _TABLE_PREFIX = "atlas_pbr"
     _COMMENT_PREFIX = "ATLAS_PBR"
+    _DEFAULT_NAT_COMMENT = "ATLAS_DEFAULT_NAT"
 
     def __init__(self, db: Session | None = None):
         self._db = db
@@ -56,6 +58,17 @@ class PBRManager:
 
     def _comment_for(self, kind: str, rule_name: str) -> str:
         return f"{self._COMMENT_PREFIX}:{kind}:{self._sanitize_name(rule_name)}"
+
+    def _resolve_wan_interface(self, out_iface: str = "eth0") -> str:
+        fallback = str(out_iface or "eth0").strip() or "eth0"
+        try:
+            with self._session_scope() as db:
+                settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+            configured = str(getattr(settings, "wan_interface", "") or "").strip() if settings else ""
+            return configured or fallback
+        except Exception as exc:
+            logger.warning("failed to resolve WAN interface from general_settings, using fallback %s: %s", fallback, exc)
+            return fallback
 
     def _rule_table_name(self, rule: RoutingRule) -> str:
         explicit = str(rule.table_name or "").strip()
@@ -215,7 +228,29 @@ class PBRManager:
             raise RuntimeError(f"failed to add nat redirect rule: {add_result.stderr.strip() or add_result.stdout.strip()}")
         return True
 
-    def flush_routing_rules(self) -> None:
+    def ensure_default_nat(self, out_iface: str = "eth0") -> bool:
+        wan_iface = self._resolve_wan_interface(out_iface=out_iface)
+        spec = [
+            "-o",
+            wan_iface,
+            "-m",
+            "comment",
+            "--comment",
+            self._DEFAULT_NAT_COMMENT,
+            "-j",
+            "MASQUERADE",
+        ]
+        if self._iptables_rule_exists("nat", "POSTROUTING", spec):
+            return False
+
+        add_result = self._run(["iptables", "-t", "nat", "-A", "POSTROUTING", *spec])
+        if add_result.returncode != 0:
+            raise RuntimeError(
+                f"failed to ensure default NAT masquerade on {wan_iface}: {add_result.stderr.strip() or add_result.stdout.strip()}"
+            )
+        return True
+
+    def flush_routing_rules(self, out_iface: str = "eth0") -> None:
         for table in ("mangle", "nat"):
             list_result = self._run(["iptables", "-t", table, "-S", "PREROUTING"])
             if list_result.returncode != 0:
@@ -255,6 +290,8 @@ class PBRManager:
             if not str(table_name).lower().startswith(self._TABLE_PREFIX):
                 continue
             _ = self._run(["ip", "rule", "del", "fwmark", fwmark_value, "table", table_name])
+
+        _ = self.ensure_default_nat(out_iface=out_iface)
 
     def apply_all_active_rules(self) -> dict:
         self.flush_routing_rules()

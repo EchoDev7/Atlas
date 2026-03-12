@@ -983,7 +983,7 @@ def update_general_settings(
 
         try:
             pbr = PBRManager(db)
-            pbr.flush_routing_rules()
+            pbr.flush_routing_rules(out_iface=detected_wan)
             routing_flush_result = {"success": True}
         except Exception as exc:
             db.rollback()
