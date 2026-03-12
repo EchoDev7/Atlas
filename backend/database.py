@@ -697,6 +697,8 @@ def init_db():
                         fwmark INTEGER NOT NULL,
                         proxy_port INTEGER NOT NULL,
                         protocol VARCHAR(8) NOT NULL DEFAULT 'tcp',
+                        dest_cidr VARCHAR(64) NOT NULL DEFAULT '0.0.0.0/0',
+                        description VARCHAR(255),
                         table_id INTEGER NOT NULL,
                         table_name VARCHAR(64) NOT NULL,
                         status VARCHAR(16) NOT NULL DEFAULT 'active',
@@ -714,6 +716,8 @@ def init_db():
             routing_column_names = {col[1] for col in routing_columns}
             routing_column_migrations = {
                 "protocol": "ALTER TABLE routing_rules ADD COLUMN protocol VARCHAR(8) NOT NULL DEFAULT 'tcp'",
+                "dest_cidr": "ALTER TABLE routing_rules ADD COLUMN dest_cidr VARCHAR(64) NOT NULL DEFAULT '0.0.0.0/0'",
+                "description": "ALTER TABLE routing_rules ADD COLUMN description VARCHAR(255)",
                 "table_id": "ALTER TABLE routing_rules ADD COLUMN table_id INTEGER NOT NULL DEFAULT 0",
                 "table_name": "ALTER TABLE routing_rules ADD COLUMN table_name VARCHAR(64) NOT NULL DEFAULT ''",
                 "status": "ALTER TABLE routing_rules ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'",
@@ -730,6 +734,15 @@ def init_db():
                     UPDATE routing_rules
                     SET protocol = 'tcp'
                     WHERE protocol IS NULL OR TRIM(protocol) = ''
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE routing_rules
+                    SET dest_cidr = '0.0.0.0/0'
+                    WHERE dest_cidr IS NULL OR TRIM(dest_cidr) = ''
                     """
                 )
             )

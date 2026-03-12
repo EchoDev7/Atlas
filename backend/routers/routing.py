@@ -1,8 +1,11 @@
+import ipaddress
+import os
 import re
 from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.core.routing.pbr_manager import PBRManager
@@ -12,7 +15,7 @@ from backend.models.routing_rule import RoutingRule
 from backend.models.user import Admin
 from backend.schemas.routing import RoutingRuleCreate, RoutingRuleResponse, RoutingRuleUpdate
 
-router = APIRouter(prefix="/routing/rules", tags=["Routing"])
+router = APIRouter(prefix="/routing", tags=["Routing"])
 
 
 def _normalize_table_name(rule_name: str) -> str:
@@ -35,6 +38,24 @@ def _normalize_status(value: str) -> str:
     return rule_status
 
 
+def _normalize_dest_cidr(value: str | None) -> str:
+    candidate = (value or "0.0.0.0/0").strip()
+    if not candidate:
+        candidate = "0.0.0.0/0"
+    try:
+        network = ipaddress.ip_network(candidate, strict=False)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="dest_cidr must be a valid IP/CIDR") from exc
+    return str(network)
+
+
+def _next_available_fwmark(db: Session, start: int = 100) -> int:
+    max_fwmark = db.query(func.max(RoutingRule.fwmark)).scalar()
+    if max_fwmark is None:
+        return int(start)
+    return max(int(start), int(max_fwmark) + 1)
+
+
 def _apply_runtime_or_rollback(db: Session) -> None:
     result = PBRManager(db=db).apply_all_active_rules()
     if not result.get("success"):
@@ -48,7 +69,32 @@ def _apply_runtime_or_rollback(db: Session) -> None:
         )
 
 
-@router.get("", response_model=List[RoutingRuleResponse])
+@router.get("/interfaces", response_model=List[str])
+async def list_routing_interfaces(
+    current_user: Admin = Depends(get_current_user),
+):
+    _ = current_user
+    try:
+        interfaces = sorted(
+            iface
+            for iface in os.listdir("/sys/class/net/")
+            if iface and iface != "lo"
+        )
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read system interfaces: {exc}") from exc
+    return interfaces
+
+
+@router.get("/next-fwmark")
+async def get_next_fwmark(
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    return {"fwmark": _next_available_fwmark(db)}
+
+
+@router.get("/rules", response_model=List[RoutingRuleResponse])
 async def list_routing_rules(
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -57,7 +103,7 @@ async def list_routing_rules(
     return db.query(RoutingRule).order_by(RoutingRule.id.asc()).all()
 
 
-@router.post("/reapply")
+@router.post("/rules/reapply")
 async def reapply_routing_rules(
     current_user: Admin = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -93,7 +139,7 @@ async def reapply_routing_rules(
     }
 
 
-@router.get("/{rule_id}", response_model=RoutingRuleResponse)
+@router.get("/rules/{rule_id}", response_model=RoutingRuleResponse)
 async def get_routing_rule(
     rule_id: int,
     current_user: Admin = Depends(get_current_user),
@@ -106,7 +152,7 @@ async def get_routing_rule(
     return rule
 
 
-@router.post("", response_model=RoutingRuleResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/rules", response_model=RoutingRuleResponse, status_code=status.HTTP_201_CREATED)
 async def create_routing_rule(
     payload: RoutingRuleCreate,
     current_user: Admin = Depends(get_current_user),
@@ -124,6 +170,8 @@ async def create_routing_rule(
 
     protocol = _normalize_protocol(payload.protocol)
     rule_status = _normalize_status(payload.status)
+    dest_cidr = _normalize_dest_cidr(payload.dest_cidr)
+    description = (payload.description or "").strip() or None
 
     rule = RoutingRule(
         rule_name=payload.rule_name,
@@ -131,6 +179,8 @@ async def create_routing_rule(
         fwmark=int(payload.fwmark),
         proxy_port=int(payload.proxy_port),
         protocol=protocol,
+        dest_cidr=dest_cidr,
+        description=description,
         table_id=int(payload.fwmark),
         table_name=_normalize_table_name(payload.rule_name),
         status=rule_status,
@@ -144,7 +194,7 @@ async def create_routing_rule(
     return rule
 
 
-@router.put("/{rule_id}", response_model=RoutingRuleResponse)
+@router.put("/rules/{rule_id}", response_model=RoutingRuleResponse)
 async def update_routing_rule(
     rule_id: int,
     payload: RoutingRuleUpdate,
@@ -179,6 +229,8 @@ async def update_routing_rule(
     rule.fwmark = int(payload.fwmark)
     rule.proxy_port = int(payload.proxy_port)
     rule.protocol = _normalize_protocol(payload.protocol)
+    rule.dest_cidr = _normalize_dest_cidr(payload.dest_cidr)
+    rule.description = (payload.description or "").strip() or None
     rule.status = _normalize_status(payload.status)
     rule.table_id = int(payload.fwmark)
     rule.table_name = _normalize_table_name(payload.rule_name)
@@ -191,7 +243,7 @@ async def update_routing_rule(
     return rule
 
 
-@router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_routing_rule(
     rule_id: int,
     current_user: Admin = Depends(get_current_user),

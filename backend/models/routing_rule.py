@@ -14,6 +14,8 @@ class RoutingRule(Base):
     fwmark = Column(Integer, nullable=False, index=True)
     proxy_port = Column(Integer, nullable=False)
     protocol = Column(String(8), nullable=False, default="tcp")
+    dest_cidr = Column(String(64), nullable=False, default="0.0.0.0/0")
+    description = Column(String(255), nullable=True)
     table_id = Column(Integer, nullable=False)
     table_name = Column(String(64), nullable=False)
     status = Column(String(16), nullable=False, default="active", index=True)

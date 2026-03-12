@@ -1496,6 +1496,7 @@
                         <thead :class="darkMode ? 'bg-slate-900/40 text-slate-300' : 'bg-slate-50 text-slate-600'">
                             <tr>
                                 <th class="px-4 py-3 text-left font-semibold">Name</th>
+                                <th class="px-4 py-3 text-left font-semibold">Description</th>
                                 <th class="px-4 py-3 text-left font-semibold">Ingress Interface</th>
                                 <th class="px-4 py-3 text-left font-semibold">fwmark</th>
                                 <th class="px-4 py-3 text-left font-semibold">Proxy Port</th>
@@ -1507,7 +1508,7 @@
                         <tbody>
                             <template x-if="routingRules.length === 0">
                                 <tr>
-                                    <td colspan="7" class="px-4 py-8 text-center" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                    <td colspan="8" class="px-4 py-8 text-center" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
                                         No routing rules yet. Add your first rule to map ingress traffic to a local proxy.
                                     </td>
                                 </tr>
@@ -1515,6 +1516,7 @@
                             <template x-for="rule in routingRules" :key="`routing-rule-${rule.id}`">
                                 <tr class="border-t" :class="darkMode ? 'border-slate-700/70' : 'border-slate-200'">
                                     <td class="px-4 py-3 font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="rule.rule_name"></td>
+                                    <td class="px-4 py-3" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="rule.description || '—'"></td>
                                     <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="rule.ingress_iface"></td>
                                     <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="rule.fwmark"></td>
                                     <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="rule.proxy_port"></td>
@@ -2086,19 +2088,38 @@
                 </label>
                 <label class="block">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Ingress Interface</span>
-                    <input type="text" x-model="routingRuleDraft.ingress_iface" placeholder="tun0 or wg+"
-                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    <select x-model="routingRuleDraft.ingress_iface"
+                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <option value="" disabled>Select interface</option>
+                        <template x-for="iface in routingInterfaces" :key="`routing-iface-${iface}`">
+                            <option :value="iface" x-text="iface"></option>
+                        </template>
+                    </select>
                 </label>
                 <label class="block">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">fwmark</span>
-                    <input type="number" min="1" x-model.number="routingRuleDraft.fwmark"
+                    <input type="number" min="1" x-model.number="routingRuleDraft.fwmark" :readonly="!routingRuleEditingId"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                           :class="!routingRuleEditingId
+                                ? (darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-300 cursor-not-allowed' : 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed')
+                                : (darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900')">
                 </label>
                 <label class="block">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Proxy Port</span>
                     <input type="number" min="1" max="65535" x-model.number="routingRuleDraft.proxy_port"
+                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+                <label class="block md:col-span-2">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Destination IP / CIDR</span>
+                    <input type="text" x-model="routingRuleDraft.dest_cidr" placeholder="0.0.0.0/0"
+                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+                <label class="block md:col-span-2">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Description / Notes</span>
+                    <input type="text" x-model="routingRuleDraft.description" placeholder="Optional operational note"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                 </label>
@@ -2349,12 +2370,15 @@
                 routingRuleModalOpen: false,
                 routingRuleEditingId: null,
                 routingRules: [],
+                routingInterfaces: [],
                 routingRuleDraft: {
                     rule_name: '',
                     ingress_iface: '',
                     fwmark: 100,
                     proxy_port: 7100,
                     protocol: 'tcp',
+                    dest_cidr: '0.0.0.0/0',
+                    description: '',
                     status: 'active',
                 },
                 toast: {
@@ -2917,6 +2941,9 @@
                         if (tab !== 'routing') {
                             return;
                         }
+                        if (this.routingInterfaces.length === 0) {
+                            await this.loadRoutingInterfaces({ silent: true });
+                        }
                         if (this.routingRules.length > 0) {
                             return;
                         }
@@ -2925,6 +2952,7 @@
 
                     await this.loadSettings();
                     await this.loadServerIps();
+                    await this.loadRoutingInterfaces({ silent: true });
                     await this.loadRoutingRules({ silent: true });
                 },
 
@@ -2969,6 +2997,8 @@
                         fwmark: Number(rule.fwmark) || 0,
                         proxy_port: Number(rule.proxy_port) || 0,
                         protocol: String(rule.protocol || 'tcp').trim().toLowerCase() || 'tcp',
+                        dest_cidr: String(rule.dest_cidr || '0.0.0.0/0').trim() || '0.0.0.0/0',
+                        description: String(rule.description || '').trim() || null,
                         status: String(rule.status || 'active').trim().toLowerCase() || 'active',
                     };
                 },
@@ -2989,23 +3019,67 @@
                         fwmark: Number(rawRule.fwmark) || 0,
                         proxy_port: Number(rawRule.proxy_port) || 0,
                         protocol: String(rawRule.protocol || 'tcp').toLowerCase(),
+                        dest_cidr: String(rawRule.dest_cidr || '0.0.0.0/0'),
+                        description: String(rawRule.description || ''),
                         status: String(rawRule.status || 'inactive').toLowerCase(),
                     };
+                },
+
+                computeNextRoutingFwmark() {
+                    if (!Array.isArray(this.routingRules) || this.routingRules.length === 0) {
+                        return 100;
+                    }
+                    const maxFwmark = this.routingRules.reduce((max, rule) => {
+                        const value = Number(rule.fwmark) || 0;
+                        return Math.max(max, value);
+                    }, 99);
+                    return Math.max(100, maxFwmark + 1);
+                },
+
+                async fetchNextRoutingFwmark() {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/routing/next-fwmark', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return this.computeNextRoutingFwmark();
+                        }
+                        if (!response.ok) {
+                            return this.computeNextRoutingFwmark();
+                        }
+                        const payload = await response.json();
+                        const fwmark = Number(payload?.fwmark);
+                        if (!Number.isInteger(fwmark) || fwmark < 1) {
+                            return this.computeNextRoutingFwmark();
+                        }
+                        return fwmark;
+                    } catch (_) {
+                        return this.computeNextRoutingFwmark();
+                    }
                 },
 
                 resetRoutingRuleDraft() {
                     this.routingRuleDraft = {
                         rule_name: '',
                         ingress_iface: '',
-                        fwmark: 100,
+                        fwmark: this.computeNextRoutingFwmark(),
                         proxy_port: 7100,
                         protocol: 'tcp',
+                        dest_cidr: '0.0.0.0/0',
+                        description: '',
                         status: 'active',
                     };
                     this.routingRuleEditingId = null;
                 },
 
-                openRoutingRuleModal(rule = null) {
+                async openRoutingRuleModal(rule = null) {
+                    if (this.routingInterfaces.length === 0) {
+                        await this.loadRoutingInterfaces({ silent: true });
+                    }
                     if (rule) {
                         this.routingRuleEditingId = Number(rule.id);
                         this.routingRuleDraft = {
@@ -3014,10 +3088,16 @@
                             fwmark: Number(rule.fwmark) || 100,
                             proxy_port: Number(rule.proxy_port) || 7100,
                             protocol: String(rule.protocol || 'tcp').toLowerCase(),
+                            dest_cidr: String(rule.dest_cidr || '0.0.0.0/0'),
+                            description: String(rule.description || ''),
                             status: String(rule.status || 'active').toLowerCase(),
                         };
                     } else {
                         this.resetRoutingRuleDraft();
+                        this.routingRuleDraft.fwmark = await this.fetchNextRoutingFwmark();
+                        if (!this.routingRuleDraft.ingress_iface && this.routingInterfaces.length > 0) {
+                            this.routingRuleDraft.ingress_iface = this.routingInterfaces[0];
+                        }
                     }
                     this.routingRuleModalOpen = true;
                 },
@@ -3025,6 +3105,40 @@
                 closeRoutingRuleModal() {
                     this.routingRuleModalOpen = false;
                     this.resetRoutingRuleDraft();
+                },
+
+                async loadRoutingInterfaces({ silent = false } = {}) {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/routing/interfaces', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Failed to load routing interfaces';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            throw new Error(message);
+                        }
+
+                        const payload = await response.json();
+                        this.routingInterfaces = Array.isArray(payload) ? payload : [];
+                    } catch (error) {
+                        this.routingInterfaces = [];
+                        if (!silent) {
+                            this.showToast(error.message || 'Failed to load routing interfaces', 'error');
+                        }
+                    }
                 },
 
                 async loadRoutingRules({ silent = false } = {}) {
@@ -3072,6 +3186,10 @@
                     }
                     if (payload.fwmark <= 0 || payload.proxy_port <= 0) {
                         this.showToast('fwmark and proxy port must be positive numbers', 'error');
+                        return;
+                    }
+                    if (!payload.dest_cidr) {
+                        this.showToast('Destination IP/CIDR is required', 'error');
                         return;
                     }
 

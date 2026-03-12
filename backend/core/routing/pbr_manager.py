@@ -133,16 +133,25 @@ class PBRManager:
             raise RuntimeError(f"failed to add ip rule: {add_result.stderr.strip() or add_result.stdout.strip()}")
         return True
 
-    def mark_ingress_traffic(self, ingress_iface: str, fwmark: int, rule_name: str = "default") -> bool:
+    def mark_ingress_traffic(
+        self,
+        ingress_iface: str,
+        fwmark: int,
+        rule_name: str = "default",
+        dest_cidr: str = "0.0.0.0/0",
+    ) -> bool:
         iface = str(ingress_iface).strip()
         if not iface:
             raise ValueError("ingress_iface must not be empty")
+        destination = str(dest_cidr or "0.0.0.0/0").strip() or "0.0.0.0/0"
 
         fwmark_value = str(int(fwmark))
         comment = self._comment_for("mark", rule_name)
         spec = [
             "-i",
             iface,
+            "-d",
+            destination,
             "-m",
             "comment",
             "--comment",
@@ -166,10 +175,12 @@ class PBRManager:
         proxy_port: int,
         protocol: str = "tcp",
         rule_name: str = "default",
+        dest_cidr: str = "0.0.0.0/0",
     ) -> bool:
         iface = str(ingress_iface).strip()
         if not iface:
             raise ValueError("ingress_iface must not be empty")
+        destination = str(dest_cidr or "0.0.0.0/0").strip() or "0.0.0.0/0"
 
         proto = str(protocol).strip().lower()
         if proto not in {"tcp", "udp"}:
@@ -183,6 +194,8 @@ class PBRManager:
         spec = [
             "-i",
             iface,
+            "-d",
+            destination,
             "-p",
             proto,
             "-m",
@@ -262,12 +275,18 @@ class PBRManager:
                 table_id = self._rule_table_id(rule)
                 self.ensure_rt_table(table_id, table_name)
                 self.add_ip_rule(int(rule.fwmark), table_name)
-                self.mark_ingress_traffic(rule.ingress_iface, int(rule.fwmark), rule_name=rule.rule_name)
+                self.mark_ingress_traffic(
+                    rule.ingress_iface,
+                    int(rule.fwmark),
+                    rule_name=rule.rule_name,
+                    dest_cidr=str(rule.dest_cidr or "0.0.0.0/0"),
+                )
                 self.link_ingress_to_local_proxy(
                     rule.ingress_iface,
                     int(rule.proxy_port),
                     protocol=rule.protocol,
                     rule_name=rule.rule_name,
+                    dest_cidr=str(rule.dest_cidr or "0.0.0.0/0"),
                 )
                 applied.append(rule.rule_name)
             except Exception as exc:
