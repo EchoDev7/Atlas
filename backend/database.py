@@ -683,6 +683,87 @@ def init_db():
         audit_logs_table_exists = connection.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_logs'")
         ).fetchone()
+        routing_rules_table_exists = connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='routing_rules'")
+        ).fetchone()
+        if not routing_rules_table_exists:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE routing_rules (
+                        id INTEGER PRIMARY KEY,
+                        rule_name VARCHAR(64) NOT NULL UNIQUE,
+                        ingress_iface VARCHAR(32) NOT NULL,
+                        fwmark INTEGER NOT NULL,
+                        proxy_port INTEGER NOT NULL,
+                        protocol VARCHAR(8) NOT NULL DEFAULT 'tcp',
+                        table_id INTEGER NOT NULL,
+                        table_name VARCHAR(64) NOT NULL,
+                        status VARCHAR(16) NOT NULL DEFAULT 'active',
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_routing_rules_rule_name ON routing_rules (rule_name)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_routing_rules_fwmark ON routing_rules (fwmark)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_routing_rules_status ON routing_rules (status)"))
+        else:
+            routing_columns = connection.execute(text("PRAGMA table_info(routing_rules)")).fetchall()
+            routing_column_names = {col[1] for col in routing_columns}
+            routing_column_migrations = {
+                "protocol": "ALTER TABLE routing_rules ADD COLUMN protocol VARCHAR(8) NOT NULL DEFAULT 'tcp'",
+                "table_id": "ALTER TABLE routing_rules ADD COLUMN table_id INTEGER NOT NULL DEFAULT 0",
+                "table_name": "ALTER TABLE routing_rules ADD COLUMN table_name VARCHAR(64) NOT NULL DEFAULT ''",
+                "status": "ALTER TABLE routing_rules ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'",
+                "created_at": "ALTER TABLE routing_rules ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+                "updated_at": "ALTER TABLE routing_rules ADD COLUMN updated_at DATETIME",
+            }
+            for column_name, migration_sql in routing_column_migrations.items():
+                if column_name not in routing_column_names:
+                    connection.execute(text(migration_sql))
+
+            connection.execute(
+                text(
+                    """
+                    UPDATE routing_rules
+                    SET protocol = 'tcp'
+                    WHERE protocol IS NULL OR TRIM(protocol) = ''
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE routing_rules
+                    SET status = 'active'
+                    WHERE status IS NULL OR TRIM(status) = ''
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE routing_rules
+                    SET table_id = fwmark
+                    WHERE table_id IS NULL OR table_id <= 0
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE routing_rules
+                    SET table_name = ('atlas_pbr_' || lower(replace(replace(replace(rule_name, ' ', '_'), '-', '_'), '.', '_')))
+                    WHERE table_name IS NULL OR TRIM(table_name) = ''
+                    """
+                )
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_routing_rules_rule_name ON routing_rules (rule_name)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_routing_rules_fwmark ON routing_rules (fwmark)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_routing_rules_status ON routing_rules (status)"))
+
         if not audit_logs_table_exists:
             connection.execute(
                 text(

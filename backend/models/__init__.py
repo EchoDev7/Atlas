@@ -5,6 +5,7 @@ from backend.models.general_settings import GeneralSettings
 from backend.models.openvpn_settings import OpenVPNSettings
 from backend.models.wireguard_settings import WireGuardSettings
 from backend.models.audit_log import AuditLog
+from backend.models.routing_rule import RoutingRule
 
 __all__ = [
     "Admin",
@@ -17,4 +18,5 @@ __all__ = [
     "OpenVPNSettings",
     "WireGuardSettings",
     "AuditLog",
+    "RoutingRule",
 ]
