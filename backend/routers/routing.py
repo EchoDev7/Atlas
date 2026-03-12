@@ -1,8 +1,10 @@
 import ipaddress
 import os
 import re
+import socket
+import subprocess
 from datetime import datetime
-from typing import List
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func
@@ -56,6 +58,100 @@ def _next_available_fwmark(db: Session, start: int = 100) -> int:
     return max(int(start), int(max_fwmark) + 1)
 
 
+def _prettify_process_name(process_name: str | None, fallback: str = "Local Service") -> str:
+    normalized = (process_name or "").strip().lower()
+    if not normalized:
+        return fallback
+    if "dnstt" in normalized:
+        return "DNSTT Server"
+    if "sing-box" in normalized or "singbox" in normalized:
+        return "Sing-box"
+    if "xray" in normalized:
+        return "Xray"
+    if "v2ray" in normalized:
+        return "V2Ray"
+    if "openvpn" in normalized:
+        return "OpenVPN"
+    if "wireguard" in normalized or normalized.startswith("wg"):
+        return "WireGuard"
+    return process_name.strip() if process_name else fallback
+
+
+def _collect_proxy_ports_with_psutil() -> list[dict[str, Any]]:
+    try:
+        import psutil  # type: ignore
+    except Exception:
+        return []
+
+    options: dict[int, str] = {}
+    for conn in psutil.net_connections(kind="inet"):
+        if conn.status != "LISTEN" or not conn.laddr:
+            continue
+        host = str(conn.laddr.ip or "")
+        if host not in {"127.0.0.1", "0.0.0.0", "::1", "::", ""}:
+            continue
+        port = int(conn.laddr.port or 0)
+        if port <= 0:
+            continue
+        process_name = None
+        if conn.pid:
+            try:
+                process_name = psutil.Process(conn.pid).name()
+            except Exception:
+                process_name = None
+        label = f"{port} ({_prettify_process_name(process_name)})"
+        options[port] = label
+
+    return [{"port": port, "label": options[port]} for port in sorted(options.keys())]
+
+
+def _collect_proxy_ports_with_ss() -> list[dict[str, Any]]:
+    result = subprocess.run(
+        ["ss", "-ltnup"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+
+    options: dict[int, str] = {}
+    for line in (result.stdout or "").splitlines():
+        normalized = line.strip()
+        if not normalized or normalized.lower().startswith("netid"):
+            continue
+
+        parts = normalized.split()
+        if len(parts) < 5:
+            continue
+        local_addr = parts[4]
+        host = ""
+        port = 0
+        try:
+            if local_addr.startswith("[") and "]:" in local_addr:
+                host, port_text = local_addr.rsplit("]:", 1)
+                host = host.lstrip("[")
+            else:
+                host, port_text = local_addr.rsplit(":", 1)
+            port = int(port_text)
+        except Exception:
+            continue
+
+        if host not in {"127.0.0.1", "0.0.0.0", "::1", "::", "*"}:
+            continue
+        if port <= 0:
+            continue
+
+        process_name = None
+        users_match = re.search(r'users:\(\("([^"]+)"', normalized)
+        if users_match:
+            process_name = users_match.group(1)
+        label = f"{port} ({_prettify_process_name(process_name)})"
+        options[port] = label
+
+    return [{"port": port, "label": options[port]} for port in sorted(options.keys())]
+
+
 def _apply_runtime_or_rollback(db: Session) -> None:
     result = PBRManager(db=db).apply_all_active_rules()
     if not result.get("success"):
@@ -74,15 +170,37 @@ async def list_routing_interfaces(
     current_user: Admin = Depends(get_current_user),
 ):
     _ = current_user
+    static_wildcards = ["any", "tun+", "wg+", "ppp+"]
+    unified_interfaces = list(static_wildcards)
+    seen = set(static_wildcards)
+
     try:
-        interfaces = sorted(
+        live_interfaces = sorted(
             iface
             for iface in os.listdir("/sys/class/net/")
             if iface and iface != "lo"
         )
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to read system interfaces: {exc}") from exc
-    return interfaces
+    except OSError:
+        return unified_interfaces
+
+    for iface in live_interfaces:
+        if iface in seen:
+            continue
+        seen.add(iface)
+        unified_interfaces.append(iface)
+
+    return unified_interfaces
+
+
+@router.get("/proxy-ports")
+async def list_proxy_ports(
+    current_user: Admin = Depends(get_current_user),
+):
+    _ = current_user
+    options = _collect_proxy_ports_with_psutil()
+    if not options:
+        options = _collect_proxy_ports_with_ss()
+    return options
 
 
 @router.get("/next-fwmark")

@@ -2085,43 +2085,53 @@
                     <input type="text" x-model="routingRuleDraft.rule_name" placeholder="OpenVPN to DNSTT TCP"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    <small class="mt-1 block text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Give this rule a clear name so your team can understand its purpose quickly.</small>
                 </label>
                 <label class="block">
-                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Ingress Interface</span>
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Traffic Source (Who is connecting?)</span>
                     <select x-model="routingRuleDraft.ingress_iface"
                             class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                             :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                         <option value="" disabled>Select interface</option>
                         <template x-for="iface in routingInterfaces" :key="`routing-iface-${iface}`">
-                            <option :value="iface" x-text="iface"></option>
+                            <option :value="iface" x-text="formatRoutingInterfaceLabel(iface)"></option>
                         </template>
                     </select>
+                    <small class="mt-1 block text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Choose where traffic enters your server (for example OpenVPN users or WireGuard users).</small>
                 </label>
                 <label class="block">
-                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">fwmark</span>
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">System Tag (fwmark)</span>
                     <input type="number" min="1" x-model.number="routingRuleDraft.fwmark" :readonly="!routingRuleEditingId"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                            :class="!routingRuleEditingId
                                 ? (darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-300 cursor-not-allowed' : 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed')
                                 : (darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900')">
+                    <small class="mt-1 block text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">This is an internal routing ID. It is auto-generated for new rules to prevent conflicts.</small>
                 </label>
                 <label class="block">
-                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Proxy Port</span>
-                    <input type="number" min="1" max="65535" x-model.number="routingRuleDraft.proxy_port"
-                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Destination Tunnel (Where should it go?)</span>
+                    <select x-model.number="routingRuleDraft.proxy_port"
+                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <template x-for="portOption in routingProxyPorts" :key="`routing-proxy-port-${portOption.port}`">
+                            <option :value="portOption.port" x-text="portOption.label"></option>
+                        </template>
+                    </select>
+                    <small class="mt-1 block text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Select which local tunnel service should receive this traffic.</small>
                 </label>
                 <label class="block md:col-span-2">
-                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Destination IP / CIDR</span>
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Target Websites (Split Tunneling)</span>
                     <input type="text" x-model="routingRuleDraft.dest_cidr" placeholder="0.0.0.0/0"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    <small class="mt-1 block text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Use `0.0.0.0/0` for all websites, or a specific CIDR to route only selected destinations.</small>
                 </label>
                 <label class="block md:col-span-2">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Description / Notes</span>
                     <input type="text" x-model="routingRuleDraft.description" placeholder="Optional operational note"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    <small class="mt-1 block text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Add a short note for future maintenance, such as owner, reason, or expected behavior.</small>
                 </label>
                 <label class="block">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Protocol</span>
@@ -2131,6 +2141,7 @@
                         <option value="tcp">tcp</option>
                         <option value="udp">udp</option>
                     </select>
+                    <small class="mt-1 block text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Select TCP for web browsing and reliability, or UDP for real-time traffic like calls and gaming.</small>
                 </label>
                 <label class="block">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Status</span>
@@ -2140,6 +2151,7 @@
                         <option value="active">active</option>
                         <option value="inactive">inactive</option>
                     </select>
+                    <small class="mt-1 block text-xs theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Active applies this rule immediately during sync; inactive keeps it saved but disabled.</small>
                 </label>
             </div>
             <div class="px-5 py-4 border-t flex justify-end gap-2" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
@@ -2371,6 +2383,7 @@
                 routingRuleEditingId: null,
                 routingRules: [],
                 routingInterfaces: [],
+                routingProxyPorts: [],
                 routingRuleDraft: {
                     rule_name: '',
                     ingress_iface: '',
@@ -2944,6 +2957,9 @@
                         if (this.routingInterfaces.length === 0) {
                             await this.loadRoutingInterfaces({ silent: true });
                         }
+                        if (this.routingProxyPorts.length === 0) {
+                            await this.loadRoutingProxyPorts({ silent: true });
+                        }
                         if (this.routingRules.length > 0) {
                             return;
                         }
@@ -2953,6 +2969,7 @@
                     await this.loadSettings();
                     await this.loadServerIps();
                     await this.loadRoutingInterfaces({ silent: true });
+                    await this.loadRoutingProxyPorts({ silent: true });
                     await this.loadRoutingRules({ silent: true });
                 },
 
@@ -3107,6 +3124,46 @@
                     this.resetRoutingRuleDraft();
                 },
 
+                getRoutingInterfaceFallback() {
+                    return ['tun+'];
+                },
+
+                getRoutingProxyPortFallback() {
+                    return [{ port: 7100, label: '7100 (Default DNSTT)' }];
+                },
+
+                formatRoutingInterfaceLabel(iface) {
+                    const normalized = String(iface || '').trim().toLowerCase();
+                    if (!normalized) {
+                        return iface;
+                    }
+                    if (normalized === 'any') {
+                        return 'any (All Traffic)';
+                    }
+                    if (normalized === 'tun+') {
+                        return 'tun+ (All OpenVPN Users)';
+                    }
+                    if (normalized === 'wg+') {
+                        return 'wg+ (All WireGuard Users)';
+                    }
+                    if (normalized === 'ppp+') {
+                        return 'ppp+ (All L2TP/PPTP Users)';
+                    }
+                    if (normalized.startsWith('tun')) {
+                        return `${iface} (OpenVPN)`;
+                    }
+                    if (normalized.startsWith('wg')) {
+                        return `${iface} (WireGuard)`;
+                    }
+                    if (normalized.startsWith('ppp')) {
+                        return `${iface} (L2TP/PPTP)`;
+                    }
+                    if (normalized.startsWith('eth') || normalized.startsWith('ens')) {
+                        return `${iface} (Main Server Network)`;
+                    }
+                    return iface;
+                },
+
                 async loadRoutingInterfaces({ silent = false } = {}) {
                     try {
                         const token = localStorage.getItem('access_token');
@@ -3128,15 +3185,64 @@
                             } catch (_) {
                                 // Keep fallback message
                             }
+                            console.error('Failed to load routing interfaces:', message);
+                            this.routingInterfaces = this.getRoutingInterfaceFallback();
                             throw new Error(message);
                         }
 
                         const payload = await response.json();
-                        this.routingInterfaces = Array.isArray(payload) ? payload : [];
+                        const interfaces = Array.isArray(payload) ? payload.filter((item) => String(item || '').trim().length > 0) : [];
+                        this.routingInterfaces = interfaces.length > 0 ? interfaces : this.getRoutingInterfaceFallback();
                     } catch (error) {
-                        this.routingInterfaces = [];
+                        console.error('Routing interfaces API error:', error);
+                        this.routingInterfaces = this.getRoutingInterfaceFallback();
                         if (!silent) {
                             this.showToast(error.message || 'Failed to load routing interfaces', 'error');
+                        }
+                    }
+                },
+
+                async loadRoutingProxyPorts({ silent = false } = {}) {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/routing/proxy-ports', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            let message = 'Failed to load proxy ports';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            console.error('Failed to load routing proxy ports:', message);
+                            this.routingProxyPorts = this.getRoutingProxyPortFallback();
+                            throw new Error(message);
+                        }
+
+                        const payload = await response.json();
+                        const options = Array.isArray(payload)
+                            ? payload
+                                .map((item) => ({
+                                    port: Number(item?.port) || 0,
+                                    label: String(item?.label || '').trim(),
+                                }))
+                                .filter((item) => item.port > 0 && item.label)
+                            : [];
+                        this.routingProxyPorts = options.length > 0 ? options : this.getRoutingProxyPortFallback();
+                    } catch (error) {
+                        console.error('Routing proxy ports API error:', error);
+                        this.routingProxyPorts = this.getRoutingProxyPortFallback();
+                        if (!silent) {
+                            this.showToast(error.message || 'Failed to load proxy ports', 'error');
                         }
                     }
                 },
