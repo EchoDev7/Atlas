@@ -8,17 +8,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
+import logging
 from backend.config import settings
+from backend.core.routing.pbr_manager import PBRManager
 from backend.database import SessionLocal, init_db
 from backend.models.general_settings import GeneralSettings
 from backend.routers import auth, openvpn, settings as server_settings, vpn_users, audit_logs, dashboard, system, terminal, routing
 from backend.services.scheduler_service import get_scheduler
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     init_db()
+    try:
+        sync_result = PBRManager().apply_all_active_rules()
+        if not sync_result.get("success"):
+            logger.error("Routing rules startup sync failed: %s", sync_result.get("errors", []))
+        else:
+            logger.info(
+                "Routing rules startup sync successful. Applied=%s",
+                sync_result.get("applied_rules", []),
+            )
+    except Exception as exc:
+        logger.exception("Unexpected error during routing startup sync: %s", exc)
     
     # Start background scheduler for limit enforcement
     scheduler = get_scheduler()

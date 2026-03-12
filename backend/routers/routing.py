@@ -57,6 +57,42 @@ async def list_routing_rules(
     return db.query(RoutingRule).order_by(RoutingRule.id.asc()).all()
 
 
+@router.post("/reapply")
+async def reapply_routing_rules(
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    try:
+        result = PBRManager(db=db).apply_all_active_rules()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "message": "Failed to sync routing rules with kernel",
+                "error": str(exc),
+            },
+        ) from exc
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "message": "Failed to sync routing rules with kernel",
+                "errors": result.get("errors", []),
+                "applied_rules": result.get("applied_rules", []),
+            },
+        )
+
+    return {
+        "success": True,
+        "message": "Routing rules synced with kernel successfully",
+        "applied_rules": result.get("applied_rules", []),
+    }
+
+
 @router.get("/{rule_id}", response_model=RoutingRuleResponse)
 async def get_routing_rule(
     rule_id: int,
