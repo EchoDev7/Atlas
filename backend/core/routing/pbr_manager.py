@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shlex
 import socket
 import subprocess
 from contextlib import contextmanager
@@ -308,9 +309,11 @@ class PBRManager:
                     continue
                 if self._COMMENT_PREFIX not in line:
                     continue
-                delete_tokens = line.split()
+                delete_tokens = shlex.split(line)
                 delete_tokens[0] = "-D"
                 _ = self._run(["iptables", "-t", table, *delete_tokens])
+
+        self._remove_legacy_dns_redirect_rules()
 
         rule_dump = self._run(["ip", "rule", "show"])
         if rule_dump.returncode != 0:
@@ -334,6 +337,38 @@ class PBRManager:
             _ = self._run(["ip", "rule", "del", "fwmark", fwmark_value, "table", table_name])
 
         _ = self.ensure_default_nat(out_iface=out_iface)
+
+    def _remove_legacy_dns_redirect_rules(self) -> None:
+        list_result = self._run(["iptables", "-t", "nat", "-S", "PREROUTING"])
+        if list_result.returncode != 0:
+            logger.warning(
+                "failed to list nat PREROUTING while removing legacy DNS redirects: %s",
+                list_result.stderr.strip() or list_result.stdout.strip(),
+            )
+            return
+
+        for raw_line in (list_result.stdout or "").splitlines():
+            line = raw_line.strip()
+            if not line.startswith("-A PREROUTING "):
+                continue
+
+            tokens = shlex.split(line)
+            normalized = " ".join(tokens).lower()
+            if " --dport 53 " not in f" {normalized} ":
+                continue
+            if " -j redirect " not in f" {normalized} ":
+                continue
+            if "--to-ports 5300" not in normalized:
+                continue
+
+            tokens[0] = "-D"
+            delete_result = self._run(["iptables", "-t", "nat", *tokens])
+            if delete_result.returncode != 0:
+                logger.warning(
+                    "failed to delete legacy DNS redirect rule '%s': %s",
+                    line,
+                    delete_result.stderr.strip() or delete_result.stdout.strip(),
+                )
 
     def apply_all_active_rules(self) -> dict:
         self.flush_routing_rules()
