@@ -63,7 +63,7 @@ def _execute_dummy_tunnel_command(settings_row: GeneralSettings, node: str, comm
     normalized_command = command.strip()
     output = (
         f"[{node}] $ {normalized_command}\n"
-        f"mode={mode} | tunnel_enabled={bool(settings_row.is_tunnel_enabled)}\n"
+        f"mode={mode}\n"
         "Dummy execution successful."
     )
     return TunnelCommandResponse(
@@ -853,7 +853,6 @@ def run_foreign_tunnel_command(
         ip_address=extract_client_ip(request),
         details={
             "mode": response.mode,
-            "foreign_server_ip": settings_row.foreign_server_ip,
             "command": payload.command[:256],
         },
     )

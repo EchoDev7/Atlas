@@ -2,19 +2,15 @@ from datetime import datetime
 import ipaddress
 import logging
 from pathlib import Path
-import re
 import shutil
 import socket
 import subprocess
-from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.core.routing.pbr_manager import PBRManager
-from backend.core.tunnels.dnstt import DNSTTTunnel
-from backend.core.tunnels.manager import TunnelManager
 from backend.core.obfuscation_manager import ObfuscationManager
 from backend.core.openvpn import OpenVPNManager
 from backend.core.wireguard import WireGuardManager
@@ -37,7 +33,6 @@ router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_manager = OpenVPNManager()
 obfuscation_manager = ObfuscationManager()
 wireguard_manager = WireGuardManager()
-tunnel_manager = TunnelManager()
 logger = logging.getLogger(__name__)
 RESOLVED_DROPIN_DIR = Path("/etc/systemd/resolved.conf.d")
 ATLAS_DNS_DROPIN_FILE = RESOLVED_DROPIN_DIR / "atlas-dns.conf"
@@ -391,42 +386,6 @@ def _get_or_create_general_settings(db: Session) -> GeneralSettings:
     return settings
 
 
-def _apply_dnstt_runtime(settings: GeneralSettings) -> dict:
-    settings.tunnel_mode = "dnstt"
-    tunnel = tunnel_manager.get_tunnel(settings)
-    if not hasattr(tunnel, "setup_server"):
-        return {"success": False, "message": "DNSTT server setup operation is not available"}
-
-    server_result = tunnel.setup_server()
-    if not server_result.get("success"):
-        return {
-            "success": False,
-            "message": server_result.get("message", "DNSTT server setup failed"),
-            "server": server_result,
-        }
-
-    architecture = str(getattr(settings, "tunnel_architecture", "standalone") or "standalone").strip().lower()
-    client_result = None
-    if architecture == "relay":
-        if not hasattr(tunnel, "setup_client"):
-            return {"success": False, "message": "DNSTT client setup operation is not available for relay mode", "server": server_result}
-        client_result = tunnel.setup_client()
-        if not client_result.get("success"):
-            return {
-                "success": False,
-                "message": client_result.get("message", "DNSTT client setup failed"),
-                "server": server_result,
-                "client": client_result,
-            }
-
-    return {
-        "success": True,
-        "message": "DNSTT runtime applied",
-        "server": server_result,
-        "client": client_result,
-    }
-
-
 def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
     allowed_ciphers = ["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"]
     raw_ciphers = (settings.data_ciphers or "").strip()
@@ -541,6 +500,11 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         wan_interface=settings.wan_interface,
         server_system_dns_primary=settings.server_system_dns_primary,
         server_system_dns_secondary=settings.server_system_dns_secondary,
+        is_tunnel_enabled=settings.is_tunnel_enabled,
+        foreign_server_ip=settings.foreign_server_ip,
+        foreign_server_port=settings.foreign_server_port,
+        foreign_ssh_user=settings.foreign_ssh_user,
+        foreign_ssh_password=settings.foreign_ssh_password,
         admin_allowed_ips=settings.admin_allowed_ips,
         login_max_failed_attempts=settings.login_max_failed_attempts,
         login_block_duration_minutes=settings.login_block_duration_minutes,
@@ -556,33 +520,6 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         custom_ssl_private_key=settings.custom_ssl_private_key,
         system_timezone=settings.system_timezone,
         ntp_server=settings.ntp_server,
-        is_tunnel_enabled=settings.is_tunnel_enabled,
-        tunnel_mode=settings.tunnel_mode,
-        foreign_server_ip=settings.foreign_server_ip,
-        foreign_server_port=settings.foreign_server_port,
-        foreign_ssh_user=settings.foreign_ssh_user,
-        foreign_ssh_password=settings.foreign_ssh_password,
-        tunnel_architecture=settings.tunnel_architecture,
-        dnstt_domain=settings.dnstt_domain,
-        dnstt_active_domain=settings.dnstt_active_domain,
-        dnstt_dns_resolver=settings.dnstt_dns_resolver,
-        dnstt_resolver_strategy=settings.dnstt_resolver_strategy,
-        dnstt_duplication_mode=settings.dnstt_duplication_mode,
-        dnstt_mtu_mode=settings.dnstt_mtu_mode,
-        dnstt_mtu=settings.dnstt_mtu,
-        dnstt_mtu_upload_min=settings.dnstt_mtu_upload_min,
-        dnstt_mtu_upload_max=settings.dnstt_mtu_upload_max,
-        dnstt_mtu_download_min=settings.dnstt_mtu_download_min,
-        dnstt_mtu_download_max=settings.dnstt_mtu_download_max,
-        dnstt_adaptive_per_resolver=settings.dnstt_adaptive_per_resolver,
-        dnstt_transport_probe_workers=settings.dnstt_transport_probe_workers,
-        dnstt_transport_retry_count=settings.dnstt_transport_retry_count,
-        dnstt_transport_probe_timeout_ms=settings.dnstt_transport_probe_timeout_ms,
-        dnstt_transport_switch_threshold_percent=settings.dnstt_transport_switch_threshold_percent,
-        dnstt_telemetry=settings.dnstt_telemetry,
-        dnstt_telemetry_history=settings.dnstt_telemetry_history,
-        dnstt_pubkey=settings.dnstt_pubkey,
-        dnstt_privkey=settings.dnstt_privkey,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
@@ -630,209 +567,6 @@ def get_general_settings(
     return _to_general_response(settings)
 
 
-@router.post("/tunnel/dnstt/install-generate")
-def install_and_generate_dnstt(
-    request: Request,
-    current_user: Admin = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    settings = _get_or_create_general_settings(db)
-    settings.tunnel_mode = "dnstt"
-    tunnel = tunnel_manager.get_tunnel(settings)
-
-    if not hasattr(tunnel, "install_dependencies") or not hasattr(tunnel, "generate_keys"):
-        raise HTTPException(status_code=400, detail="DNSTT engine is not available")
-
-    dns_preflight_ok = True
-    if hasattr(tunnel, "verify_dns_delegation"):
-        dns_preflight_ok = bool(
-            tunnel.verify_dns_delegation(
-                getattr(settings, "dnstt_active_domain", None) or getattr(settings, "dnstt_domain", None)
-            )
-        )
-
-    install_result = tunnel.install_dependencies()
-    if not install_result.get("success"):
-        detail_message = str(install_result.get("message") or "DNSTT install failed")
-        local_info = install_result.get("local") or {}
-        foreign_info = install_result.get("foreign") or {}
-        local_error = str(local_info.get("error") or "").strip()
-        foreign_error = str(foreign_info.get("error") or "").strip()
-
-        if local_error:
-            detail_message = f"{detail_message}: {local_error}"
-        elif foreign_error:
-            detail_message = f"{detail_message}: {foreign_error}"
-
-        local_results = local_info.get("results") or []
-        foreign_results = foreign_info.get("results") or []
-        if isinstance(local_results, list) and local_results:
-            failed_command = str((local_results[-1] or {}).get("command") or "").strip()
-            if failed_command:
-                detail_message = f"{detail_message} [command: {failed_command}]"
-        elif isinstance(foreign_results, list) and foreign_results:
-            failed_command = str((foreign_results[-1] or {}).get("command") or "").strip()
-            if failed_command:
-                detail_message = f"{detail_message} [command: {failed_command}]"
-
-        record_audit_event(
-            action="dnstt_install_generate",
-            success=False,
-            admin_username=current_user.username,
-            resource_type="system_tunnel",
-            resource_id="dnstt",
-            ip_address=extract_client_ip(request),
-            details={
-                "stage": "install",
-                "message": install_result.get("message"),
-                "detail_message": detail_message,
-            },
-        )
-        raise HTTPException(status_code=500, detail=detail_message)
-
-    keys_result = tunnel.generate_keys()
-    if not keys_result.get("success"):
-        record_audit_event(
-            action="dnstt_install_generate",
-            success=False,
-            admin_username=current_user.username,
-            resource_type="system_tunnel",
-            resource_id="dnstt",
-            ip_address=extract_client_ip(request),
-            details={"stage": "generate_keys", "message": keys_result.get("message")},
-        )
-        raise HTTPException(status_code=500, detail=keys_result.get("message", "DNSTT key generation failed"))
-
-    settings.dnstt_pubkey = keys_result.get("dnstt_pubkey")
-    settings.dnstt_privkey = keys_result.get("dnstt_privkey")
-    settings.updated_at = datetime.utcnow()
-
-    runtime_result = _apply_dnstt_runtime(settings)
-    if not runtime_result.get("success"):
-        record_audit_event(
-            action="dnstt_install_generate",
-            success=False,
-            admin_username=current_user.username,
-            resource_type="system_tunnel",
-            resource_id="dnstt",
-            ip_address=extract_client_ip(request),
-            details={
-                "stage": "runtime_apply",
-                "message": runtime_result.get("message"),
-                "runtime_result": runtime_result,
-            },
-        )
-        raise HTTPException(status_code=500, detail=runtime_result.get("message", "DNSTT runtime apply failed"))
-
-    db.commit()
-    db.refresh(settings)
-
-    record_audit_event(
-        action="dnstt_install_generate",
-        success=True,
-        admin_username=current_user.username,
-        resource_type="system_tunnel",
-        resource_id="dnstt",
-        ip_address=extract_client_ip(request),
-        details={
-            "architecture": settings.tunnel_architecture,
-            "domain": settings.dnstt_domain,
-            "active_domain": settings.dnstt_active_domain,
-        },
-    )
-
-    return {
-        "success": True,
-        "message": "DNSTT dependencies installed, keys generated, and runtime applied",
-        "dns_preflight_ok": dns_preflight_ok,
-        "dnstt_pubkey": settings.dnstt_pubkey,
-        "dnstt_privkey": settings.dnstt_privkey,
-        "install_result": install_result,
-        "keys_result": keys_result,
-        "runtime_result": runtime_result,
-    }
-
-
-@router.get("/tunnel/dnstt/probe-mtu")
-def probe_dnstt_mtu(
-    current_user: Admin = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _ = current_user
-    settings = _get_or_create_general_settings(db)
-    settings.tunnel_mode = "dnstt"
-    tunnel = tunnel_manager.get_tunnel(settings)
-
-    if not hasattr(tunnel, "probe_optimal_mtu"):
-        raise HTTPException(status_code=400, detail="DNSTT MTU probe is not available")
-
-    resolver_list = str(getattr(settings, "dnstt_dns_resolver", "8.8.8.8") or "8.8.8.8")
-    try:
-        recommended_mtu = int(tunnel.probe_optimal_mtu(resolver_list))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"DNSTT MTU probe failed: {exc}") from exc
-
-    if not 50 <= recommended_mtu <= 1400:
-        recommended_mtu = 50
-
-    return {"recommended_mtu": recommended_mtu}
-
-
-@router.get("/tunnel/dnstt/diagnostics")
-def dnstt_diagnostics(
-    current_user: Admin = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _ = current_user
-    settings = _get_or_create_general_settings(db)
-    settings.tunnel_mode = "dnstt"
-    tunnel = tunnel_manager.get_tunnel(settings)
-
-    if not hasattr(tunnel, "collect_diagnostics"):
-        raise HTTPException(status_code=400, detail="DNSTT diagnostics is not available")
-
-    try:
-        report = tunnel.collect_diagnostics()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"DNSTT diagnostics failed: {exc}") from exc
-
-    return report
-
-
-@router.get("/tunnel/dnstt/client-profile")
-def dnstt_client_profile(
-    current_user: Admin = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _ = current_user
-    settings = _get_or_create_general_settings(db)
-    settings.tunnel_mode = "dnstt"
-    tunnel = tunnel_manager.get_tunnel(settings)
-
-    if not hasattr(tunnel, "generate_client_profile"):
-        raise HTTPException(status_code=400, detail="DNSTT client profile generator is not available")
-
-    try:
-        profile_result = tunnel.generate_client_profile()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"DNSTT client profile generation failed: {exc}") from exc
-
-    if not profile_result.get("success"):
-        raise HTTPException(status_code=400, detail=profile_result.get("message", "DNSTT client profile generation failed"))
-
-    profile_payload = profile_result.get("profile") or {}
-    active_domain = str(profile_payload.get("server", {}).get("domain") or "dnstt-client").strip()
-    safe_domain = re.sub(r"[^A-Za-z0-9_.-]+", "_", active_domain) or "dnstt-client"
-    profile_filename = f"{safe_domain}-dnstt-client-profile.json"
-
-    return {
-        "success": True,
-        "message": profile_result.get("message", "DNSTT client profile generated"),
-        "filename": profile_filename,
-        "profile": profile_payload,
-    }
-
-
 @router.get("/server-ips")
 def get_server_public_ips(current_user: Admin = Depends(get_current_user)):
     _ = current_user
@@ -859,15 +593,10 @@ def update_general_settings(
     current_ntp_server = settings.ntp_server
     previous_panel_port = settings.panel_https_port
     previous_subscription_port = settings.subscription_https_port
+    previous_tunnel_enabled = settings.is_tunnel_enabled
     previous_admin_allowed_ips = settings.admin_allowed_ips or ""
     previous_login_max_failed_attempts = settings.login_max_failed_attempts
     previous_login_block_duration_minutes = settings.login_block_duration_minutes
-    previous_tunnel_mode = str(settings.tunnel_mode or "").strip().lower()
-    previous_tunnel_architecture = str(settings.tunnel_architecture or "standalone").strip().lower()
-    previous_foreign_server_ip = settings.foreign_server_ip
-    previous_foreign_server_port = settings.foreign_server_port
-    previous_foreign_ssh_user = settings.foreign_ssh_user
-    previous_foreign_ssh_password = settings.foreign_ssh_password
 
     if payload.panel_https_port == payload.subscription_https_port:
         raise HTTPException(
@@ -885,6 +614,11 @@ def update_general_settings(
     settings.wan_interface = detected_wan
     settings.server_system_dns_primary = payload.server_system_dns_primary
     settings.server_system_dns_secondary = payload.server_system_dns_secondary
+    settings.is_tunnel_enabled = payload.is_tunnel_enabled
+    settings.foreign_server_ip = payload.foreign_server_ip
+    settings.foreign_server_port = payload.foreign_server_port
+    settings.foreign_ssh_user = payload.foreign_ssh_user
+    settings.foreign_ssh_password = payload.foreign_ssh_password
     settings.admin_allowed_ips = payload.admin_allowed_ips
     settings.login_max_failed_attempts = payload.login_max_failed_attempts
     settings.login_block_duration_minutes = payload.login_block_duration_minutes
@@ -900,33 +634,6 @@ def update_general_settings(
     settings.custom_ssl_private_key = payload.custom_ssl_private_key
     settings.system_timezone = "UTC"
     settings.ntp_server = current_ntp_server
-    settings.is_tunnel_enabled = payload.is_tunnel_enabled
-    settings.tunnel_mode = payload.tunnel_mode
-    settings.foreign_server_ip = payload.foreign_server_ip
-    settings.foreign_server_port = payload.foreign_server_port
-    settings.foreign_ssh_user = payload.foreign_ssh_user
-    settings.foreign_ssh_password = payload.foreign_ssh_password
-    settings.tunnel_architecture = payload.tunnel_architecture
-    settings.dnstt_domain = payload.dnstt_domain
-    settings.dnstt_active_domain = payload.dnstt_active_domain
-    settings.dnstt_dns_resolver = payload.dnstt_dns_resolver
-    settings.dnstt_resolver_strategy = payload.dnstt_resolver_strategy
-    settings.dnstt_duplication_mode = payload.dnstt_duplication_mode
-    settings.dnstt_mtu_mode = payload.dnstt_mtu_mode
-    settings.dnstt_mtu = payload.dnstt_mtu
-    settings.dnstt_mtu_upload_min = payload.dnstt_mtu_upload_min
-    settings.dnstt_mtu_upload_max = payload.dnstt_mtu_upload_max
-    settings.dnstt_mtu_download_min = payload.dnstt_mtu_download_min
-    settings.dnstt_mtu_download_max = payload.dnstt_mtu_download_max
-    settings.dnstt_adaptive_per_resolver = payload.dnstt_adaptive_per_resolver
-    settings.dnstt_transport_probe_workers = payload.dnstt_transport_probe_workers
-    settings.dnstt_transport_retry_count = payload.dnstt_transport_retry_count
-    settings.dnstt_transport_probe_timeout_ms = payload.dnstt_transport_probe_timeout_ms
-    settings.dnstt_transport_switch_threshold_percent = payload.dnstt_transport_switch_threshold_percent
-    settings.dnstt_telemetry = payload.dnstt_telemetry
-    settings.dnstt_telemetry_history = payload.dnstt_telemetry_history
-    settings.dnstt_pubkey = payload.dnstt_pubkey
-    settings.dnstt_privkey = payload.dnstt_privkey
     settings.updated_at = datetime.utcnow()
 
     dns_apply_result = _apply_system_dns_servers(
@@ -958,47 +665,8 @@ def update_general_settings(
             detail=sync_result.get("message", "Failed to apply general system settings"),
         )
 
-    runtime_result = None
-    teardown_result = None
-    routing_flush_result = None
-    if payload.is_tunnel_enabled is False:
-        active_tunnel_mode = previous_tunnel_mode or str(payload.tunnel_mode or "").strip().lower()
-        if active_tunnel_mode == "dnstt":
-            tunnel_settings = SimpleNamespace(
-                tunnel_mode="dnstt",
-                tunnel_architecture=previous_tunnel_architecture,
-                foreign_server_ip=previous_foreign_server_ip,
-                foreign_server_port=previous_foreign_server_port,
-                foreign_ssh_user=previous_foreign_ssh_user,
-                foreign_ssh_password=previous_foreign_ssh_password,
-            )
-            dnstt = DNSTTTunnel(settings=tunnel_settings)
-            teardown_result = dnstt.stop()
-            if not teardown_result.get("success"):
-                db.rollback()
-                raise HTTPException(
-                    status_code=500,
-                    detail=teardown_result.get("message", "Failed to teardown DNSTT runtime while disabling tunnel"),
-                )
-
-        try:
-            pbr = PBRManager(db)
-            pbr.flush_routing_rules(out_iface=detected_wan)
-            routing_flush_result = {"success": True}
-        except Exception as exc:
-            db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to flush routing rules while disabling tunnel: {exc}",
-            ) from exc
-    elif settings.is_tunnel_enabled and str(settings.tunnel_mode or "").strip().lower() == "dnstt":
-        runtime_result = _apply_dnstt_runtime(settings)
-        if not runtime_result.get("success"):
-            db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail=runtime_result.get("message", "Failed to apply DNSTT runtime settings"),
-            )
+    if previous_tunnel_enabled != settings.is_tunnel_enabled:
+        PBRManager(db=db).flush_routing_rules(out_iface=detected_wan)
 
     db.commit()
     _sync_openvpn_auth_db_snapshot()
@@ -1015,6 +683,8 @@ def update_general_settings(
         changed_fields.append("panel_https_port")
     if previous_subscription_port != settings.subscription_https_port:
         changed_fields.append("subscription_https_port")
+    if previous_tunnel_enabled != settings.is_tunnel_enabled:
+        changed_fields.append("is_tunnel_enabled")
 
     record_audit_event(
         action="general_settings_updated",
@@ -1025,9 +695,6 @@ def update_general_settings(
         ip_address=extract_client_ip(request),
         details={
             "changed_fields": changed_fields,
-            "dnstt_runtime_applied": bool(runtime_result and runtime_result.get("success")),
-            "dnstt_teardown_applied": bool(teardown_result and teardown_result.get("success")),
-            "routing_rules_flushed": bool(routing_flush_result and routing_flush_result.get("success")),
         },
     )
 

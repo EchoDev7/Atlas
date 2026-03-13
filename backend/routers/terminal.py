@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
-import paramiko
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -60,36 +59,6 @@ async def _run_local_command(command: str) -> tuple[int, str, str]:
     return int(process.returncode or 0), stdout, stderr
 
 
-def _run_foreign_ssh_command(
-    host: str,
-    port: int,
-    username: str,
-    password: str,
-    command: str,
-) -> tuple[int | None, str, str]:
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    try:
-        client.connect(
-            hostname=host,
-            port=port,
-            username=username,
-            password=password,
-            timeout=15,
-            auth_timeout=15,
-            banner_timeout=15,
-        )
-        stdin, stdout, stderr = client.exec_command(command, timeout=15)
-        _ = stdin
-        stdout_text = (stdout.read() or b"").decode("utf-8", errors="replace")
-        stderr_text = (stderr.read() or b"").decode("utf-8", errors="replace")
-        exit_code = int(stdout.channel.recv_exit_status())
-        return exit_code, stdout_text, stderr_text
-    finally:
-        client.close()
-
-
 def _build_terminal_response(node: str, command: str, exit_code: int | None, stdout: str, stderr: str) -> TerminalCommandResponse:
     output = "\n".join(part for part in [stdout.strip(), stderr.strip()] if part).strip()
     return TerminalCommandResponse(
@@ -134,54 +103,15 @@ async def run_foreign_terminal_command(
     payload: TunnelCommandRequest,
     request: Request,
     current_user: Admin = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
     command = payload.command.strip()
-    settings_row = _get_or_create_general_settings(db)
-
-    host = (settings_row.foreign_server_ip or "").strip()
-    username = (settings_row.foreign_ssh_user or "").strip()
-    password = settings_row.foreign_ssh_password or ""
-    configured_port = getattr(settings_row, "foreign_ssh_port", None)
-    port = int(configured_port or settings_row.foreign_server_port or 22)
-
-    if not host or not username or not password:
-        response = _build_terminal_response(
-            "foreign",
-            command,
-            None,
-            "",
-            "Foreign server SSH settings are incomplete. Please configure IP, username, and password.",
-        )
-    else:
-        try:
-            exit_code, stdout, stderr = await asyncio.to_thread(
-                _run_foreign_ssh_command,
-                host,
-                port,
-                username,
-                password,
-                command,
-            )
-            response = _build_terminal_response("foreign", command, exit_code, stdout, stderr)
-        except paramiko.AuthenticationException:
-            response = _build_terminal_response(
-                "foreign",
-                command,
-                None,
-                "",
-                "SSH authentication failed: invalid username or password.",
-            )
-        except TimeoutError:
-            response = _build_terminal_response(
-                "foreign",
-                command,
-                None,
-                "",
-                "SSH command timed out after 15 seconds.",
-            )
-        except Exception as exc:
-            response = _build_terminal_response("foreign", command, None, "", f"SSH error: {exc}")
+    response = _build_terminal_response(
+        "foreign",
+        command,
+        None,
+        "",
+        "Foreign terminal is unavailable because relay tunnel settings were removed from Atlas.",
+    )
 
     record_audit_event(
         action="terminal_foreign_command",
@@ -191,8 +121,6 @@ async def run_foreign_terminal_command(
         resource_id="foreign",
         ip_address=extract_client_ip(request),
         details={
-            "foreign_server_ip": host,
-            "foreign_server_port": port,
             "exit_code": response.exit_code,
             "command": command[:256],
         },

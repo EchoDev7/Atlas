@@ -62,8 +62,6 @@ def _prettify_process_name(process_name: str | None, fallback: str = "Local Serv
     normalized = (process_name or "").strip().lower()
     if not normalized:
         return fallback
-    if "dnstt" in normalized:
-        return "DNSTT Server"
     if "sing-box" in normalized or "singbox" in normalized:
         return "Sing-box"
     if "xray" in normalized:

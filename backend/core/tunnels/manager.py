@@ -6,18 +6,17 @@ from backend.models.general_settings import GeneralSettings
 
 
 class TunnelManager:
-    """Loads tunnel implementations dynamically based on persisted mode."""
+    """Loads tunnel implementations for supported Atlas tunnel modes."""
 
     TUNNEL_CLASS_MAP = {
         "direct": "backend.core.tunnels.tunnels.direct.DirectTunnel",
-        "dnstt": "backend.core.tunnels.dnstt.DNSTTTunnel",
         "gost": "backend.core.tunnels.tunnels.direct.DirectTunnel",
         "xray": "backend.core.tunnels.tunnels.direct.DirectTunnel",
     }
 
     def resolve_mode(self, settings: GeneralSettings) -> str:
-        mode = str(getattr(settings, "tunnel_mode", "direct") or "direct").strip().lower()
-        return mode if mode in self.TUNNEL_CLASS_MAP else "direct"
+        _ = settings
+        return "direct"
 
     def _load_class(self, class_path: str):
         module_path, class_name = class_path.rsplit(".", 1)
