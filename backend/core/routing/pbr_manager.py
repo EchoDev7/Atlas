@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
+import socket
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
@@ -80,6 +81,47 @@ class PBRManager:
         if int(rule.table_id or 0) > 0:
             return int(rule.table_id)
         return int(rule.fwmark)
+
+    def _is_tunnel_enabled(self) -> bool:
+        try:
+            with self._session_scope() as db:
+                settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+            return bool(getattr(settings, "is_tunnel_enabled", False)) if settings else False
+        except Exception as exc:
+            logger.warning("failed to resolve tunnel toggle from general_settings: %s", exc)
+            return False
+
+    def _is_local_proxy_listener_ready(self, port: int, protocol: str) -> bool:
+        proxy_port = int(port)
+        if proxy_port <= 0 or proxy_port > 65535:
+            return False
+
+        normalized_protocol = str(protocol or "tcp").strip().lower()
+        if normalized_protocol not in {"tcp", "udp"}:
+            return False
+
+        if normalized_protocol == "tcp":
+            try:
+                with socket.create_connection(("127.0.0.1", proxy_port), timeout=0.25):
+                    return True
+            except OSError:
+                return False
+
+        try:
+            result = self._run(["ss", "-lun", f"sport = :{proxy_port}"])
+        except FileNotFoundError:
+            logger.warning("ss command is not available; cannot validate udp listener on port %s", proxy_port)
+            return False
+        if result.returncode != 0:
+            logger.warning(
+                "failed to probe udp listener for local proxy port %s: %s",
+                proxy_port,
+                result.stderr.strip() or result.stdout.strip(),
+            )
+            return False
+
+        lines = [line.strip() for line in (result.stdout or "").splitlines() if line.strip()]
+        return len(lines) > 1
 
     def ensure_rt_table(self, table_id: int, table_name: str) -> bool:
         table_id_text = str(int(table_id))
@@ -297,6 +339,17 @@ class PBRManager:
         self.flush_routing_rules()
         applied: list[str] = []
         errors: list[str] = []
+        skipped: list[str] = []
+
+        if not self._is_tunnel_enabled():
+            return {
+                "success": True,
+                "applied_rules": applied,
+                "skipped_rules": skipped,
+                "error_count": len(errors),
+                "errors": errors,
+                "message": "Tunnel disabled: routing rules flushed and direct internet baseline restored",
+            }
 
         with self._session_scope() as db:
             rules = (
@@ -308,6 +361,16 @@ class PBRManager:
 
         for rule in rules:
             try:
+                if not self._is_local_proxy_listener_ready(int(rule.proxy_port), str(rule.protocol or "tcp")):
+                    skipped.append(rule.rule_name)
+                    logger.warning(
+                        "skipping routing rule %s because local proxy listener is unavailable on %s/%s",
+                        rule.rule_name,
+                        int(rule.proxy_port),
+                        str(rule.protocol or "tcp").strip().lower(),
+                    )
+                    continue
+
                 table_name = self._rule_table_name(rule)
                 table_id = self._rule_table_id(rule)
                 self.ensure_rt_table(table_id, table_name)
@@ -333,6 +396,7 @@ class PBRManager:
         return {
             "success": len(errors) == 0,
             "applied_rules": applied,
+            "skipped_rules": skipped,
             "error_count": len(errors),
             "errors": errors,
         }
