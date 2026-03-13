@@ -107,19 +107,29 @@ else
   warn "atlas-backend.service not found. Skipping backend restart."
 fi
 
-if systemctl cat openvpn-server@server >/dev/null 2>&1; then
-  systemctl restart openvpn-server@server
-  if systemctl is-active --quiet openvpn-server@server; then
-    ok "openvpn-server@server restarted"
+resolve_openvpn_unit() {
+  local candidate
+  for candidate in openvpn-server@server openvpn@server openvpn.service; do
+    if systemctl is-active --quiet "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  for candidate in openvpn-server@server openvpn@server openvpn.service; do
+    if systemctl cat "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if OPENVPN_UNIT="$(resolve_openvpn_unit)"; then
+  systemctl restart "${OPENVPN_UNIT}"
+  if systemctl is-active --quiet "${OPENVPN_UNIT}"; then
+    ok "${OPENVPN_UNIT} restarted"
   else
-    warn "openvpn-server@server restart finished but service is not active"
-  fi
-elif systemctl cat openvpn@server >/dev/null 2>&1; then
-  systemctl restart openvpn@server
-  if systemctl is-active --quiet openvpn@server; then
-    ok "openvpn@server restarted"
-  else
-    warn "openvpn@server restart finished but service is not active"
+    warn "${OPENVPN_UNIT} restart finished but service is not active"
   fi
 else
   warn "OpenVPN service unit not found. Skipping OpenVPN restart."

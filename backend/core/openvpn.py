@@ -66,7 +66,7 @@ class OpenVPNConfig:
     
     # Service name
     SERVICE_NAME = "openvpn-server@server"
-    SERVICE_CANDIDATES = ("openvpn-server@server", "openvpn@server")
+    SERVICE_CANDIDATES = ("openvpn-server@server", "openvpn@server", "openvpn.service")
 
 
 class MockOpenVPNResponse:
@@ -213,13 +213,7 @@ class OpenVPNManager(BaseVPNService):
             if success:
                 return candidate
 
-        # Then prefer enabled units.
-        for candidate in self.config.SERVICE_CANDIDATES:
-            success, _, _ = self._run_command(["systemctl", "is-enabled", "--quiet", candidate], check=False)
-            if success:
-                return candidate
-
-        # Finally, fall back to whichever unit exists on disk.
+        # Then prefer whichever unit exists on disk.
         for candidate in self.config.SERVICE_CANDIDATES:
             success, _, _ = self._run_command(["systemctl", "cat", candidate], check=False)
             if success:

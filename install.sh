@@ -264,6 +264,8 @@ if systemctl cat openvpn-server@server >/dev/null 2>&1; then
   OPENVPN_UNIT="openvpn-server@server"
 elif systemctl cat openvpn@server >/dev/null 2>&1; then
   OPENVPN_UNIT="openvpn@server"
+elif systemctl cat openvpn.service >/dev/null 2>&1; then
+  OPENVPN_UNIT="openvpn.service"
 fi
 
 if [[ -n "${OPENVPN_UNIT}" ]]; then

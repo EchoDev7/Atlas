@@ -63,6 +63,23 @@ CA_CERT="${PKI_DIR}/ca.crt"
 TA_KEY="${OPENVPN_SERVER_DIR}/ta.key"
 ATLAS_BACKEND_SERVICE_FILE="/etc/systemd/system/atlas-backend.service"
 
+resolve_openvpn_unit() {
+  local candidate
+  for candidate in openvpn-server@server openvpn@server openvpn.service; do
+    if systemctl is-active --quiet "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  for candidate in openvpn-server@server openvpn@server openvpn.service; do
+    if systemctl cat "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # 1) PKI paths and required files
 check_exists "$OPENVPN_SERVER_DIR" "OpenVPN server directory"
 check_exists "$PKI_DIR" "PKI directory"
@@ -138,7 +155,7 @@ if command -v ss >/dev/null 2>&1; then
   if ss -tuln | grep -Eq "(:443|:1194)[[:space:]]"; then
     ok "OpenVPN listening port detected (443 or 1194)"
   else
-    err "OpenVPN port is not listening on 443/1194. Fix: verify server.conf port/proto and restart OpenVPN: sudo systemctl restart openvpn-server@server"
+    err "OpenVPN port is not listening on 443/1194. Fix: verify server.conf port/proto and restart detected OpenVPN service unit."
   fi
 else
   err "ss command not found. Fix: sudo apt install -y iproute2"
@@ -156,11 +173,21 @@ if command -v systemctl >/dev/null 2>&1; then
     err "systemd service atlas-backend.service is '${atlas_backend_state:-inactive}'. Fix: sudo systemctl daemon-reload && sudo systemctl enable --now atlas-backend.service"
   fi
 
-  openvpn_service_state="$(systemctl is-active openvpn-server@server 2>/dev/null || true)"
-  if [[ "$openvpn_service_state" == "active" ]]; then
-    ok "systemd service openvpn-server@server is active"
+  OPENVPN_UNIT="$(resolve_openvpn_unit || true)"
+  if [[ -n "${OPENVPN_UNIT}" ]]; then
+    openvpn_service_state="$(systemctl is-active "${OPENVPN_UNIT}" 2>/dev/null || true)"
   else
-    err "systemd service openvpn-server@server is '${openvpn_service_state:-inactive}'. Fix: sudo systemctl enable --now openvpn-server@server"
+    openvpn_service_state="not-found"
+  fi
+
+  if [[ "$openvpn_service_state" == "active" ]]; then
+    ok "systemd service ${OPENVPN_UNIT} is active"
+  else
+    if [[ -n "${OPENVPN_UNIT}" ]]; then
+      err "systemd service ${OPENVPN_UNIT} is '${openvpn_service_state:-inactive}'. Fix: sudo systemctl enable --now ${OPENVPN_UNIT}"
+    else
+      err "OpenVPN service unit not found (checked: openvpn-server@server, openvpn@server, openvpn.service)."
+    fi
   fi
 else
   err "systemctl command not found. Fix: run this script on a systemd-based Ubuntu VPS."

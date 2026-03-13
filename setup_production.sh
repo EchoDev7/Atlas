@@ -19,6 +19,23 @@ OPENVPN_SUBNET="10.8.0.0/24"
 SYSCTL_FILE="/etc/sysctl.d/99-atlas.conf"
 ATLAS_SERVICE_FILE="/etc/systemd/system/atlas-backend.service"
 
+resolve_openvpn_unit() {
+  local candidate
+  for candidate in openvpn-server@server openvpn@server openvpn.service; do
+    if systemctl is-active --quiet "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  for candidate in openvpn-server@server openvpn@server openvpn.service; do
+    if systemctl cat "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 detect_virtualization_type() {
   local virt_type=""
 
@@ -242,11 +259,16 @@ systemctl enable --now atlas-backend.service
 
 
 echo "[12/12] Enabling and starting OpenVPN service..."
-systemctl enable --now openvpn-server@server
+if OPENVPN_UNIT="$(resolve_openvpn_unit)"; then
+  systemctl enable --now "${OPENVPN_UNIT}"
+else
+  echo "[ERROR] OpenVPN systemd unit not found (checked: openvpn-server@server, openvpn@server, openvpn.service)"
+  exit 1
+fi
 
 
 echo "Bootstrap complete."
 echo "Next steps:"
-echo "  1) Verify OpenVPN: systemctl status openvpn-server@server"
+echo "  1) Verify OpenVPN: systemctl status ${OPENVPN_UNIT:-<detected_openvpn_unit>}"
 echo "  2) Verify Atlas backend: systemctl status atlas-backend.service"
 echo "  3) Run full health check: sudo bash verify_production.sh"

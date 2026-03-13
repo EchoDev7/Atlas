@@ -378,23 +378,23 @@ class WireGuardManager:
         external_interface = self._resolve_effective_wan_interface(wan_interface)
 
         if external_interface:
-            nat_check = f"iptables -t nat -C POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE"
+            nat_check = f"iptables -t nat -C POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE 2>/dev/null"
             nat_add = f"iptables -t nat -A POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE"
-            nat_delete = f"iptables -t nat -D POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE"
+            nat_delete = f"iptables -t nat -D POSTROUTING -s {network.with_prefixlen} -o {external_interface} -j MASQUERADE 2>/dev/null || true"
         else:
-            nat_check = f"iptables -t nat -C POSTROUTING -s {network.with_prefixlen} -j MASQUERADE"
+            nat_check = f"iptables -t nat -C POSTROUTING -s {network.with_prefixlen} -j MASQUERADE 2>/dev/null"
             nat_add = f"iptables -t nat -A POSTROUTING -s {network.with_prefixlen} -j MASQUERADE"
-            nat_delete = f"iptables -t nat -D POSTROUTING -s {network.with_prefixlen} -j MASQUERADE"
+            nat_delete = f"iptables -t nat -D POSTROUTING -s {network.with_prefixlen} -j MASQUERADE 2>/dev/null || true"
             logger.warning("WireGuard WAN interface could not be resolved; applying generic MASQUERADE rule")
 
         post_up = (
-            f"iptables -C FORWARD -i %i -j ACCEPT || iptables -A FORWARD -i %i -j ACCEPT; "
-            f"iptables -C FORWARD -o %i -j ACCEPT || iptables -A FORWARD -o %i -j ACCEPT; "
+            f"iptables -C FORWARD -i %i -j ACCEPT 2>/dev/null || iptables -A FORWARD -i %i -j ACCEPT; "
+            f"iptables -C FORWARD -o %i -j ACCEPT 2>/dev/null || iptables -A FORWARD -o %i -j ACCEPT; "
             f"{nat_check} || {nat_add}"
         )
         post_down = (
-            f"iptables -D FORWARD -i %i -j ACCEPT; "
-            f"iptables -D FORWARD -o %i -j ACCEPT; "
+            f"iptables -D FORWARD -i %i -j ACCEPT 2>/dev/null || true; "
+            f"iptables -D FORWARD -o %i -j ACCEPT 2>/dev/null || true; "
             f"{nat_delete}"
         )
 
