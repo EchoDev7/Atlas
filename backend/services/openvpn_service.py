@@ -40,7 +40,45 @@ class OpenVPNService(BaseProtocolService):
 
     def get_status(self, db: Optional[Any] = None) -> Dict[str, Any]:
         _ = db
-        return self._manager.get_service_status()
+        try:
+            resolved_service_name = self._manager._resolve_service_name()
+            if resolved_service_name:
+                self._manager.service_name = resolved_service_name
+        except Exception:
+            pass
+
+        status_result = self._manager.get_service_status()
+        service_name = str(status_result.get("service_name") or self._manager.service_name).strip()
+
+        if not service_name:
+            return status_result
+
+        try:
+            active_ok, active_stdout, _ = self._manager._run_command(
+                ["systemctl", "is-active", service_name],
+                check=False,
+            )
+            enabled_ok, enabled_stdout, _ = self._manager._run_command(
+                ["systemctl", "is-enabled", service_name],
+                check=False,
+            )
+
+            is_active = active_ok and str(active_stdout or "").strip().lower() == "active"
+            enabled_state = str(enabled_stdout or "").strip().lower()
+            is_enabled = enabled_ok and enabled_state in {"enabled", "static", "indirect", "generated"}
+
+            status_result.update(
+                {
+                    "success": True,
+                    "service_name": service_name,
+                    "is_active": bool(is_active),
+                    "is_enabled": bool(is_enabled),
+                }
+            )
+        except Exception:
+            pass
+
+        return status_result
 
     async def enforce_limits(self, db: Any) -> Dict[str, Any]:
         _ = db
