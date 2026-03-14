@@ -43,7 +43,7 @@ BACKEND_SERVICE_CANDIDATES = (
     "atlas-panel-backend",
     "atlas",
 )
-L2TP_IPSEC_UNITS = ("strongswan-starter", "xl2tpd")
+L2TP_IPSEC_UNITS = ("strongswan", "xl2tpd")
 LETSENCRYPT_LIVE_DIR = Path("/etc/letsencrypt/live")
 DEFAULT_WIREGUARD_INTERFACE = "wg0"
 

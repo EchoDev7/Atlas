@@ -74,16 +74,20 @@ class PPPManager:
         actions: list[Dict[str, Any]] = []
 
         if shutil.which("systemctl"):
-            for unit in ("strongswan-starter", "strongswan", "xl2tpd"):
-                result = subprocess.run(["systemctl", "restart", unit], capture_output=True, text=True, check=False)
-                actions.append(
-                    {
-                        "command": f"systemctl restart {unit}",
-                        "returncode": int(result.returncode),
-                        "stdout": (result.stdout or "").strip(),
-                        "stderr": (result.stderr or "").strip(),
-                    }
-                )
+            result = subprocess.run(
+                ["systemctl", "restart", "strongswan", "xl2tpd"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            actions.append(
+                {
+                    "command": "systemctl restart strongswan xl2tpd",
+                    "returncode": int(result.returncode),
+                    "stdout": (result.stdout or "").strip(),
+                    "stderr": (result.stderr or "").strip(),
+                }
+            )
         elif shutil.which("ipsec"):
             result = subprocess.run(["ipsec", "restart"], capture_output=True, text=True, check=False)
             actions.append(

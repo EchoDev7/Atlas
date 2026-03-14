@@ -36,7 +36,6 @@ conn atlas-l2tp-psk
   rightprotoport=17/%any
   ike=aes256-sha1-modp1024,aes128-sha1-modp1024!
   esp=aes256-sha1,aes128-sha1!
-  pfs=no
   rekey=no
 EOF
 
@@ -109,14 +108,14 @@ echo "[7/7] Restarting and enabling VPN daemons..."
 systemctl enable --now xl2tpd
 systemctl restart xl2tpd
 
-if systemctl list-unit-files | grep -q '^strongswan-starter.service'; then
-  systemctl enable --now strongswan-starter
-  systemctl restart strongswan-starter
-elif systemctl list-unit-files | grep -q '^strongswan.service'; then
+if systemctl list-unit-files | grep -q '^strongswan.service'; then
+  systemctl enable --now strongswan
+  systemctl restart strongswan
+elif systemctl list-unit-files | grep -q '^strongswan-starter.service'; then
   systemctl enable --now strongswan
   systemctl restart strongswan
 else
-  ipsec restart || true
+  echo "StrongSwan service unit not found (expected strongswan or strongswan-starter)" >&2
 fi
 
 echo

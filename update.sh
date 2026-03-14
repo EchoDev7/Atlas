@@ -169,8 +169,8 @@ else
   warn "No WireGuard interface config found under /etc/wireguard. Skipping WireGuard restart."
 fi
 
-systemctl restart strongswan-starter xl2tpd || true
-if systemctl is-active --quiet strongswan-starter && systemctl is-active --quiet xl2tpd; then
+systemctl restart strongswan xl2tpd || true
+if systemctl is-active --quiet strongswan && systemctl is-active --quiet xl2tpd; then
   ok "L2TP/IPsec services restarted"
 else
   warn "L2TP/IPsec restart finished but one or more services are not active"
