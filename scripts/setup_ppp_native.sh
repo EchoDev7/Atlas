@@ -16,12 +16,6 @@ L2TP_REMOTE_POOL="10.10.11.100-200"
 PPTP_SUBNET="10.10.10.0/24"
 L2TP_SUBNET="10.10.11.0/24"
 
-DEFAULT_IFACE="$(ip route show default 0.0.0.0/0 | awk '{print $5}' | head -n1)"
-if [[ -z "${DEFAULT_IFACE}" ]]; then
-  echo "Could not detect default network interface." >&2
-  exit 1
-fi
-
 echo "[1/7] Installing required native PPP/IPsec packages..."
 apt-get update
 apt-get install -y xl2tpd strongswan iptables-persistent
@@ -135,8 +129,8 @@ ensure_rule FORWARD -s "${PPTP_SUBNET}" -j ACCEPT
 ensure_rule FORWARD -d "${PPTP_SUBNET}" -j ACCEPT
 ensure_rule FORWARD -s "${L2TP_SUBNET}" -j ACCEPT
 ensure_rule FORWARD -d "${L2TP_SUBNET}" -j ACCEPT
-ensure_rule nat POSTROUTING -s "${PPTP_SUBNET}" -o "${DEFAULT_IFACE}" -j MASQUERADE
-ensure_rule nat POSTROUTING -s "${L2TP_SUBNET}" -o "${DEFAULT_IFACE}" -j MASQUERADE
+iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -j MASQUERADE
+iptables -t nat -A POSTROUTING -s 10.10.11.0/24 -j MASQUERADE
 
 if command -v netfilter-persistent >/dev/null 2>&1; then
   netfilter-persistent save
@@ -161,5 +155,4 @@ echo
 echo "Native PPP/IPsec provisioning completed."
 echo "PPTP local/remote: ${PPTP_LOCAL_IP}, ${PPTP_REMOTE_POOL}"
 echo "L2TP local/remote: ${L2TP_LOCAL_IP}, ${L2TP_REMOTE_POOL}"
-echo "Detected WAN interface for NAT: ${DEFAULT_IFACE}"
 echo "IPsec PSK source: ATLAS_IPSEC_PSK env var (fallback default if unset)."
