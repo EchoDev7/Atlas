@@ -13,7 +13,7 @@ import re
 from backend.database import SessionLocal
 from backend.models.vpn_user import VPNUser, VPNConfig
 from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
-from backend.core.wireguard import WireGuardManager
+from backend.services.protocols.registry import protocol_registry
 
 logger = logging.getLogger(__name__)
 BYTES_PER_GB = 1024 ** 3
@@ -29,7 +29,7 @@ class LimitEnforcementScheduler:
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.is_running = False
         self.openvpn_manager = OpenVPNManager()
-        self.wireguard_manager = WireGuardManager()
+        self.wireguard_service = protocol_registry.get("wireguard")
         self._state_sync_lock = asyncio.Lock()
         self._runtime_usage_cache: Dict[str, Dict[str, int]] = {}
         self._kill_cooldown_until: Dict[str, datetime] = {}
@@ -38,7 +38,7 @@ class LimitEnforcementScheduler:
     def _disconnect_user_across_protocols(self, username: str) -> Dict[str, Dict[str, str]]:
         """Best-effort disconnect for both OpenVPN and WireGuard to avoid protocol drift."""
         openvpn_result = self.openvpn_manager.kill_user(username)
-        wireguard_result = self.wireguard_manager.kill_user(username)
+        wireguard_result = self.wireguard_service.stop_client(username)
         logger.warning(
             "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s",
             username,
@@ -425,7 +425,7 @@ class LimitEnforcementScheduler:
                     for username, item in openvpn_runtime_stats.items()
                     if max(0, int(item.get("connections") or 0)) > 0
                 }
-                sync_result = await self.wireguard_manager.sync_wireguard_stats(
+                sync_result = await self.wireguard_service.sync_runtime_stats(
                     db,
                     openvpn_online_usernames=openvpn_online_usernames,
                 )

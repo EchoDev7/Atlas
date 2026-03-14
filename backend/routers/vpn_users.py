@@ -27,7 +27,6 @@ from backend.schemas.vpn_user import (
     PasswordResetResponse
 )
 from backend.core.openvpn import OpenVPNManager, validate_openvpn_readiness
-from backend.core.wireguard import WireGuardManager
 from backend.services.scheduler_service import get_scheduler
 from backend.services.protocols.registry import protocol_registry
 from backend.models.general_settings import GeneralSettings
@@ -42,7 +41,7 @@ router = APIRouter(prefix="/users", tags=["VPN Users"])
 
 # Initialize OpenVPN manager
 openvpn_manager = OpenVPNManager()
-wireguard_manager = WireGuardManager()
+wireguard_service = protocol_registry.get("wireguard")
 
 # Fallback runtime accounting cache keyed by username.
 # It captures the latest active-session counters to preserve traffic totals
@@ -114,7 +113,7 @@ def _sync_openvpn_auth_db_snapshot() -> None:
 def _disconnect_user_across_protocols(username: str) -> Dict[str, Dict[str, Any]]:
     """Best-effort kill switch for both OpenVPN and WireGuard runtime sessions."""
     openvpn_result = openvpn_manager.kill_user(username)
-    wireguard_result = wireguard_manager.kill_user(username)
+    wireguard_result = wireguard_service.stop_client(username)
     logger.warning(
         "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s",
         username,
@@ -135,40 +134,30 @@ def _get_wireguard_settings(db: Session) -> WireGuardSettings:
 
 
 def _sync_wireguard_users_runtime(db: Session) -> None:
-    sync_result = wireguard_manager.sync_users_to_wg0(db)
+    sync_result = wireguard_service.sync_users_runtime(db)
     if not sync_result.get("success"):
         raise HTTPException(status_code=500, detail=sync_result.get("message", "Failed to synchronize WireGuard peers"))
 
 
 def _reinject_existing_wireguard_peer(db: Session, username: str, public_key: str, allocated_ip: str) -> None:
     """Re-add an existing peer to live interface before full sync, without key regeneration."""
-    normalized_public_key = (public_key or "").strip()
-    normalized_ip = (allocated_ip or "").strip()
-    if not normalized_public_key or not normalized_ip:
-        return
-
-    settings = _get_wireguard_settings(db)
-    interface_name = (settings.interface_name or wireguard_manager.config.DEFAULT_INTERFACE).strip() or wireguard_manager.config.DEFAULT_INTERFACE
-    allowed_ips = normalized_ip if "/" in normalized_ip else f"{normalized_ip}/32"
-    command = [
-        "wg",
-        "set",
-        interface_name,
-        "peer",
-        normalized_public_key,
-        "allowed-ips",
-        allowed_ips,
-    ]
-    result = wireguard_manager._run_command(command, check=False)
-    if result.returncode != 0:
-        error_message = (result.stderr or result.stdout or "wg set failed").strip()
-        raise HTTPException(status_code=500, detail=f"Failed to re-inject WireGuard peer for {username}: {error_message}")
+    reinject_result = wireguard_service.reinject_existing_peer(
+        db=db,
+        username=username,
+        public_key=public_key,
+        allocated_ip=allocated_ip,
+    )
+    if not reinject_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to re-inject WireGuard peer for {username}: {reinject_result.get('message', 'unknown error')}",
+        )
 
     logger.info(
         "Re-injected existing WireGuard peer for user=%s on interface=%s allowed_ips=%s",
         username,
-        interface_name,
-        allowed_ips,
+        reinject_result.get("interface_name"),
+        reinject_result.get("allowed_ips"),
     )
 
 
@@ -185,7 +174,7 @@ def _ensure_wireguard_identity_for_user(db: Session, user: VPNUser) -> None:
         .all()
     ]
 
-    private_key, public_key, allocated_ip = wireguard_manager.generate_user_identity(
+    private_key, public_key, allocated_ip = wireguard_service.generate_user_identity(
         address_range=settings.address_range,
         existing_allocated_ips=existing_ips,
     )
@@ -240,61 +229,11 @@ def _get_openvpn_runtime_stats() -> Tuple[Dict[str, Dict[str, int]], bool]:
 
 def _get_wireguard_online_usernames(db: Session, online_window_seconds: int = 90) -> Set[str]:
     """Return usernames currently online via WireGuard handshake telemetry."""
-    settings = db.query(WireGuardSettings).order_by(WireGuardSettings.id.asc()).first()
-    interface_name = (
-        (getattr(settings, "interface_name", "") if settings else "")
-        or wireguard_manager.config.DEFAULT_INTERFACE
-    ).strip() or wireguard_manager.config.DEFAULT_INTERFACE
-
     try:
-        result = wireguard_manager._run_command(["wg", "show", interface_name, "dump"], check=False)
+        return wireguard_service.get_online_usernames(db, online_window_seconds=online_window_seconds)
     except Exception as exc:
         logger.warning("Failed to read WireGuard runtime dump for user list: %s", exc)
         return set()
-
-    if result.returncode != 0:
-        return set()
-
-    users_by_public_key = {
-        (str(user.wg_public_key or "").strip()): str(user.username or "").strip()
-        for user in db.query(VPNUser).all()
-        if str(user.wg_public_key or "").strip() and str(user.username or "").strip()
-    }
-
-    if not users_by_public_key:
-        return set()
-
-    now_epoch = int(datetime.utcnow().timestamp())
-    online_usernames: Set[str] = set()
-
-    for raw_line in str(result.stdout or "").splitlines():
-        line = (raw_line or "").strip()
-        if not line:
-            continue
-
-        parts = line.split("\t")
-        # all-dump peer row format:
-        # interface, public_key, preshared_key, endpoint, allowed_ips, latest_handshake, transfer_rx, transfer_tx, keepalive
-        if len(parts) >= 9:
-            public_key = (parts[1] or "").strip()
-            latest_handshake = max(0, int(parts[5] or 0)) if str(parts[5] or "0").isdigit() else 0
-        # interface-scoped dump peer row:
-        # public_key, preshared_key, endpoint, allowed_ips, latest_handshake, transfer_rx, transfer_tx, keepalive
-        elif len(parts) >= 8:
-            public_key = (parts[0] or "").strip()
-            latest_handshake = max(0, int(parts[4] or 0)) if str(parts[4] or "0").isdigit() else 0
-        else:
-            continue
-
-        username = users_by_public_key.get(public_key)
-        if not username:
-            continue
-
-        seconds_ago = now_epoch - int(latest_handshake) if latest_handshake > 0 else -1
-        if latest_handshake > 0 and seconds_ago <= int(online_window_seconds):
-            online_usernames.add(username)
-
-    return online_usernames
 
 
 def _apply_runtime_disconnect_fallback_accounting(
@@ -1035,7 +974,7 @@ async def download_config(
         try:
             if not (user.wg_private_key and user.wg_public_key and user.wg_allocated_ip):
                 raise HTTPException(status_code=404, detail="WireGuard is not enabled for this user")
-            config_content = wireguard_manager.build_client_config_for_user(db, user)
+            config_content = wireguard_service.build_client_config_for_user(db, user)
             return Response(
                 content=config_content,
                 media_type="text/plain",
@@ -1100,7 +1039,7 @@ async def get_config(
         try:
             if not (user.wg_private_key and user.wg_public_key and user.wg_allocated_ip):
                 raise HTTPException(status_code=404, detail="WireGuard is not enabled for this user")
-            config_content = wireguard_manager.build_client_config_for_user(db, user)
+            config_content = wireguard_service.build_client_config_for_user(db, user)
             return VPNConfigFileResponse(
                 username=user.username,
                 protocol=protocol,

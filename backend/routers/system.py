@@ -19,7 +19,6 @@ from starlette.background import BackgroundTask
 from backend.config import settings
 from backend.core.tunnels.manager import TunnelManager
 from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
-from backend.core.wireguard import WireGuardManager
 from backend.database import engine, get_db
 from backend.models.general_settings import GeneralSettings
 from backend.models.wireguard_settings import WireGuardSettings
@@ -28,10 +27,11 @@ from backend.models.user import Admin
 from backend.schemas.tunnel import TunnelCommandRequest
 from backend.schemas.tunnel_response import TunnelCommandResponse
 from backend.services.audit_service import extract_client_ip, record_audit_event
+from backend.services.protocols.registry import protocol_registry
 
 router = APIRouter(prefix="/system", tags=["System"])
 openvpn_manager = OpenVPNManager()
-wireguard_manager = WireGuardManager()
+wireguard_service = protocol_registry.get("wireguard")
 tunnel_manager = TunnelManager()
 
 MAX_BACKUP_UPLOAD_BYTES = 512 * 1024 * 1024  # 512MB safety ceiling
@@ -623,7 +623,7 @@ def run_service_action(
 
     target_alias = (payload.service_name or "").strip().lower()
     if target_alias == "wireguard" and action in {"start", "restart"}:
-        sync_result = wireguard_manager.sync_users_to_wg0(db)
+        sync_result = wireguard_service.sync_users_runtime(db)
         if not sync_result.get("success"):
             raise HTTPException(
                 status_code=500,

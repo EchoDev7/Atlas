@@ -1,23 +1,27 @@
-from typing import Dict
+from typing import Dict, Union
 
+from backend.services.protocols.base import BaseProtocolService
 from backend.services.protocols.base_vpn_service import BaseVPNService
 from backend.core.openvpn import OpenVPNManager
-from backend.core.wireguard import WireGuardManager
+from backend.services.wireguard_service import WireGuardService
+
+
+ProtocolService = Union[BaseVPNService, BaseProtocolService]
 
 
 class ProtocolRegistry:
     """Simple plugin registry for protocol management services."""
 
     def __init__(self) -> None:
-        self._services: Dict[str, BaseVPNService] = {}
+        self._services: Dict[str, ProtocolService] = {}
 
-    def register(self, service: BaseVPNService) -> None:
+    def register(self, service: ProtocolService) -> None:
         key = (service.protocol_name or "").strip().lower()
         if not key:
             raise ValueError("Protocol service must define protocol_name")
         self._services[key] = service
 
-    def get(self, protocol_name: str) -> BaseVPNService:
+    def get(self, protocol_name: str) -> ProtocolService:
         key = (protocol_name or "").strip().lower()
         if key not in self._services:
             raise KeyError(f"Protocol plugin not registered: {protocol_name}")
@@ -26,4 +30,4 @@ class ProtocolRegistry:
 
 protocol_registry = ProtocolRegistry()
 protocol_registry.register(OpenVPNManager())
-protocol_registry.register(WireGuardManager())
+protocol_registry.register(WireGuardService())
