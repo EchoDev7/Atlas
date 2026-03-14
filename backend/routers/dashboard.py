@@ -7,15 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend.core.openvpn import OpenVPNManager
 from backend.database import get_db
 from backend.dependencies import get_current_user
 from backend.models.general_settings import GeneralSettings
 from backend.models.user import Admin
 from backend.models.vpn_user import VPNUser
+from backend.services.protocols.registry import protocol_registry
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
-openvpn_manager = OpenVPNManager()
+openvpn_service = protocol_registry.get("openvpn")
 
 
 def _is_user_expired(user: VPNUser, now: datetime) -> bool:
@@ -80,8 +80,8 @@ def get_dashboard_overview(
             if user_disabled:
                 disabled_users += 1
 
-        service_status = openvpn_manager.get_service_status()
-        runtime_health = openvpn_manager.get_runtime_health()
+        service_status = openvpn_service.get_status()
+        runtime_health = openvpn_service.get_runtime_health()
 
         db_health = {"ok": True, "message": "Database reachable"}
         try:

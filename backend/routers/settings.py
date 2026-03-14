@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from backend.core.routing.pbr_manager import PBRManager
 from backend.core.obfuscation_manager import ObfuscationManager
-from backend.core.openvpn import OpenVPNManager
 from backend.database import get_db
 from backend.dependencies import get_current_user
 from backend.models.general_settings import GeneralSettings
@@ -30,7 +29,7 @@ from backend.services.audit_service import extract_client_ip, record_audit_event
 from backend.services.protocols.registry import protocol_registry
 
 router = APIRouter(prefix="/settings", tags=["Server Settings"])
-openvpn_manager = OpenVPNManager()
+openvpn_service = protocol_registry.get("openvpn")
 obfuscation_manager = ObfuscationManager()
 wireguard_service = protocol_registry.get("wireguard")
 logger = logging.getLogger(__name__)
@@ -483,7 +482,7 @@ def _to_wireguard_response(settings: WireGuardSettings) -> WireGuardSettingsResp
 def _sync_openvpn_auth_db_snapshot() -> None:
     """Best-effort sync of OpenVPN auth DB snapshot after settings updates."""
     try:
-        result = openvpn_manager.sync_auth_database_snapshot()
+        result = openvpn_service.sync_auth_database_snapshot()
         if not result.get("success"):
             logger.warning("OpenVPN auth DB sync warning after settings update: %s", result.get("message"))
     except Exception as exc:
@@ -648,7 +647,7 @@ def update_general_settings(
             detail=dns_apply_result.get("message", "Failed to update server DNS settings"),
         )
 
-    sync_result = openvpn_manager.sync_system_general_settings(
+    sync_result = openvpn_service.sync_system_general_settings(
         old_global_ipv6_support=previous_ipv6_support,
         new_global_ipv6_support=settings.global_ipv6_support,
         old_timezone=current_timezone,
@@ -732,7 +731,7 @@ def issue_ssl_certificate(
 
     def sse_stream():
         try:
-            for line in openvpn_manager.stream_ssl_issue_logs(
+            for line in openvpn_service.stream_ssl_issue_logs(
                 domains=domains,
                 email=letsencrypt_email,
             ):
@@ -833,7 +832,7 @@ def get_openvpn_auth_assets_health(
     current_user: Admin = Depends(get_current_user),
 ):
     _ = current_user
-    return openvpn_manager.get_auth_assets_health()
+    return openvpn_service.get_auth_assets_health()
 
 
 @router.patch("/openvpn", response_model=OpenVPNSettingsResponse)
@@ -936,7 +935,7 @@ def update_openvpn_settings(
             detail=automation_result.get("message", "Failed to apply obfuscation OS automation"),
         )
 
-    firewall_result = openvpn_manager.sync_firewall_for_transport_change(
+    firewall_result = openvpn_service.sync_firewall_for_transport_change(
         old_port=previous_port,
         old_protocol=previous_protocol,
         new_port=settings.port,
@@ -954,7 +953,7 @@ def update_openvpn_settings(
     db.refresh(settings)
 
     try:
-        generation_result = openvpn_manager.generate_server_config(
+        generation_result = openvpn_service.generate_server_config(
             {
                 "port": settings.port,
                 "protocol": settings.protocol,
@@ -1019,7 +1018,7 @@ def update_openvpn_settings(
         logger.error(f"Failed to generate server configuration: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate server configuration")
 
-    service_restart_result = openvpn_manager.control_service("restart")
+    service_restart_result = openvpn_service.control_service("restart")
     if not service_restart_result.get("success"):
         raise HTTPException(
             status_code=500,

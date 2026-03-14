@@ -18,7 +18,6 @@ from starlette.background import BackgroundTask
 
 from backend.config import settings
 from backend.core.tunnels.manager import TunnelManager
-from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
 from backend.database import engine, get_db
 from backend.models.general_settings import GeneralSettings
 from backend.models.wireguard_settings import WireGuardSettings
@@ -30,7 +29,7 @@ from backend.services.audit_service import extract_client_ip, record_audit_event
 from backend.services.protocols.registry import protocol_registry
 
 router = APIRouter(prefix="/system", tags=["System"])
-openvpn_manager = OpenVPNManager()
+openvpn_service = protocol_registry.get("openvpn")
 wireguard_service = protocol_registry.get("wireguard")
 tunnel_manager = TunnelManager()
 
@@ -77,9 +76,10 @@ def _execute_dummy_tunnel_command(settings_row: GeneralSettings, node: str, comm
 
 
 def _tls_key_candidates() -> tuple[Path, ...]:
+    openvpn_server_dir = openvpn_service.get_openvpn_server_dir()
     return (
-        OpenVPNConfig.OPENVPN_SERVER_DIR / "ta.key",
-        OpenVPNConfig.OPENVPN_SERVER_DIR / "tc.key",
+        openvpn_server_dir / "ta.key",
+        openvpn_server_dir / "tc.key",
     )
 
 
@@ -297,7 +297,7 @@ def _resolve_backend_service_unit() -> str:
 def _resolve_service_unit(alias: str, db: Session | None = None) -> str:
     normalized = (alias or "").strip().lower()
     if normalized == "openvpn":
-        return openvpn_manager.service_name
+        return openvpn_service.service_name
     if normalized == "backend":
         return _resolve_backend_service_unit()
     if normalized == "wireguard":
@@ -363,7 +363,8 @@ def _restore_openvpn_server_payload(source_root: Path, warnings: list[str]) -> b
     if not server_source.exists() or not server_source.is_dir():
         return False
 
-    server_target = OpenVPNConfig.OPENVPN_SERVER_DIR
+    server_target = openvpn_service.get_openvpn_server_dir()
+    pki_target = openvpn_service.get_pki_dir()
     restored_any = False
 
     try:
@@ -375,7 +376,7 @@ def _restore_openvpn_server_payload(source_root: Path, warnings: list[str]) -> b
     pki_source = server_source / "pki"
     if pki_source.exists() and pki_source.is_dir():
         try:
-            shutil.copytree(pki_source, OpenVPNConfig.PKI_DIR, dirs_exist_ok=True)
+            shutil.copytree(pki_source, pki_target, dirs_exist_ok=True)
             restored_any = True
         except PermissionError:
             warnings.append("Permission denied while restoring OpenVPN PKI directory")
@@ -451,7 +452,7 @@ def download_full_backup(
     temp_dir = Path(tempfile.mkdtemp(prefix="atlas-backup-"))
     archive_path = temp_dir / backup_filename
 
-    pki_dir = OpenVPNConfig.PKI_DIR
+    pki_dir = openvpn_service.get_pki_dir()
     private_dir = pki_dir / "private"
     if not private_dir.exists() or not private_dir.is_dir():
         raise HTTPException(status_code=500, detail="Critical PKI directory missing: pki/private")
@@ -469,10 +470,10 @@ def download_full_backup(
             archive.add(private_dir, arcname="atlas_backup/openvpn/server/pki/private")
 
             for file_path, arcname in (
-                (OpenVPNConfig.SERVER_CONF, "atlas_backup/openvpn/server/server.conf"),
-                (OpenVPNConfig.CRL_FILE, "atlas_backup/openvpn/server/crl.pem"),
-                (OpenVPNConfig.AUTH_USER_PASS_SCRIPT, "atlas_backup/openvpn/server/atlas_auth_user_pass.py"),
-                (OpenVPNConfig.ENFORCEMENT_HOOK, "atlas_backup/openvpn/server/atlas_enforcement_hook.py"),
+                (openvpn_service.get_server_conf_path(), "atlas_backup/openvpn/server/server.conf"),
+                (openvpn_service.get_crl_file_path(), "atlas_backup/openvpn/server/crl.pem"),
+                (openvpn_service.get_auth_user_pass_script_path(), "atlas_backup/openvpn/server/atlas_auth_user_pass.py"),
+                (openvpn_service.get_enforcement_hook_path(), "atlas_backup/openvpn/server/atlas_enforcement_hook.py"),
             ):
                 if file_path.exists() and file_path.is_file():
                     archive.add(file_path, arcname=arcname)
@@ -556,7 +557,7 @@ async def restore_full_backup(
         if _restore_openvpn_server_payload(backup_root, warnings):
             restored_components.append("openvpn_pki")
 
-        restart_result = openvpn_manager.control_service("restart")
+        restart_result = openvpn_service.control_service("restart")
         restart_performed = bool(restart_result.get("success"))
         if not restart_performed:
             warnings.append(restart_result.get("message") or "OpenVPN restart failed")

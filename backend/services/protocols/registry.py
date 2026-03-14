@@ -2,7 +2,7 @@ from typing import Dict, Union
 
 from backend.services.protocols.base import BaseProtocolService
 from backend.services.protocols.base_vpn_service import BaseVPNService
-from backend.core.openvpn import OpenVPNManager
+from backend.services.openvpn_service import OpenVPNService
 from backend.services.wireguard_service import WireGuardService
 
 
@@ -29,5 +29,5 @@ class ProtocolRegistry:
 
 
 protocol_registry = ProtocolRegistry()
-protocol_registry.register(OpenVPNManager())
+protocol_registry.register(OpenVPNService())
 protocol_registry.register(WireGuardService())

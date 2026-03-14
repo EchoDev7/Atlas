@@ -12,7 +12,6 @@ import re
 
 from backend.database import SessionLocal
 from backend.models.vpn_user import VPNUser, VPNConfig
-from backend.core.openvpn import OpenVPNConfig, OpenVPNManager
 from backend.services.protocols.registry import protocol_registry
 
 logger = logging.getLogger(__name__)
@@ -28,7 +27,7 @@ class LimitEnforcementScheduler:
     def __init__(self):
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.is_running = False
-        self.openvpn_manager = OpenVPNManager()
+        self.openvpn_service = protocol_registry.get("openvpn")
         self.wireguard_service = protocol_registry.get("wireguard")
         self._state_sync_lock = asyncio.Lock()
         self._runtime_usage_cache: Dict[str, Dict[str, int]] = {}
@@ -37,7 +36,7 @@ class LimitEnforcementScheduler:
 
     def _disconnect_user_across_protocols(self, username: str) -> Dict[str, Dict[str, str]]:
         """Best-effort disconnect for both OpenVPN and WireGuard to avoid protocol drift."""
-        openvpn_result = self.openvpn_manager.kill_user(username)
+        openvpn_result = self.openvpn_service.stop_client(username)
         wireguard_result = self.wireguard_service.stop_client(username)
         logger.warning(
             "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s",
@@ -114,7 +113,7 @@ class LimitEnforcementScheduler:
     def _sync_openvpn_auth_db_snapshot(self) -> None:
         """Best-effort sync of OpenVPN auth DB snapshot after scheduler writes."""
         try:
-            sync_result = self.openvpn_manager.sync_auth_database_snapshot()
+            sync_result = self.openvpn_service.sync_auth_database_snapshot()
             if not sync_result.get("success"):
                 logger.warning("Scheduler auth DB sync warning: %s", sync_result.get("message"))
         except Exception as exc:
@@ -152,7 +151,7 @@ class LimitEnforcementScheduler:
             bytes_sent = int(parts[sent_idx]) if sent_idx < len(parts) and str(parts[sent_idx]).isdigit() else 0
             return bytes_received, bytes_sent
 
-        status_path = OpenVPNConfig.STATUS_LOG
+        status_path = self.openvpn_service.get_status_log_path()
         runtime_stats: Dict[str, Dict[str, int]] = {}
 
         if not status_path.exists():
@@ -211,7 +210,7 @@ class LimitEnforcementScheduler:
         runtime_stats: Dict[str, Dict[str, int]] = {}
 
         try:
-            sessions = self.openvpn_manager.get_active_sessions()
+            sessions = self.openvpn_service.get_active_sessions()
             if sessions:
                 for session in sessions:
                     username = (session.get("username") or "").strip()

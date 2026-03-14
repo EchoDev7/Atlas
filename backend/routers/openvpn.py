@@ -22,14 +22,14 @@ from backend.schemas.vpn_client import (
     VPNServiceControlRequest,
     VPNClientListResponse
 )
-from backend.core.openvpn import OpenVPNManager
+from backend.services.protocols.registry import protocol_registry
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/openvpn", tags=["OpenVPN Management"])
 
 # Initialize OpenVPN manager
-openvpn_manager = OpenVPNManager()
+openvpn_service = protocol_registry.get("openvpn")
 
 
 def _get_transport_settings(db: Session) -> Tuple[int, str]:
@@ -121,7 +121,7 @@ def create_client(
             )
         
         # Create client certificate using OpenVPN manager
-        cert_result = openvpn_manager.create_client_certificate(client_data.name)
+        cert_result = openvpn_service.create_client_certificate(client_data.name)
         
         if not cert_result.get("success"):
             raise HTTPException(
@@ -232,7 +232,7 @@ def revoke_client(
     
     try:
         # Revoke certificate using OpenVPN manager
-        revoke_result = openvpn_manager.revoke_client_certificate(client.name)
+        revoke_result = openvpn_service.revoke_client_certificate(client.name)
         
         if not revoke_result.get("success"):
             raise HTTPException(
@@ -286,7 +286,7 @@ def delete_client(
     try:
         # Revoke certificate if not already revoked
         if client.status != VPNClientStatus.REVOKED:
-            revoke_result = openvpn_manager.revoke_client_certificate(client.name)
+            revoke_result = openvpn_service.revoke_client_certificate(client.name)
             if not revoke_result.get("success"):
                 logger.warning(f"Certificate revocation failed during delete: {revoke_result.get('message')}")
         
@@ -338,7 +338,7 @@ def get_client_config(
         server_port, protocol = _get_transport_settings(db)
 
         # Generate .ovpn configuration
-        config_content = openvpn_manager.generate_client_config(
+        config_content = openvpn_service.generate_client_config(
             client_name=client.name,
             server_address=server_address,
             server_port=server_port,
@@ -354,7 +354,7 @@ def get_client_config(
         # Generate QR code if requested
         qr_code = None
         if include_qr:
-            qr_code = openvpn_manager.generate_qr_code(config_content)
+            qr_code = openvpn_service.generate_qr_code(config_content)
         
         return VPNClientConfigResponse(
             client_name=client.name,
@@ -394,7 +394,7 @@ def download_client_config(
     try:
         server_port, protocol = _get_transport_settings(db)
 
-        config_content = openvpn_manager.generate_client_config(
+        config_content = openvpn_service.generate_client_config(
             client_name=client.name,
             server_address=server_address,
             server_port=server_port,
@@ -434,7 +434,7 @@ def get_service_status(
     Requires authentication.
     """
     try:
-        status_result = openvpn_manager.get_service_status()
+        status_result = openvpn_service.get_status()
         
         if not status_result.get("success"):
             raise HTTPException(
@@ -470,7 +470,7 @@ def get_runtime_health(
     """
     _ = current_user
     try:
-        return openvpn_manager.get_runtime_health()
+        return openvpn_service.get_runtime_health()
     except Exception as e:
         logger.error(f"Failed to get OpenVPN runtime health: {e}")
         raise HTTPException(
@@ -489,7 +489,7 @@ def control_service(
     Requires authentication.
     """
     try:
-        control_result = openvpn_manager.control_service(control_data.action)
+        control_result = openvpn_service.control_service(control_data.action)
         
         if not control_result.get("success"):
             raise HTTPException(

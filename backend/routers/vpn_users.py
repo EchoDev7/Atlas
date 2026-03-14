@@ -26,7 +26,6 @@ from backend.schemas.vpn_user import (
     PasswordChangeRequest,
     PasswordResetResponse
 )
-from backend.core.openvpn import OpenVPNManager, validate_openvpn_readiness
 from backend.services.scheduler_service import get_scheduler
 from backend.services.protocols.registry import protocol_registry
 from backend.models.general_settings import GeneralSettings
@@ -40,7 +39,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["VPN Users"])
 
 # Initialize OpenVPN manager
-openvpn_manager = OpenVPNManager()
+openvpn_service = protocol_registry.get("openvpn")
 wireguard_service = protocol_registry.get("wireguard")
 
 # Fallback runtime accounting cache keyed by username.
@@ -76,7 +75,7 @@ def _validate_required_settings(db: Session) -> None:
     general = _get_or_create_general_settings(db)
     openvpn = _get_or_create_openvpn_settings(db)
     
-    missing = validate_openvpn_readiness(general, openvpn)
+    missing = openvpn_service.validate_readiness(general, openvpn)
     
     if missing:
         raise HTTPException(
@@ -103,7 +102,7 @@ def _sync_legacy_accounting_fields(user: VPNUser) -> None:
 def _sync_openvpn_auth_db_snapshot() -> None:
     """Best-effort sync of auth DB snapshot consumed by OpenVPN scripts."""
     try:
-        sync_result = openvpn_manager.sync_auth_database_snapshot()
+        sync_result = openvpn_service.sync_auth_database_snapshot()
         if not sync_result.get("success"):
             logger.warning("OpenVPN auth DB sync warning: %s", sync_result.get("message"))
     except Exception as exc:
@@ -112,7 +111,7 @@ def _sync_openvpn_auth_db_snapshot() -> None:
 
 def _disconnect_user_across_protocols(username: str) -> Dict[str, Dict[str, Any]]:
     """Best-effort kill switch for both OpenVPN and WireGuard runtime sessions."""
-    openvpn_result = openvpn_manager.kill_user(username)
+    openvpn_result = openvpn_service.stop_client(username)
     wireguard_result = wireguard_service.stop_client(username)
     logger.warning(
         "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s",
@@ -205,7 +204,7 @@ def _ensure_wireguard_config_record(user: VPNUser, db: Session) -> VPNConfig:
 def _get_openvpn_runtime_stats() -> Tuple[Dict[str, Dict[str, int]], bool]:
     """Fetch live OpenVPN session stats grouped by username."""
     try:
-        sessions = openvpn_manager.get_active_sessions()
+        sessions = openvpn_service.get_active_sessions()
     except Exception as exc:
         logger.warning("Failed to read OpenVPN active sessions for user list: %s", exc)
         return {}, False
@@ -689,7 +688,7 @@ async def create_user(
     # Unified user architecture with selective protocol generation.
     try:
         if enable_openvpn:
-            cert_result = openvpn_manager.create_client_certificate(username)
+            cert_result = openvpn_service.create_client_certificate(username)
             cert_success = bool(cert_result.get("success"))
             if not cert_success:
                 cert_path = str(cert_result.get("cert_path") or "").strip()
@@ -823,7 +822,7 @@ async def update_user(
 
             has_openvpn_config = any(config.protocol == "openvpn" for config in user.configs)
             if has_openvpn_config:
-                revoke_result = openvpn_manager.revoke_client_certificate(user.username)
+                revoke_result = openvpn_service.revoke_client_certificate(user.username)
                 if not revoke_result.get("success"):
                     logger.warning(
                         "OpenVPN certificate revoke skipped for disabled user %s: %s",
@@ -889,7 +888,7 @@ async def delete_user(
     if any(config.protocol == "openvpn" for config in user.configs):
         try:
             _disconnect_user_across_protocols(username)
-            revoke_result = openvpn_manager.revoke_client_certificate(username)
+            revoke_result = openvpn_service.revoke_client_certificate(username)
             if not revoke_result.get("success"):
                 logger.warning("OpenVPN revoke skipped during delete for %s: %s", username, revoke_result.get("message"))
         except Exception as e:
@@ -949,7 +948,7 @@ async def download_config(
             _validate_required_settings(db)
 
             # Generate config with username/password auth
-            config_content = openvpn_manager.generate_client_config(
+            config_content = openvpn_service.generate_client_config(
                 user.username,
                 os_type=os or "default"
             )
@@ -1015,14 +1014,14 @@ async def get_config(
             # Pre-flight validation of required settings
             _validate_required_settings(db)
             
-            config_content = openvpn_manager.generate_client_config(
+            config_content = openvpn_service.generate_client_config(
                 user.username
             )
             config_content += "\nauth-user-pass\n"
             
             qr_code = None
             if include_qr:
-                qr_code = openvpn_manager.generate_qr_code(config_content)
+                qr_code = openvpn_service.generate_qr_code(config_content)
             
             return VPNConfigFileResponse(
                 username=user.username,
@@ -1074,7 +1073,7 @@ async def revoke_config(
     if protocol == "openvpn":
         try:
             _disconnect_user_across_protocols(user.username)
-            revoke_result = openvpn_manager.revoke_client_certificate(user.username)
+            revoke_result = openvpn_service.revoke_client_certificate(user.username)
             if not revoke_result.get("success"):
                 logger.error(f"Failed to revoke certificate: {revoke_result.get('message', 'unknown error')}")
         except Exception as e:
