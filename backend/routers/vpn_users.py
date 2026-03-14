@@ -1131,23 +1131,22 @@ async def download_config(
         if protocol == "l2tp":
             content = "\n".join(
                 [
-                    "# Atlas L2TP/IPsec credentials",
-                    f"server: {server_host}",
-                    "port: 1701 (UDP)",
-                    f"username: {user.username}",
-                    f"password: {ppp_password}",
-                    f"ipsec_psk: {_resolve_ipsec_psk()}",
-                    "ipsec_ports: 500/udp, 4500/udp",
+                    f"Server Address: {server_host}",
+                    "VPN Type: L2TP/IPsec with pre-shared key (PSK)",
+                    f"Username: {user.username}",
+                    f"Password: {ppp_password}",
+                    f"Pre-Shared Key: {_resolve_ipsec_psk()}",
+                    "* Note: Leave ports as default. No extra app required.",
                 ]
             ) + "\n"
         else:
             content = "\n".join(
                 [
-                    "# Atlas PPTP credentials",
-                    f"server: {server_host}",
-                    "port: 1723 (TCP)",
-                    f"username: {user.username}",
-                    f"password: {ppp_password}",
+                    f"Server Address: {server_host}",
+                    "VPN Type: Point to Point Tunneling Protocol (PPTP)",
+                    f"Username: {user.username}",
+                    f"Password: {ppp_password}",
+                    "* Note: Windows users may need to allow Optional Encryption.",
                 ]
             ) + "\n"
         return Response(
@@ -1228,23 +1227,22 @@ async def get_config(
         if protocol == "l2tp":
             config_content = "\n".join(
                 [
-                    "Protocol: L2TP/IPsec",
-                    f"Server: {server_host}",
-                    "L2TP Port: 1701/udp",
-                    "IPsec Ports: 500/udp, 4500/udp",
+                    f"Server Address: {server_host}",
+                    "VPN Type: L2TP/IPsec with pre-shared key (PSK)",
                     f"Username: {user.username}",
                     f"Password: {ppp_password}",
-                    f"IPsec PSK: {_resolve_ipsec_psk()}",
+                    f"Pre-Shared Key: {_resolve_ipsec_psk()}",
+                    "* Note: Leave ports as default. No extra app required.",
                 ]
             )
         else:
             config_content = "\n".join(
                 [
-                    "Protocol: PPTP",
-                    f"Server: {server_host}",
-                    "PPTP Port: 1723/tcp",
+                    f"Server Address: {server_host}",
+                    "VPN Type: Point to Point Tunneling Protocol (PPTP)",
                     f"Username: {user.username}",
                     f"Password: {ppp_password}",
+                    "* Note: Windows users may need to allow Optional Encryption.",
                 ]
             )
         return VPNConfigFileResponse(
