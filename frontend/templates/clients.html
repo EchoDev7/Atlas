@@ -408,8 +408,14 @@
                                                 <span x-show="client.has_wireguard"
                                                       class="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 transition-opacity duration-200"
                                                       :class="client.wireguard_online ? 'opacity-100' : 'opacity-40'">WireGuard</span>
+                                                <span x-show="client.has_l2tp || client.enable_l2tp"
+                                                      class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 transition-opacity duration-200"
+                                                      :class="client.l2tp_online ? 'opacity-100' : 'opacity-40'">L2TP/IPsec</span>
+                                                <span x-show="client.has_pptp || client.enable_pptp"
+                                                      class="px-2 py-0.5 text-xs font-semibold rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 transition-opacity duration-200"
+                                                      :class="client.pptp_online ? 'opacity-100' : 'opacity-40'">PPTP</span>
                                                 <span x-show="client.has_singbox" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Sing-box</span>
-                                                <span x-show="!(client.has_openvpn || client.enable_openvpn) && !client.has_wireguard && !client.has_singbox" class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-400'">No protocols</span>
+                                                <span x-show="!(client.has_openvpn || client.enable_openvpn) && !client.has_wireguard && !(client.has_l2tp || client.enable_l2tp) && !(client.has_pptp || client.enable_pptp) && !client.has_singbox" class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-400'">No protocols</span>
                                             </div>
                                             <div class="mt-2 md:hidden space-y-1">
                                                 <div class="flex flex-wrap items-center gap-1">
@@ -574,6 +580,28 @@
                                                 class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
                                                 :class="darkMode ? 'text-violet-400 hover:bg-slate-700/50' : 'text-violet-600 hover:bg-violet-50'"
                                                 title="Download WireGuard Config">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                            </svg>
+                                        </button>
+
+                                        <!-- Download L2TP Credentials -->
+                                        <button @click="downloadProtocolConfig(client.id, 'l2tp')"
+                                                x-show="client.has_l2tp || client.enable_l2tp"
+                                                class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
+                                                :class="darkMode ? 'text-amber-400 hover:bg-slate-700/50' : 'text-amber-600 hover:bg-amber-50'"
+                                                title="Download L2TP/IPsec Credentials">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                            </svg>
+                                        </button>
+
+                                        <!-- Download PPTP Credentials -->
+                                        <button @click="downloadProtocolConfig(client.id, 'pptp')"
+                                                x-show="client.has_pptp || client.enable_pptp"
+                                                class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
+                                                :class="darkMode ? 'text-orange-400 hover:bg-slate-700/50' : 'text-orange-600 hover:bg-orange-50'"
+                                                title="Download PPTP Credentials">
                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                                             </svg>
@@ -883,6 +911,35 @@
                                    x-model="newClient.enable_wireguard"
                                    class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
                         </label>
+                        <label class="flex items-center justify-between px-4 py-3 rounded-xl border theme-transition"
+                               :class="darkMode ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'">
+                            <span class="text-sm font-medium" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable L2TP/IPsec</span>
+                            <input type="checkbox"
+                                   x-model="newClient.enable_l2tp"
+                                   class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                        </label>
+                        <label class="flex items-center justify-between px-4 py-3 rounded-xl border theme-transition"
+                               :class="darkMode ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'">
+                            <span class="text-sm font-medium" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable PPTP</span>
+                            <input type="checkbox"
+                                   x-model="newClient.enable_pptp"
+                                   class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                        </label>
+                        <div x-show="newClient.enable_l2tp || newClient.enable_pptp">
+                            <label class="block text-sm font-medium mb-2 theme-transition"
+                                   :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                PPP Password (Optional)
+                            </label>
+                            <input type="text"
+                                   x-model="newClient.ppp_password"
+                                   placeholder="Leave empty to reuse user password"
+                                   class="block w-full px-4 py-3 rounded-xl font-medium text-sm theme-transition focus:outline-none focus:ring-2"
+                                   :class="darkMode ? 'input-dark text-white placeholder-slate-500 focus:ring-cyan-500/50' : 'bg-white border-2 border-slate-200 focus:border-cyan-500 focus:ring-cyan-100 text-slate-900 placeholder-slate-400'">
+                            <p class="mt-1 text-xs theme-transition"
+                               :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
+                                Used for L2TP/PPTP authentication. If empty, Atlas uses the main user password.
+                            </p>
+                        </div>
                         <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
                             Select at least one protocol.
                         </p>
@@ -1361,12 +1418,15 @@
                 newClient: {
                     username: '',
                     password: '',
+                    ppp_password: '',
                     description: '',
                     max_devices: 1,
                     data_limit_gb: '',
                     expiry_date: '',
                     enable_openvpn: true,
                     enable_wireguard: true,
+                    enable_l2tp: false,
+                    enable_pptp: false,
                 },
                 
                 // QR Code Modal
@@ -1616,6 +1676,8 @@
                                 is_data_limit_exceeded: runtime.is_data_limit_exceeded,
                                 openvpn_online: !!runtime.openvpn_online,
                                 wireguard_online: !!runtime.wireguard_online,
+                                l2tp_online: !!(runtime.l2tp_online ?? runtime.ppp_online),
+                                pptp_online: !!(runtime.pptp_online ?? runtime.ppp_online),
                             };
                         });
                         return true;
@@ -1682,7 +1744,7 @@
                     this.createError = '';
                     this.successMessage = '';
 
-                    if (!this.newClient.enable_openvpn && !this.newClient.enable_wireguard) {
+                    if (!this.newClient.enable_openvpn && !this.newClient.enable_wireguard && !this.newClient.enable_l2tp && !this.newClient.enable_pptp) {
                         this.createError = 'Select at least one protocol before creating the user.';
                         this.creating = false;
                         return;
@@ -1701,6 +1763,9 @@
                             expiry_date: this.newClient.expiry_date ? new Date(this.newClient.expiry_date).toISOString() : null,
                             enable_openvpn: !!this.newClient.enable_openvpn,
                             enable_wireguard: !!this.newClient.enable_wireguard,
+                            enable_l2tp: !!this.newClient.enable_l2tp,
+                            enable_pptp: !!this.newClient.enable_pptp,
+                            ppp_password: this.newClient.ppp_password ? this.newClient.ppp_password : null,
                         };
                         
                         const response = await fetch('/api/users', {
@@ -1736,19 +1801,31 @@
                         const credentials = await response.json();
                         
                         // Show credentials to admin
-                        alert(`User Created Successfully!\n\nUsername: ${credentials.username}\nPassword: ${credentials.password}\n\nPlease save these credentials. The password cannot be retrieved later.`);
+                        const enabledProtocols = Array.isArray(credentials.enabled_protocols) ? credentials.enabled_protocols.join(', ') : 'openvpn';
+                        let credentialText = `User Created Successfully!\n\nUsername: ${credentials.username}\nPassword: ${credentials.password}\nProtocols: ${enabledProtocols}`;
+                        if (credentials.ppp_password) {
+                            credentialText += `\nPPP Password: ${credentials.ppp_password}`;
+                        }
+                        if (credentials.ipsec_psk) {
+                            credentialText += `\nIPsec PSK: ${credentials.ipsec_psk}`;
+                        }
+                        credentialText += '\n\nPlease save these credentials. The password cannot be retrieved later.';
+                        alert(credentialText);
                         
                         // Success
                         this.showCreateModal = false;
                         this.newClient = {
                             username: '',
                             password: '',
+                            ppp_password: '',
                             description: '',
                             max_devices: 1,
                             data_limit_gb: '',
                             expiry_date: '',
                             enable_openvpn: true,
                             enable_wireguard: true,
+                            enable_l2tp: false,
+                            enable_pptp: false,
                         };
                         this.successMessage = `User ${credentials.username} created successfully`;
                         await this.loadClients();
@@ -1952,6 +2029,64 @@
                     } catch (err) {
                         this.error = err.message || 'Failed to download WireGuard config';
                         console.error('Download WireGuard config error:', err);
+                    }
+                },
+
+                async downloadProtocolConfig(userId, protocol) {
+                    this.error = '';
+
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            throw new Error('Not authenticated. Please log in again.');
+                        }
+
+                        const client = this.clients.find((item) => item.id === userId);
+                        const safeUsername = client?.username || `user_${userId}`;
+                        const response = await fetch(`/api/users/${userId}/configs/${encodeURIComponent(protocol)}/download`, {
+                            method: 'GET',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+
+                        if (!response.ok) {
+                            let errorMessage = `Failed to download ${protocol.toUpperCase()} credentials`;
+                            try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.detail || errorMessage;
+                            } catch (_) {
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            }
+                            throw new Error(errorMessage);
+                        }
+
+                        const blob = await response.blob();
+                        if (!blob || blob.size === 0) {
+                            throw new Error(`Empty ${protocol.toUpperCase()} credentials file received`);
+                        }
+
+                        const disposition = response.headers.get('Content-Disposition') || response.headers.get('content-disposition') || '';
+                        const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+                        const rawHeaderFilename = (filenameMatch && (filenameMatch[1] || filenameMatch[2])) || '';
+                        const headerFilename = rawHeaderFilename ? decodeURIComponent(rawHeaderFilename) : '';
+
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.style.display = 'none';
+                        a.download = headerFilename || `${safeUsername}_${protocol}.txt`;
+                        document.body.appendChild(a);
+                        a.click();
+                        requestAnimationFrame(() => {
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                        });
+
+                        this.successMessage = `${protocol.toUpperCase()} credentials downloaded successfully for ${safeUsername}`;
+                    } catch (err) {
+                        this.error = err.message || `Failed to download ${protocol.toUpperCase()} credentials`;
+                        console.error(`Download ${protocol} credentials error:`, err);
                     }
                 },
 

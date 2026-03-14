@@ -24,6 +24,9 @@ class VPNUser(Base):
     wg_public_key = Column(String(128), nullable=True)
     wg_allocated_ip = Column(String(64), nullable=True)
     enable_openvpn = Column(Boolean, nullable=True, default=True)
+    enable_l2tp = Column(Boolean, nullable=True, default=False)
+    enable_pptp = Column(Boolean, nullable=True, default=False)
+    ppp_password = Column(String(255), nullable=True)
     
     # Limits and restrictions
     data_limit_gb = Column(Float, nullable=True)  # Data limit in GB (None = unlimited)
@@ -168,6 +171,20 @@ class VPNUser(Base):
     def has_singbox(self) -> bool:
         """Check if user has Sing-box config"""
         return any(c.protocol == "singbox" and c.is_active for c in self.configs)
+
+    @property
+    def has_l2tp(self) -> bool:
+        """Check if user has L2TP config."""
+        if getattr(self, "enable_l2tp", None) is True:
+            return True
+        return any(c.protocol == "l2tp" and c.is_active for c in self.configs)
+
+    @property
+    def has_pptp(self) -> bool:
+        """Check if user has PPTP config."""
+        if getattr(self, "enable_pptp", None) is True:
+            return True
+        return any(c.protocol == "pptp" and c.is_active for c in self.configs)
     
     @staticmethod
     def generate_random_username(prefix: str = "user") -> str:

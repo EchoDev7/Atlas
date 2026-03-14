@@ -29,6 +29,8 @@ class LimitEnforcementScheduler:
         self.is_running = False
         self.openvpn_service = protocol_registry.get("openvpn")
         self.wireguard_service = protocol_registry.get("wireguard")
+        self.l2tp_service = protocol_registry.get("l2tp")
+        self.pptp_service = protocol_registry.get("pptp")
         self._state_sync_lock = asyncio.Lock()
         self._enforcement_lock = asyncio.Lock()
         self._runtime_usage_cache: Dict[str, Dict[str, int]] = {}
@@ -36,14 +38,18 @@ class LimitEnforcementScheduler:
         self._kill_cooldown_seconds = 45
 
     def _disconnect_user_across_protocols(self, username: str) -> Dict[str, Dict[str, str]]:
-        """Best-effort disconnect for both OpenVPN and WireGuard to avoid protocol drift."""
+        """Best-effort disconnect across all configured protocol adapters."""
         openvpn_result = self.openvpn_service.stop_client(username)
         wireguard_result = self.wireguard_service.stop_client(username)
+        l2tp_result = self.l2tp_service.stop_client(username)
+        pptp_result = self.pptp_service.stop_client(username)
         logger.warning(
-            "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s",
+            "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s l2tp_success=%s pptp_success=%s",
             username,
             bool(openvpn_result.get("success")),
             bool(wireguard_result.get("success")),
+            bool(l2tp_result.get("success")),
+            bool(pptp_result.get("success")),
         )
         return {
             "openvpn": {
@@ -53,6 +59,14 @@ class LimitEnforcementScheduler:
             "wireguard": {
                 "success": bool(wireguard_result.get("success")),
                 "message": str(wireguard_result.get("message") or ""),
+            },
+            "l2tp": {
+                "success": bool(l2tp_result.get("success")),
+                "message": str(l2tp_result.get("message") or ""),
+            },
+            "pptp": {
+                "success": bool(pptp_result.get("success")),
+                "message": str(pptp_result.get("message") or ""),
             },
         }
     
@@ -244,6 +258,28 @@ class LimitEnforcementScheduler:
         )
         return runtime_stats
 
+    def _get_ppp_runtime_stats(self) -> Dict[str, Dict[str, int]]:
+        runtime_stats: Dict[str, Dict[str, int]] = {}
+        for service in (self.l2tp_service, self.pptp_service):
+            try:
+                sessions = service.get_active_sessions()
+            except Exception as exc:
+                logger.warning("PPP runtime read failed for protocol=%s: %s", service.protocol_name, exc)
+                continue
+
+            for session in sessions:
+                username = str(session.get("username") or "").strip()
+                if not username:
+                    continue
+                item = runtime_stats.setdefault(
+                    username,
+                    {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+                )
+                item["connections"] += 1
+                item["bytes_sent"] += max(0, int(session.get("bytes_sent") or 0))
+                item["bytes_received"] += max(0, int(session.get("bytes_received") or 0))
+        return runtime_stats
+
     @staticmethod
     def _has_active_wireguard_config(user: VPNUser) -> bool:
         return any(
@@ -362,6 +398,15 @@ class LimitEnforcementScheduler:
             db: Session = SessionLocal()
             try:
                 runtime_stats = self._get_openvpn_runtime_stats()
+                ppp_runtime_stats = self._get_ppp_runtime_stats()
+                for username, ppp_item in ppp_runtime_stats.items():
+                    merged = runtime_stats.setdefault(
+                        username,
+                        {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+                    )
+                    merged["connections"] += max(0, int(ppp_item.get("connections") or 0))
+                    merged["bytes_sent"] += max(0, int(ppp_item.get("bytes_sent") or 0))
+                    merged["bytes_received"] += max(0, int(ppp_item.get("bytes_received") or 0))
                 online_counts = {
                     username: max(0, int(item.get("connections") or 0))
                     for username, item in runtime_stats.items()
@@ -381,13 +426,14 @@ class LimitEnforcementScheduler:
                         self._has_active_wireguard_config(user)
                         and self._is_recent_wireguard_presence(user, now)
                     )
+                    has_ppp_runtime_online = max(0, int((ppp_runtime_stats.get(user.username) or {}).get("connections") or 0)) > 0
 
                     desired_connections = observed_connections
-                    if observed_connections == 0 and has_wireguard_runtime_online:
+                    if observed_connections == 0 and (has_wireguard_runtime_online or has_ppp_runtime_online):
                         # OR logic across protocols: OpenVPN must not mark offline while WireGuard is online.
                         desired_connections = max(1, previous_connections)
 
-                    if previous_connections > 0 and observed_connections == 0:
+                    if previous_connections > 0 and observed_connections == 0 and not has_wireguard_runtime_online and not has_ppp_runtime_online:
                         stale_fixed += 1
 
                     if previous_connections != desired_connections:
@@ -468,6 +514,15 @@ class LimitEnforcementScheduler:
                 db: Session = SessionLocal()
                 try:
                     runtime_stats = self._get_openvpn_runtime_stats()
+                    ppp_runtime_stats = self._get_ppp_runtime_stats()
+                    for username, ppp_item in ppp_runtime_stats.items():
+                        merged = runtime_stats.setdefault(
+                            username,
+                            {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+                        )
+                        merged["connections"] += max(0, int(ppp_item.get("connections") or 0))
+                        merged["bytes_sent"] += max(0, int(ppp_item.get("bytes_sent") or 0))
+                        merged["bytes_received"] += max(0, int(ppp_item.get("bytes_received") or 0))
                     users = db.query(VPNUser).filter(VPNUser.is_enabled == True).all()
 
                     checked_online = 0
@@ -550,20 +605,29 @@ class LimitEnforcementScheduler:
                         self._sync_openvpn_auth_db_snapshot()
 
                         kill_results = self._disconnect_user_across_protocols(user.username)
-                        if not kill_results["openvpn"]["success"] and not kill_results["wireguard"]["success"]:
+                        if not (
+                            kill_results["openvpn"]["success"]
+                            or kill_results["wireguard"]["success"]
+                            or kill_results["l2tp"]["success"]
+                            or kill_results["pptp"]["success"]
+                        ):
                             kill_failed += 1
                             logger.warning(
-                                "Failed to disconnect violation user %s type=%s openvpn=%s wireguard=%s",
+                                "Failed to disconnect violation user %s type=%s openvpn=%s wireguard=%s l2tp=%s pptp=%s",
                                 user.username,
                                 violation_type,
                                 kill_results["openvpn"]["message"],
                                 kill_results["wireguard"]["message"],
+                                kill_results["l2tp"]["message"],
+                                kill_results["pptp"]["message"],
                                 extra={
                                     "event_type": "scheduler_disconnect_failed",
                                     "username": str(user.username),
                                     "violation_type": str(violation_type),
                                     "openvpn_success": bool(kill_results["openvpn"]["success"]),
                                     "wireguard_success": bool(kill_results["wireguard"]["success"]),
+                                    "l2tp_success": bool(kill_results["l2tp"]["success"]),
+                                    "pptp_success": bool(kill_results["pptp"]["success"]),
                                 },
                             )
                             continue

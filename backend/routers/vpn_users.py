@@ -31,6 +31,7 @@ from backend.services.protocols.registry import protocol_registry
 from backend.models.general_settings import GeneralSettings
 from backend.models.openvpn_settings import OpenVPNSettings
 from backend.models.wireguard_settings import WireGuardSettings
+from backend.core.config import IPSEC_DEFAULT_PSK, IPSEC_PSK_ENV_KEY
 from backend.services.auth_service import get_password_hash
 from backend.services.audit_service import extract_client_ip, record_audit_event
 
@@ -41,6 +42,8 @@ router = APIRouter(prefix="/users", tags=["VPN Users"])
 # Initialize OpenVPN manager
 openvpn_service = protocol_registry.get("openvpn")
 wireguard_service = protocol_registry.get("wireguard")
+l2tp_service = protocol_registry.get("l2tp")
+pptp_service = protocol_registry.get("pptp")
 
 # Fallback runtime accounting cache keyed by username.
 # It captures the latest active-session counters to preserve traffic totals
@@ -110,19 +113,29 @@ def _sync_openvpn_auth_db_snapshot() -> None:
 
 
 def _disconnect_user_across_protocols(username: str) -> Dict[str, Dict[str, Any]]:
-    """Best-effort kill switch for both OpenVPN and WireGuard runtime sessions."""
+    """Best-effort kill switch across supported runtime protocols."""
     openvpn_result = openvpn_service.stop_client(username)
     wireguard_result = wireguard_service.stop_client(username)
+    l2tp_result = l2tp_service.stop_client(username)
+    pptp_result = pptp_service.stop_client(username)
     logger.warning(
-        "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s",
+        "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s l2tp_success=%s pptp_success=%s",
         username,
         bool(openvpn_result.get("success")),
         bool(wireguard_result.get("success")),
+        bool(l2tp_result.get("success")),
+        bool(pptp_result.get("success")),
     )
     return {
         "openvpn": openvpn_result,
         "wireguard": wireguard_result,
+        "l2tp": l2tp_result,
+        "pptp": pptp_result,
     }
+
+
+def _resolve_ipsec_psk() -> str:
+    return str(__import__("os").getenv(IPSEC_PSK_ENV_KEY) or IPSEC_DEFAULT_PSK)
 
 
 def _get_wireguard_settings(db: Session) -> WireGuardSettings:
@@ -235,6 +248,43 @@ def _get_wireguard_online_usernames(db: Session, online_window_seconds: int = 90
         return set()
 
 
+def _get_ppp_online_usernames() -> Set[str]:
+    online: Set[str] = set()
+    for service in (l2tp_service, pptp_service):
+        try:
+            sessions = service.get_active_sessions()
+        except Exception as exc:
+            logger.warning("Failed to read PPP runtime for protocol %s: %s", service.protocol_name, exc)
+            continue
+        for session in sessions:
+            username = str(session.get("username") or "").strip()
+            if username:
+                online.add(username)
+    return online
+
+
+def _get_ppp_runtime_stats() -> Dict[str, Dict[str, int]]:
+    stats: Dict[str, Dict[str, int]] = {}
+    for service in (l2tp_service, pptp_service):
+        try:
+            sessions = service.get_active_sessions()
+        except Exception as exc:
+            logger.warning("Failed to read PPP sessions for protocol %s: %s", service.protocol_name, exc)
+            continue
+        for session in sessions:
+            username = str(session.get("username") or "").strip()
+            if not username:
+                continue
+            item = stats.setdefault(
+                username,
+                {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+            )
+            item["connections"] += 1
+            item["bytes_sent"] += max(0, int(session.get("bytes_sent") or 0))
+            item["bytes_received"] += max(0, int(session.get("bytes_received") or 0))
+    return stats
+
+
 def _apply_runtime_disconnect_fallback_accounting(
     db: Session,
     runtime_stats: Dict[str, Dict[str, int]],
@@ -336,18 +386,22 @@ def _apply_runtime_metrics_to_user_dict(
     runtime_stats: Dict[str, Dict[str, int]],
     runtime_available: bool,
     wireguard_online_usernames: Optional[Set[str]] = None,
+    ppp_online_usernames: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
     """Overlay live session/traffic metrics on top of persisted DB values."""
     wireguard_online = set(wireguard_online_usernames or set())
+    ppp_online = set(ppp_online_usernames or set())
     username = str(user_dict.get("username") or "").strip()
     is_wireguard_online = username in wireguard_online
+    is_ppp_online = username in ppp_online
 
     if not runtime_available:
         is_openvpn_online = False
         persisted_online = int(user_dict.get("current_connections") or 0) > 0
         user_dict["openvpn_online"] = is_openvpn_online
         user_dict["wireguard_online"] = is_wireguard_online
-        user_dict["is_online"] = bool(persisted_online or is_wireguard_online)
+        user_dict["ppp_online"] = is_ppp_online
+        user_dict["is_online"] = bool(persisted_online or is_wireguard_online or is_ppp_online)
         return user_dict
 
     user_stats = runtime_stats.get(username, {})
@@ -371,7 +425,8 @@ def _apply_runtime_metrics_to_user_dict(
     user_dict["current_connections"] = effective_connections
     user_dict["openvpn_online"] = is_openvpn_online
     user_dict["wireguard_online"] = is_wireguard_online
-    user_dict["is_online"] = bool(effective_connections > 0 or is_wireguard_online)
+    user_dict["ppp_online"] = is_ppp_online
+    user_dict["is_online"] = bool(effective_connections > 0 or is_wireguard_online or is_ppp_online)
     user_dict["total_bytes_sent"] = total_sent
     user_dict["total_bytes_received"] = total_received
     user_dict["traffic_used_bytes"] = effective_total_bytes
@@ -467,7 +522,17 @@ async def list_users(
     total = query.count()
     users = query.offset(skip).limit(limit).all()
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    ppp_runtime_stats = _get_ppp_runtime_stats()
+    for username, ppp_item in ppp_runtime_stats.items():
+        merged = runtime_stats.setdefault(
+            username,
+            {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+        )
+        merged["connections"] += max(0, int(ppp_item.get("connections") or 0))
+        merged["bytes_sent"] += max(0, int(ppp_item.get("bytes_sent") or 0))
+        merged["bytes_received"] += max(0, int(ppp_item.get("bytes_received") or 0))
     wireguard_online_usernames = _get_wireguard_online_usernames(db)
+    ppp_online_usernames = _get_ppp_online_usernames()
     _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, users)
     
     user_responses = []
@@ -478,6 +543,7 @@ async def list_users(
             runtime_stats,
             runtime_available,
             wireguard_online_usernames=wireguard_online_usernames,
+            ppp_online_usernames=ppp_online_usernames,
         )
         user_responses.append(VPNUserResponse(**user_dict))
     
@@ -497,7 +563,17 @@ async def list_users_runtime(
     """Fast runtime snapshot for live users page refresh (online + traffic)."""
     users = db.query(VPNUser).all()
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    ppp_runtime_stats = _get_ppp_runtime_stats()
+    for username, ppp_item in ppp_runtime_stats.items():
+        merged = runtime_stats.setdefault(
+            username,
+            {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+        )
+        merged["connections"] += max(0, int(ppp_item.get("connections") or 0))
+        merged["bytes_sent"] += max(0, int(ppp_item.get("bytes_sent") or 0))
+        merged["bytes_received"] += max(0, int(ppp_item.get("bytes_received") or 0))
     wireguard_online_usernames = _get_wireguard_online_usernames(db)
+    ppp_online_usernames = _get_ppp_online_usernames()
     _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, users)
 
     runtime_users: List[Dict[str, Any]] = []
@@ -526,6 +602,7 @@ async def list_users_runtime(
         effective_connections = max(live_connections, persisted_connections)
         is_openvpn_online = live_connections > 0
         is_wireguard_online = str(user.username or "").strip() in wireguard_online_usernames
+        is_ppp_online = str(user.username or "").strip() in ppp_online_usernames
 
         runtime_users.append(
             {
@@ -534,7 +611,8 @@ async def list_users_runtime(
                 "current_connections": effective_connections,
                 "openvpn_online": bool(is_openvpn_online),
                 "wireguard_online": bool(is_wireguard_online),
-                "is_online": bool(effective_connections > 0 or is_wireguard_online),
+                "ppp_online": bool(is_ppp_online),
+                "is_online": bool(effective_connections > 0 or is_wireguard_online or is_ppp_online),
                 "total_bytes_sent": total_sent,
                 "total_bytes_received": total_received,
                 "traffic_used_bytes": effective_total_bytes,
@@ -564,7 +642,17 @@ async def get_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     runtime_stats, runtime_available = _get_openvpn_runtime_stats()
+    ppp_runtime_stats = _get_ppp_runtime_stats()
+    for username, ppp_item in ppp_runtime_stats.items():
+        merged = runtime_stats.setdefault(
+            username,
+            {"connections": 0, "bytes_sent": 0, "bytes_received": 0},
+        )
+        merged["connections"] += max(0, int(ppp_item.get("connections") or 0))
+        merged["bytes_sent"] += max(0, int(ppp_item.get("bytes_sent") or 0))
+        merged["bytes_received"] += max(0, int(ppp_item.get("bytes_received") or 0))
     wireguard_online_usernames = _get_wireguard_online_usernames(db)
+    ppp_online_usernames = _get_ppp_online_usernames()
     _apply_runtime_disconnect_fallback_accounting(db, runtime_stats, runtime_available, [user])
     user_dict = VPNUserDetailResponse.from_orm(user).dict()
     user_dict = _apply_runtime_metrics_to_user_dict(
@@ -572,6 +660,7 @@ async def get_user(
         runtime_stats,
         runtime_available,
         wireguard_online_usernames=wireguard_online_usernames,
+        ppp_online_usernames=ppp_online_usernames,
     )
     return VPNUserDetailResponse(**user_dict)
 
@@ -662,6 +751,9 @@ async def create_user(
     hashed_password = get_password_hash(plain_password)
     enable_openvpn = bool(user_data.enable_openvpn)
     enable_wireguard = bool(user_data.enable_wireguard)
+    enable_l2tp = bool(user_data.enable_l2tp)
+    enable_pptp = bool(user_data.enable_pptp)
+    ppp_password = str(user_data.ppp_password or "").strip() or plain_password
     
     # Create user
     new_user = VPNUser(
@@ -677,6 +769,9 @@ async def create_user(
         max_devices=user_data.max_devices,
         max_concurrent_connections=user_data.max_concurrent_connections,
         enable_openvpn=enable_openvpn,
+        enable_l2tp=enable_l2tp,
+        enable_pptp=enable_pptp,
+        ppp_password=ppp_password,
         created_by=current_user.id
     )
     _sync_legacy_accounting_fields(new_user)
@@ -712,6 +807,28 @@ async def create_user(
             _ensure_wireguard_identity_for_user(db, new_user)
             _ensure_wireguard_config_record(new_user, db)
             _sync_wireguard_users_runtime(db)
+
+        if enable_l2tp:
+            l2tp_config = VPNConfig(
+                user_id=new_user.id,
+                protocol="l2tp",
+                is_active=True,
+            )
+            db.add(l2tp_config)
+            l2tp_result = l2tp_service.start_client(db, username)
+            if not l2tp_result.get("success"):
+                raise HTTPException(status_code=500, detail=l2tp_result.get("message") or "L2TP provisioning failed")
+
+        if enable_pptp:
+            pptp_config = VPNConfig(
+                user_id=new_user.id,
+                protocol="pptp",
+                is_active=True,
+            )
+            db.add(pptp_config)
+            pptp_result = pptp_service.start_client(db, username)
+            if not pptp_result.get("success"):
+                raise HTTPException(status_code=500, detail=pptp_result.get("message") or "PPTP provisioning failed")
     except HTTPException:
         db.rollback()
         raise
@@ -738,7 +855,19 @@ async def create_user(
     
     return VPNUserCredentials(
         username=username,
-        password=plain_password
+        password=plain_password,
+        ppp_password=ppp_password if (enable_l2tp or enable_pptp) else None,
+        ipsec_psk=_resolve_ipsec_psk() if enable_l2tp else None,
+        enabled_protocols=[
+            protocol
+            for protocol, enabled in (
+                ("openvpn", enable_openvpn),
+                ("wireguard", enable_wireguard),
+                ("l2tp", enable_l2tp),
+                ("pptp", enable_pptp),
+            )
+            if enabled
+        ],
     )
 
 
@@ -814,7 +943,12 @@ async def update_user(
             user.current_connections = 0
 
             kill_results = _disconnect_user_across_protocols(user.username)
-            if not kill_results["openvpn"].get("success") and not kill_results["wireguard"].get("success"):
+            if not (
+                kill_results["openvpn"].get("success")
+                or kill_results["wireguard"].get("success")
+                or kill_results["l2tp"].get("success")
+                or kill_results["pptp"].get("success")
+            ):
                 logger.warning(
                     "Disable-path kill-switch could not disconnect any protocol for %s",
                     user.username,
@@ -987,6 +1121,41 @@ async def download_config(
             logger.error("Error generating WireGuard config for user %s: %s", user.username, exc)
             raise HTTPException(status_code=500, detail=f"Failed to generate WireGuard config: {exc}") from exc
 
+    if protocol in {"l2tp", "pptp"}:
+        config = next((c for c in user.configs if c.protocol == protocol and c.is_active), None)
+        if not config:
+            raise HTTPException(status_code=404, detail=f"{protocol.upper()} is not enabled for this user")
+
+        server_host = (_get_or_create_general_settings(db).server_address or "SERVER_IP_OR_DOMAIN").strip()
+        ppp_password = str(user.ppp_password or "").strip() or "(not-set)"
+        if protocol == "l2tp":
+            content = "\n".join(
+                [
+                    "# Atlas L2TP/IPsec credentials",
+                    f"server: {server_host}",
+                    "port: 1701 (UDP)",
+                    f"username: {user.username}",
+                    f"password: {ppp_password}",
+                    f"ipsec_psk: {_resolve_ipsec_psk()}",
+                    "ipsec_ports: 500/udp, 4500/udp",
+                ]
+            ) + "\n"
+        else:
+            content = "\n".join(
+                [
+                    "# Atlas PPTP credentials",
+                    f"server: {server_host}",
+                    "port: 1723 (TCP)",
+                    f"username: {user.username}",
+                    f"password: {ppp_password}",
+                ]
+            ) + "\n"
+        return Response(
+            content=content,
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename={user.username}_{protocol}.txt"},
+        )
+
     raise HTTPException(status_code=400, detail=f"Protocol {protocol} not yet supported")
 
 
@@ -1050,6 +1219,42 @@ async def get_config(
             logger.error("Error generating WireGuard config payload for user %s: %s", user.username, exc)
             raise HTTPException(status_code=500, detail=f"Failed to generate WireGuard config: {exc}") from exc
 
+    if protocol in {"l2tp", "pptp"}:
+        if not config:
+            raise HTTPException(status_code=404, detail=f"{protocol.upper()} is not enabled for this user")
+
+        server_host = (_get_or_create_general_settings(db).server_address or "SERVER_IP_OR_DOMAIN").strip()
+        ppp_password = str(user.ppp_password or "").strip() or "(not-set)"
+        if protocol == "l2tp":
+            config_content = "\n".join(
+                [
+                    "Protocol: L2TP/IPsec",
+                    f"Server: {server_host}",
+                    "L2TP Port: 1701/udp",
+                    "IPsec Ports: 500/udp, 4500/udp",
+                    f"Username: {user.username}",
+                    f"Password: {ppp_password}",
+                    f"IPsec PSK: {_resolve_ipsec_psk()}",
+                ]
+            )
+        else:
+            config_content = "\n".join(
+                [
+                    "Protocol: PPTP",
+                    f"Server: {server_host}",
+                    "PPTP Port: 1723/tcp",
+                    f"Username: {user.username}",
+                    f"Password: {ppp_password}",
+                ]
+            )
+        return VPNConfigFileResponse(
+            username=user.username,
+            protocol=protocol,
+            config_content=config_content,
+            qr_code=None,
+            created_at=datetime.utcnow(),
+        )
+
     raise HTTPException(status_code=400, detail=f"Protocol {protocol} not yet supported")
 
 
@@ -1083,6 +1288,8 @@ async def revoke_config(
         user.wg_private_key = None
         user.wg_public_key = None
         user.wg_allocated_ip = None
+    if protocol in {"l2tp", "pptp"}:
+        _disconnect_user_across_protocols(user.username)
     
     config.is_active = False
     config.revoked_at = datetime.utcnow()

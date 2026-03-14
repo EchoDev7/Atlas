@@ -44,6 +44,9 @@ class VPNUserCreate(BaseModel):
     # Protocol generation toggles
     enable_openvpn: Optional[bool] = Field(None, description="Enable OpenVPN artifact generation")
     enable_wireguard: Optional[bool] = Field(None, description="Enable WireGuard artifact generation")
+    enable_l2tp: Optional[bool] = Field(None, description="Enable L2TP/IPsec credential provisioning")
+    enable_pptp: Optional[bool] = Field(None, description="Enable PPTP credential provisioning")
+    ppp_password: Optional[str] = Field(None, min_length=3, description="Optional explicit PPP password")
     # Backward-compatible aliases (deprecated)
     create_openvpn: Optional[bool] = Field(None, description="Deprecated alias for enable_openvpn")
     create_wireguard: Optional[bool] = Field(None, description="Deprecated alias for enable_wireguard")
@@ -79,6 +82,8 @@ class VPNUserCreate(BaseModel):
 
         enable_openvpn = values.get("enable_openvpn")
         enable_wireguard = values.get("enable_wireguard")
+        enable_l2tp = values.get("enable_l2tp")
+        enable_pptp = values.get("enable_pptp")
 
         if enable_openvpn is None:
             legacy_openvpn = values.get("create_openvpn")
@@ -92,11 +97,16 @@ class VPNUserCreate(BaseModel):
         else:
             enable_wireguard = bool(enable_wireguard)
 
-        if not enable_openvpn and not enable_wireguard:
+        enable_l2tp = bool(enable_l2tp) if enable_l2tp is not None else False
+        enable_pptp = bool(enable_pptp) if enable_pptp is not None else False
+
+        if not enable_openvpn and not enable_wireguard and not enable_l2tp and not enable_pptp:
             raise ValueError("At least one protocol must be enabled")
 
         values["enable_openvpn"] = enable_openvpn
         values["enable_wireguard"] = enable_wireguard
+        values["enable_l2tp"] = enable_l2tp
+        values["enable_pptp"] = enable_pptp
 
         return values
 
@@ -179,6 +189,11 @@ class VPNUserResponse(BaseModel):
     has_openvpn: bool
     has_wireguard: bool
     has_singbox: bool
+    enable_l2tp: bool = False
+    enable_pptp: bool = False
+    has_l2tp: bool = False
+    has_pptp: bool = False
+    ppp_password: Optional[str] = None
     wg_public_key: Optional[str] = None
     wg_allocated_ip: Optional[str] = None
 
@@ -186,6 +201,11 @@ class VPNUserResponse(BaseModel):
     @classmethod
     def _coerce_enable_openvpn(cls, value):
         return True if value is None else bool(value)
+
+    @field_validator("enable_l2tp", "enable_pptp", mode="before")
+    @classmethod
+    def _coerce_optional_protocol_flags(cls, value):
+        return bool(value) if value is not None else False
     
     class Config:
         from_attributes = True
@@ -211,6 +231,9 @@ class VPNUserCredentials(BaseModel):
     """Schema for returning user credentials after creation"""
     username: str
     password: str
+    ppp_password: Optional[str] = None
+    ipsec_psk: Optional[str] = None
+    enabled_protocols: List[str] = []
     message: str = "Save these credentials securely. Password cannot be retrieved later."
 
 
@@ -220,13 +243,13 @@ class VPNUserCredentials(BaseModel):
 
 class VPNConfigBase(BaseModel):
     """Base schema for VPN Config"""
-    protocol: str = Field(..., description="Protocol type (openvpn, wireguard, singbox)")
+    protocol: str = Field(..., description="Protocol type (openvpn, wireguard, l2tp, pptp, singbox)")
 
 
 class VPNConfigCreate(BaseModel):
     """Schema for creating a new VPN config"""
     user_id: int
-    protocol: str = Field(..., description="Protocol type (openvpn, wireguard, singbox)")
+    protocol: str = Field(..., description="Protocol type (openvpn, wireguard, l2tp, pptp, singbox)")
     
     # OpenVPN specific
     server_address: Optional[str] = None
