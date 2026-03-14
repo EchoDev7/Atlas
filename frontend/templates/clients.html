@@ -215,6 +215,10 @@
                               :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                             WireGuard: <span :class="serviceStatus.wireguard_is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.wireguard_is_active ? 'Online' : 'Offline'"></span>
                         </span>
+                        <span class="text-xs sm:text-sm font-medium theme-transition"
+                              :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                            L2TP/IPsec: <span :class="serviceStatus.l2tp_is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.l2tp_is_active ? 'Online' : 'Offline'"></span>
+                        </span>
                         <span x-show="serviceStatus.is_mock" class="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">
                             DEV
                         </span>
@@ -1378,6 +1382,7 @@
                     is_enabled: false,
                     is_mock: false,
                     wireguard_is_active: false,
+                    l2tp_is_active: false,
                 },
                 autoRefreshTimerId: null,
                 autoRefreshMs: 3000,
@@ -1666,13 +1671,18 @@
                 async loadServiceStatus() {
                     try {
                         const token = localStorage.getItem('access_token');
-                        const [openvpnResponse, wireguardDiagnosticsResponse] = await Promise.all([
+                        const [openvpnResponse, wireguardDiagnosticsResponse, l2tpStatusResponse] = await Promise.all([
                             fetch('/api/openvpn/service/status', {
                                 headers: {
                                     'Authorization': `Bearer ${token}`
                                 }
                             }),
                             fetch('/api/system/wireguard/diagnostics', {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            }),
+                            fetch('/api/system/l2tp/status', {
                                 headers: {
                                     'Authorization': `Bearer ${token}`
                                 }
@@ -1692,9 +1702,16 @@
                             nextStatus.wireguard_is_active = false;
                         }
 
+                        if (l2tpStatusResponse.ok) {
+                            const l2tpStatus = await l2tpStatusResponse.json();
+                            nextStatus.l2tp_is_active = !!l2tpStatus?.is_active;
+                        } else {
+                            nextStatus.l2tp_is_active = false;
+                        }
+
                         this.serviceStatus = nextStatus;
                     } catch (_) {
-                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false, wireguard_is_active: false };
+                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false, wireguard_is_active: false, l2tp_is_active: false };
                     }
                 },
 

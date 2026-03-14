@@ -43,6 +43,7 @@ BACKEND_SERVICE_CANDIDATES = (
     "atlas-panel-backend",
     "atlas",
 )
+L2TP_IPSEC_UNITS = ("strongswan-starter", "xl2tpd")
 LETSENCRYPT_LIVE_DIR = Path("/etc/letsencrypt/live")
 DEFAULT_WIREGUARD_INTERFACE = "wg0"
 
@@ -300,6 +301,8 @@ def _resolve_service_unit(alias: str, db: Session | None = None) -> str:
         return openvpn_service.service_name
     if normalized == "backend":
         return _resolve_backend_service_unit()
+    if normalized == "l2tp":
+        return "xl2tpd"
     if normalized == "wireguard":
         interface_name = DEFAULT_WIREGUARD_INTERFACE
         if db is not None:
@@ -308,7 +311,7 @@ def _resolve_service_unit(alias: str, db: Session | None = None) -> str:
             if configured_interface:
                 interface_name = configured_interface
         return f"wg-quick@{interface_name}"
-    raise HTTPException(status_code=400, detail="Unsupported service_name. Use 'openvpn', 'wireguard', or 'backend'")
+    raise HTTPException(status_code=400, detail="Unsupported service_name. Use 'openvpn', 'wireguard', 'l2tp', or 'backend'")
 
 
 def _safe_extract_tar(archive_path: Path, destination_dir: Path) -> None:
@@ -623,6 +626,53 @@ def run_service_action(
         raise HTTPException(status_code=400, detail="Unsupported action. Use restart, stop, or start")
 
     target_alias = (payload.service_name or "").strip().lower()
+    if target_alias == "l2tp":
+        _ensure_systemctl_available()
+        unit_results: list[dict[str, Any]] = []
+        for unit in L2TP_IPSEC_UNITS:
+            try:
+                code, stdout, stderr = _run_system_subprocess(["systemctl", action, unit], timeout_seconds=20)
+            except subprocess.TimeoutExpired:
+                code, stdout, stderr = 124, "", "Service operation timed out"
+            unit_results.append(
+                {
+                    "service_unit": unit,
+                    "return_code": code,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                }
+            )
+
+        failed_results = [item for item in unit_results if int(item.get("return_code", 1)) != 0]
+        success = len(failed_results) == 0
+        record_audit_event(
+            action="system_service_action",
+            success=success,
+            admin_username=current_user.username,
+            resource_type="system_service",
+            resource_id=target_alias,
+            ip_address=extract_client_ip(request),
+            details={"action": action, "units": unit_results},
+        )
+
+        if not success:
+            failure_message = "; ".join(
+                f"{item.get('service_unit')}: {item.get('stderr') or item.get('stdout') or 'failed'}"
+                for item in failed_results
+            )
+            raise HTTPException(status_code=500, detail=f"L2TP/IPsec service operation failed - {failure_message}")
+
+        return {
+            "success": True,
+            "service_name": target_alias,
+            "service_unit": ",".join(L2TP_IPSEC_UNITS),
+            "action": action,
+            "message": f"L2TP/IPsec services {action} executed successfully",
+            "output": "\n".join(
+                f"{item['service_unit']}: {(item.get('stdout') or '').strip()}" for item in unit_results
+            ).strip(),
+        }
+
     if target_alias == "wireguard" and action in {"start", "restart"}:
         sync_result = wireguard_service.sync_users_runtime(db)
         if not sync_result.get("success"):
@@ -675,6 +725,34 @@ def run_service_action(
         "action": action,
         "message": f"Service {action} executed successfully",
         "output": stdout,
+    }
+
+
+@router.get("/l2tp/status")
+def read_l2tp_status(
+    current_user: Admin = Depends(get_current_user),
+):
+    _ = current_user
+    _ensure_systemctl_available()
+
+    unit_states: dict[str, dict[str, Any]] = {}
+    all_active = True
+    for unit in L2TP_IPSEC_UNITS:
+        code, stdout, stderr = _run_system_subprocess(["systemctl", "is-active", unit], timeout_seconds=10)
+        is_active = int(code) == 0
+        all_active = all_active and is_active
+        unit_states[unit] = {
+            "is_active": is_active,
+            "stdout": stdout,
+            "stderr": stderr,
+            "return_code": code,
+        }
+
+    return {
+        "success": True,
+        "protocol": "l2tp",
+        "is_active": all_active,
+        "units": unit_states,
     }
 
 

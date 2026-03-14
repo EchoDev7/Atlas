@@ -652,7 +652,7 @@
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
                             <button
                                 type="button"
                                 @click="confirmAndRunServiceAction('openvpn', 'restart', 'OpenVPN')"
@@ -688,6 +688,18 @@
                                 <p class="mt-1 text-lg font-bold" :class="darkMode ? 'text-emerald-100' : 'text-emerald-900'">Reset WireGuard</p>
                                 <p class="mt-2 text-xs" :class="darkMode ? 'text-emerald-200/80' : 'text-emerald-800/80'">Restart wg-quick interface and re-apply active peers/routes.</p>
                             </button>
+
+                            <button
+                                type="button"
+                                @click="confirmAndRunServiceAction('l2tp', 'restart', 'L2TP / IPsec Service')"
+                                :disabled="serviceActionLoading"
+                                class="rounded-2xl border p-5 text-left transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                :class="darkMode ? 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20' : 'border-amber-200 bg-amber-50 hover:bg-amber-100'"
+                            >
+                                <p class="text-xs uppercase tracking-wide" :class="darkMode ? 'text-amber-300' : 'text-amber-700'">Service Control</p>
+                                <p class="mt-1 text-lg font-bold" :class="darkMode ? 'text-amber-100' : 'text-amber-900'">Restart L2TP / IPsec Service</p>
+                                <p class="mt-2 text-xs" :class="darkMode ? 'text-amber-200/80' : 'text-amber-800/80'">Restart StrongSwan and XL2TPD to apply L2TP/IPsec runtime changes.</p>
+                            </button>
                         </div>
 
                         <div class="rounded-2xl border p-4"
@@ -706,6 +718,7 @@
                                     >
                                         <option value="openvpn">OpenVPN</option>
                                         <option value="wireguard">WireGuard</option>
+                                        <option value="l2tp">L2TP / IPsec</option>
                                         <option value="backend">Backend</option>
                                     </select>
                                     <button
