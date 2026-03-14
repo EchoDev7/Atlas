@@ -24,32 +24,32 @@ fi
 
 echo "[1/7] Installing required native PPP/IPsec packages..."
 apt-get update
-apt-get install -y pptpd xl2tpd strongswan iptables-persistent
+apt-get install -y xl2tpd strongswan iptables-persistent
 
-echo "[2/7] Writing PPTP baseline configuration..."
-cat > /etc/pptpd.conf <<EOF
-option /etc/ppp/pptpd-options
-logwtmp
-localip ${PPTP_LOCAL_IP}
-remoteip ${PPTP_REMOTE_POOL}
-EOF
-
-cat > /etc/ppp/pptpd-options <<'EOF'
-name pptpd
-refuse-pap
-refuse-chap
-refuse-mschap
-require-mschap-v2
-require-mppe-128
-ms-dns 1.1.1.1
-ms-dns 8.8.8.8
-proxyarp
-lock
-nobsdcomp
-novj
-novjccomp
-nologfd
-EOF
+echo "[2/7] Skipping PPTP daemon configuration (pptpd deprecated on Ubuntu 24.04)..."
+# cat > /etc/pptpd.conf <<EOF
+# option /etc/ppp/pptpd-options
+# logwtmp
+# localip ${PPTP_LOCAL_IP}
+# remoteip ${PPTP_REMOTE_POOL}
+# EOF
+#
+# cat > /etc/ppp/pptpd-options <<'EOF'
+# name pptpd
+# refuse-pap
+# refuse-chap
+# refuse-mschap
+# require-mschap-v2
+# require-mppe-128
+# ms-dns 1.1.1.1
+# ms-dns 8.8.8.8
+# proxyarp
+# lock
+# nobsdcomp
+# novj
+# novjccomp
+# nologfd
+# EOF
 
 echo "[3/7] Writing L2TP/IPsec baseline configuration..."
 cat > /etc/ipsec.conf <<'EOF'
@@ -143,9 +143,6 @@ if command -v netfilter-persistent >/dev/null 2>&1; then
 fi
 
 echo "[7/7] Restarting and enabling VPN daemons..."
-systemctl enable --now pptpd
-systemctl restart pptpd
-
 systemctl enable --now xl2tpd
 systemctl restart xl2tpd
 
