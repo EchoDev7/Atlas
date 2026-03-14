@@ -10,15 +10,23 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, Tuple
 
+from backend.core.config import (
+    WIREGUARD_BASE_DIR,
+    WIREGUARD_DEFAULT_INTERFACE,
+    WIREGUARD_DEFAULT_LISTEN_PORT,
+    WIREGUARD_DEFAULT_WAN_INTERFACE,
+    WIREGUARD_SERVICE_TEMPLATE,
+)
+
 logger = logging.getLogger(__name__)
 
 
 class WireGuardConfig:
     """WireGuard runtime paths and service naming."""
 
-    BASE_DIR = Path("/etc/wireguard")
-    DEFAULT_INTERFACE = "wg0"
-    SERVICE_TEMPLATE = "wg-quick@{interface}"
+    BASE_DIR = WIREGUARD_BASE_DIR
+    DEFAULT_INTERFACE = WIREGUARD_DEFAULT_INTERFACE
+    SERVICE_TEMPLATE = WIREGUARD_SERVICE_TEMPLATE
 
 
 class WireGuardManager:
@@ -329,7 +337,7 @@ class WireGuardManager:
                         return parts[dev_index + 1]
         except Exception:
             pass
-        return "eth0"
+        return WIREGUARD_DEFAULT_WAN_INTERFACE
 
     def _resolve_effective_wan_interface(self, wan_interface: Optional[str] = None) -> Optional[str]:
         """Return a usable WAN interface name, or None if none can be reliably resolved."""
@@ -656,7 +664,7 @@ class WireGuardManager:
 
         interface_config = self.build_server_config(
             interface_name=settings.interface_name,
-            listen_port=settings.listen_port,
+            listen_port=int(settings.listen_port or WIREGUARD_DEFAULT_LISTEN_PORT),
             address_range=settings.address_range,
             private_key=server_private_key,
             wan_interface=wan_interface,
@@ -746,7 +754,7 @@ class WireGuardManager:
                 "",
                 "[Peer]",
                 f"PublicKey = {server_public_key}",
-                f"Endpoint = {endpoint_host}:{int(settings.listen_port)}",
+                f"Endpoint = {endpoint_host}:{int(settings.listen_port or WIREGUARD_DEFAULT_LISTEN_PORT)}",
                 "AllowedIPs = 0.0.0.0/0",
                 "PersistentKeepalive = 25",
             ]

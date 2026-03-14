@@ -4,16 +4,28 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shlex
 import socket
 import subprocess
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
 from sqlalchemy.orm import Session
 
+from backend.core.config import (
+    PBR_COMMENT_PREFIX,
+    PBR_DEFAULT_DEST_CIDR,
+    PBR_DEFAULT_NAT_COMMENT,
+    PBR_DEFAULT_PROXY_PROTOCOL,
+    PBR_DEFAULT_WAN_INTERFACE,
+    PBR_LEGACY_DNS_REDIRECT_PORT,
+    PBR_RT_TABLES_PATH,
+    PBR_TABLE_PREFIX,
+)
 from backend.database import SessionLocal
 from backend.models.general_settings import GeneralSettings
 from backend.models.routing_rule import RoutingRule
@@ -22,10 +34,10 @@ logger = logging.getLogger(__name__)
 
 
 class PBRManager:
-    _RT_TABLES_PATH = Path("/etc/iproute2/rt_tables")
-    _TABLE_PREFIX = "atlas_pbr"
-    _COMMENT_PREFIX = "ATLAS_PBR"
-    _DEFAULT_NAT_COMMENT = "ATLAS_DEFAULT_NAT"
+    _RT_TABLES_PATH = Path(PBR_RT_TABLES_PATH)
+    _TABLE_PREFIX = PBR_TABLE_PREFIX
+    _COMMENT_PREFIX = PBR_COMMENT_PREFIX
+    _DEFAULT_NAT_COMMENT = PBR_DEFAULT_NAT_COMMENT
 
     def __init__(self, db: Session | None = None):
         self._db = db
@@ -61,8 +73,8 @@ class PBRManager:
     def _comment_for(self, kind: str, rule_name: str) -> str:
         return f"{self._COMMENT_PREFIX}:{kind}:{self._sanitize_name(rule_name)}"
 
-    def _resolve_wan_interface(self, out_iface: str = "eth0") -> str:
-        fallback = str(out_iface or "eth0").strip() or "eth0"
+    def _resolve_wan_interface(self, out_iface: str = PBR_DEFAULT_WAN_INTERFACE) -> str:
+        fallback = str(out_iface or PBR_DEFAULT_WAN_INTERFACE).strip() or PBR_DEFAULT_WAN_INTERFACE
         try:
             with self._session_scope() as db:
                 settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
@@ -97,7 +109,7 @@ class PBRManager:
         if proxy_port <= 0 or proxy_port > 65535:
             return False
 
-        normalized_protocol = str(protocol or "tcp").strip().lower()
+        normalized_protocol = str(protocol or PBR_DEFAULT_PROXY_PROTOCOL).strip().lower()
         if normalized_protocol not in {"tcp", "udp"}:
             return False
 
@@ -194,12 +206,12 @@ class PBRManager:
         ingress_iface: str,
         fwmark: int,
         rule_name: str = "default",
-        dest_cidr: str = "0.0.0.0/0",
+        dest_cidr: str = PBR_DEFAULT_DEST_CIDR,
     ) -> bool:
         iface = str(ingress_iface).strip()
         if not iface:
             raise ValueError("ingress_iface must not be empty")
-        destination = str(dest_cidr or "0.0.0.0/0").strip() or "0.0.0.0/0"
+        destination = str(dest_cidr or PBR_DEFAULT_DEST_CIDR).strip() or PBR_DEFAULT_DEST_CIDR
 
         fwmark_value = str(int(fwmark))
         comment = self._comment_for("mark", rule_name)
@@ -229,14 +241,14 @@ class PBRManager:
         self,
         ingress_iface: str,
         proxy_port: int,
-        protocol: str = "tcp",
+        protocol: str = PBR_DEFAULT_PROXY_PROTOCOL,
         rule_name: str = "default",
-        dest_cidr: str = "0.0.0.0/0",
+        dest_cidr: str = PBR_DEFAULT_DEST_CIDR,
     ) -> bool:
         iface = str(ingress_iface).strip()
         if not iface:
             raise ValueError("ingress_iface must not be empty")
-        destination = str(dest_cidr or "0.0.0.0/0").strip() or "0.0.0.0/0"
+        destination = str(dest_cidr or PBR_DEFAULT_DEST_CIDR).strip() or PBR_DEFAULT_DEST_CIDR
 
         proto = str(protocol).strip().lower()
         if proto not in {"tcp", "udp"}:
@@ -271,7 +283,7 @@ class PBRManager:
             raise RuntimeError(f"failed to add nat redirect rule: {add_result.stderr.strip() or add_result.stdout.strip()}")
         return True
 
-    def ensure_default_nat(self, out_iface: str = "eth0") -> bool:
+    def ensure_default_nat(self, out_iface: str = PBR_DEFAULT_WAN_INTERFACE) -> bool:
         wan_iface = self._resolve_wan_interface(out_iface=out_iface)
         spec = [
             "-o",
@@ -293,7 +305,7 @@ class PBRManager:
             )
         return True
 
-    def flush_routing_rules(self, out_iface: str = "eth0") -> None:
+    def flush_routing_rules(self, out_iface: str = PBR_DEFAULT_WAN_INTERFACE) -> None:
         for table in ("mangle", "nat"):
             list_result = self._run(["iptables", "-t", table, "-S", "PREROUTING"])
             if list_result.returncode != 0:
@@ -358,7 +370,7 @@ class PBRManager:
                 continue
             if " -j redirect " not in f" {normalized} ":
                 continue
-            if "--to-ports 5300" not in normalized:
+            if f"--to-ports {PBR_LEGACY_DNS_REDIRECT_PORT}" not in normalized:
                 continue
 
             tokens[0] = "-D"
@@ -370,68 +382,182 @@ class PBRManager:
                     delete_result.stderr.strip() or delete_result.stdout.strip(),
                 )
 
-    def apply_all_active_rules(self) -> dict:
-        self.flush_routing_rules()
-        applied: list[str] = []
-        errors: list[str] = []
-        skipped: list[str] = []
+    def _list_atlas_ip_rules(self) -> list[tuple[str, str]]:
+        rule_dump = self._run(["ip", "rule", "show"])
+        if rule_dump.returncode != 0:
+            raise RuntimeError(f"failed to list ip rules: {rule_dump.stderr.strip() or rule_dump.stdout.strip()}")
+        atlas_rules: list[tuple[str, str]] = []
+        for line in (rule_dump.stdout or "").splitlines():
+            normalized = line.strip().lower()
+            if "lookup " not in normalized:
+                continue
+            tokens = line.split()
+            if "fwmark" not in tokens or "lookup" not in tokens:
+                continue
+            try:
+                fwmark_value = tokens[tokens.index("fwmark") + 1]
+                table_name = tokens[tokens.index("lookup") + 1]
+            except (ValueError, IndexError):
+                continue
+            if not str(table_name).lower().startswith(self._TABLE_PREFIX):
+                continue
+            atlas_rules.append((fwmark_value, table_name))
+        return atlas_rules
 
-        if not self._is_tunnel_enabled():
+    def _remove_all_atlas_ip_rules(self) -> None:
+        for fwmark_value, table_name in self._list_atlas_ip_rules():
+            _ = self._run(["ip", "rule", "del", "fwmark", fwmark_value, "table", table_name], check=False)
+
+    def _restore_ip_rules_snapshot(self, snapshot: list[tuple[str, str]]) -> None:
+        self._remove_all_atlas_ip_rules()
+        for fwmark_value, table_name in snapshot:
+            add_result = self._run(["ip", "rule", "add", "fwmark", fwmark_value, "table", table_name], check=False)
+            if add_result.returncode != 0:
+                logger.warning(
+                    "failed to restore ip rule fwmark=%s table=%s: %s",
+                    fwmark_value,
+                    table_name,
+                    add_result.stderr.strip() or add_result.stdout.strip(),
+                )
+
+    def _restore_iptables_snapshot(self, snapshot_path: Path) -> None:
+        restore_result = self._run(["iptables-restore", str(snapshot_path)], check=False)
+        if restore_result.returncode != 0:
+            raise RuntimeError(
+                f"failed to restore iptables snapshot: {restore_result.stderr.strip() or restore_result.stdout.strip()}"
+            )
+
+    def apply_all_active_rules(self) -> dict:
+        snapshot_file: Path | None = None
+        preexisting_atlas_ip_rules: list[tuple[str, str]] = self._list_atlas_ip_rules()
+        applied: list[str] = []
+        skipped: list[str] = []
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                prefix="atlas_iptables_",
+                suffix=".backup",
+                delete=False,
+            ) as tmp_file:
+                snapshot_file = Path(tmp_file.name)
+            save_result = self._run(["iptables-save"], check=False)
+            if save_result.returncode != 0:
+                raise RuntimeError(
+                    f"failed to snapshot iptables rules: {save_result.stderr.strip() or save_result.stdout.strip()}"
+                )
+            snapshot_file.write_text(save_result.stdout or "", encoding="utf-8")
+
+            self.flush_routing_rules()
+
+            if not self._is_tunnel_enabled():
+                return {
+                    "success": True,
+                    "applied_rules": applied,
+                    "skipped_rules": skipped,
+                    "error_count": 0,
+                    "errors": [],
+                    "message": "Tunnel disabled: routing rules flushed and direct internet baseline restored",
+                }
+
+            with self._session_scope() as db:
+                rules = (
+                    db.query(RoutingRule)
+                    .filter(RoutingRule.status == "active")
+                    .order_by(RoutingRule.id.asc())
+                    .all()
+                )
+
+            for rule in rules:
+                try:
+                    if not self._is_local_proxy_listener_ready(
+                        int(rule.proxy_port),
+                        str(rule.protocol or PBR_DEFAULT_PROXY_PROTOCOL),
+                    ):
+                        skipped.append(rule.rule_name)
+                        logger.warning(
+                            "skipping routing rule %s because local proxy listener is unavailable on %s/%s",
+                            rule.rule_name,
+                            int(rule.proxy_port),
+                            str(rule.protocol or PBR_DEFAULT_PROXY_PROTOCOL).strip().lower(),
+                        )
+                        continue
+
+                    table_name = self._rule_table_name(rule)
+                    table_id = self._rule_table_id(rule)
+                    self.ensure_rt_table(table_id, table_name)
+                    self.add_ip_rule(int(rule.fwmark), table_name)
+                    self.mark_ingress_traffic(
+                        rule.ingress_iface,
+                        int(rule.fwmark),
+                        rule_name=rule.rule_name,
+                        dest_cidr=str(rule.dest_cidr or PBR_DEFAULT_DEST_CIDR),
+                    )
+                    self.link_ingress_to_local_proxy(
+                        rule.ingress_iface,
+                        int(rule.proxy_port),
+                        protocol=rule.protocol,
+                        rule_name=rule.rule_name,
+                        dest_cidr=str(rule.dest_cidr or PBR_DEFAULT_DEST_CIDR),
+                    )
+                    applied.append(rule.rule_name)
+                except Exception as rule_exc:
+                    logger.error(
+                        "failed applying routing rule %s: %s",
+                        rule.rule_name,
+                        rule_exc,
+                        extra={
+                            "event_type": "firewall_rule_apply_failed",
+                            "rule_name": str(rule.rule_name),
+                            "error_message": str(rule_exc),
+                        },
+                    )
+                    raise
+
             return {
                 "success": True,
                 "applied_rules": applied,
                 "skipped_rules": skipped,
-                "error_count": len(errors),
-                "errors": errors,
-                "message": "Tunnel disabled: routing rules flushed and direct internet baseline restored",
+                "error_count": 0,
+                "errors": [],
             }
-
-        with self._session_scope() as db:
-            rules = (
-                db.query(RoutingRule)
-                .filter(RoutingRule.status == "active")
-                .order_by(RoutingRule.id.asc())
-                .all()
-            )
-
-        for rule in rules:
-            try:
-                if not self._is_local_proxy_listener_ready(int(rule.proxy_port), str(rule.protocol or "tcp")):
-                    skipped.append(rule.rule_name)
-                    logger.warning(
-                        "skipping routing rule %s because local proxy listener is unavailable on %s/%s",
-                        rule.rule_name,
-                        int(rule.proxy_port),
-                        str(rule.protocol or "tcp").strip().lower(),
+        except Exception as exc:
+            if snapshot_file is not None:
+                try:
+                    self._restore_iptables_snapshot(snapshot_file)
+                except Exception as restore_exc:
+                    logger.error(
+                        "failed to restore iptables snapshot during rollback: %s",
+                        restore_exc,
+                        extra={
+                            "event_type": "firewall_rollback_iptables_restore_failed",
+                            "error_message": str(restore_exc),
+                        },
                     )
-                    continue
-
-                table_name = self._rule_table_name(rule)
-                table_id = self._rule_table_id(rule)
-                self.ensure_rt_table(table_id, table_name)
-                self.add_ip_rule(int(rule.fwmark), table_name)
-                self.mark_ingress_traffic(
-                    rule.ingress_iface,
-                    int(rule.fwmark),
-                    rule_name=rule.rule_name,
-                    dest_cidr=str(rule.dest_cidr or "0.0.0.0/0"),
+            try:
+                self._restore_ip_rules_snapshot(preexisting_atlas_ip_rules)
+            except Exception as ip_rule_restore_exc:
+                logger.error(
+                    "failed to restore ip rule snapshot during rollback: %s",
+                    ip_rule_restore_exc,
+                    extra={
+                        "event_type": "firewall_rollback_ip_rule_restore_failed",
+                        "error_message": str(ip_rule_restore_exc),
+                    },
                 )
-                self.link_ingress_to_local_proxy(
-                    rule.ingress_iface,
-                    int(rule.proxy_port),
-                    protocol=rule.protocol,
-                    rule_name=rule.rule_name,
-                    dest_cidr=str(rule.dest_cidr or "0.0.0.0/0"),
-                )
-                applied.append(rule.rule_name)
-            except Exception as exc:
-                logger.error("failed applying routing rule %s: %s", rule.rule_name, exc)
-                errors.append(f"{rule.rule_name}: {exc}")
-
-        return {
-            "success": len(errors) == 0,
-            "applied_rules": applied,
-            "skipped_rules": skipped,
-            "error_count": len(errors),
-            "errors": errors,
-        }
+            logger.error(
+                "routing rule transactional apply failed and rollback attempted: %s",
+                exc,
+                extra={
+                    "event_type": "firewall_transaction_failed",
+                    "error_message": str(exc),
+                },
+            )
+            raise
+        finally:
+            if snapshot_file is not None:
+                try:
+                    os.unlink(snapshot_file)
+                except FileNotFoundError:
+                    pass
+                except Exception as cleanup_exc:
+                    logger.warning("failed to clean temporary iptables snapshot %s: %s", snapshot_file, cleanup_exc)

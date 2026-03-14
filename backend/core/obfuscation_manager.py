@@ -5,6 +5,11 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from backend.core.config import (
+    OBFS_DEFAULT_PROXY_PORT,
+    OBFS_OPENVPN_TCP_PORT,
+    SQUID_CONFIG_PATH,
+)
 from backend.models.openvpn_settings import OpenVPNSettings
 
 logger = logging.getLogger(__name__)
@@ -15,7 +20,7 @@ IS_LINUX = platform.system() == "Linux"
 class ObfuscationManager:
     """Manage OS-level automation for OpenVPN obfuscation modes."""
 
-    SQUID_CONFIG_PATH = Path("/etc/squid/squid.conf")
+    SQUID_CONFIG_PATH = SQUID_CONFIG_PATH
 
     def __init__(self):
         self.is_production = IS_LINUX
@@ -135,7 +140,7 @@ class ObfuscationManager:
     def _write_squid_config(self, proxy_port: int, executed_commands: List[str]) -> Dict[str, object]:
         config_content = (
             f"http_port {proxy_port}\n"
-            "acl SSL_ports port 443\n"
+            f"acl SSL_ports port {OBFS_OPENVPN_TCP_PORT}\n"
             "acl CONNECT method CONNECT\n"
             "http_access deny !CONNECT\n"
             "http_access deny CONNECT !SSL_ports\n"
@@ -301,9 +306,9 @@ class ObfuscationManager:
 
         try:
             if self._requires_transport_override(mode):
-                if settings.port != 443:
-                    settings.port = 443
-                    enforced_values["port"] = 443
+                if settings.port != OBFS_OPENVPN_TCP_PORT:
+                    settings.port = OBFS_OPENVPN_TCP_PORT
+                    enforced_values["port"] = OBFS_OPENVPN_TCP_PORT
                 if self._normalize_proto(settings.protocol) != "tcp":
                     settings.protocol = "tcp"
                     enforced_values["protocol"] = "tcp"
@@ -312,7 +317,7 @@ class ObfuscationManager:
                     enforced_values["tls_mode"] = "tls-crypt"
 
             if self._requires_http_proxy(mode):
-                proxy_port = int(settings.proxy_port or 8080)
+                proxy_port = int(settings.proxy_port or OBFS_DEFAULT_PROXY_PORT)
                 settings.proxy_port = proxy_port
                 settings.proxy_server = (settings.proxy_server or settings.proxy_address or "").strip() or None
                 settings.proxy_address = settings.proxy_server
@@ -377,11 +382,14 @@ class ObfuscationManager:
                         }
 
             if self._requires_transport_override(mode):
-                openvpn_allow = self._allow_port(443, "tcp", executed_commands)
+                openvpn_allow = self._allow_port(OBFS_OPENVPN_TCP_PORT, "tcp", executed_commands)
                 if not openvpn_allow.get("success"):
                     return {
                         "success": False,
-                        "message": openvpn_allow.get("message", "Failed to allow OpenVPN TCP 443"),
+                        "message": openvpn_allow.get(
+                            "message",
+                            f"Failed to allow OpenVPN TCP {OBFS_OPENVPN_TCP_PORT}",
+                        ),
                         "commands": executed_commands,
                         "is_mock": not self.is_production,
                     }

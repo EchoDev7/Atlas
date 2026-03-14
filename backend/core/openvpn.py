@@ -20,6 +20,21 @@ import base64
 from urllib.parse import urlparse
 from sqlalchemy import text
 
+from backend.core.config import (
+    OPENVPN_ATLAS_DB_PATH,
+    OPENVPN_AUTH_USER_PASS_SCRIPT_PATH,
+    OPENVPN_CLIENT_CONFIGS_DIR,
+    OPENVPN_DEFAULT_MANAGEMENT_HOST,
+    OPENVPN_DEFAULT_MANAGEMENT_PORT,
+    OPENVPN_DIR,
+    OPENVPN_ENFORCEMENT_HOOK_PATH,
+    OPENVPN_PKI_DIR,
+    OPENVPN_SERVER_DIR,
+    OPENVPN_SERVICE_CANDIDATES,
+    OPENVPN_SERVICE_NAME,
+    OPENVPN_STATUS_LOG_PATH,
+    OPENVPN_UPDATE_RESOLV_CONF_PATH,
+)
 from backend.core.pki import PKIManager
 from backend.services.protocols.base_vpn_service import BaseVPNService
 
@@ -35,17 +50,17 @@ class OpenVPNConfig:
     Based on official OpenVPN documentation.
     """
     # Standard Ubuntu/Debian paths for openvpn-server@server service.
-    OPENVPN_DIR = Path("/etc/openvpn")
-    OPENVPN_SERVER_DIR = OPENVPN_DIR / "server"
+    OPENVPN_DIR = OPENVPN_DIR
+    OPENVPN_SERVER_DIR = OPENVPN_SERVER_DIR
     EASYRSA_DIR = OPENVPN_SERVER_DIR
-    PKI_DIR = OPENVPN_SERVER_DIR / "pki"
+    PKI_DIR = OPENVPN_PKI_DIR
     
     # Server configuration
     SERVER_CONF = OPENVPN_SERVER_DIR / "server.conf"
     LEGACY_SERVER_CONF = OPENVPN_DIR / "server.conf"
-    ENFORCEMENT_HOOK = OPENVPN_SERVER_DIR / "atlas_enforcement_hook.py"
-    AUTH_USER_PASS_SCRIPT = OPENVPN_SERVER_DIR / "atlas_auth_user_pass.py"
-    STATUS_LOG = Path("/run/openvpn-server/status-server.log")
+    ENFORCEMENT_HOOK = OPENVPN_ENFORCEMENT_HOOK_PATH
+    AUTH_USER_PASS_SCRIPT = OPENVPN_AUTH_USER_PASS_SCRIPT_PATH
+    STATUS_LOG = OPENVPN_STATUS_LOG_PATH
     
     # PKI paths (Easy-RSA 3 standard structure)
     CA_CERT = PKI_DIR / "ca.crt"
@@ -62,11 +77,11 @@ class OpenVPNConfig:
     CLIENT_KEYS_DIR = PKI_DIR / "private"
     
     # Client configs output directory
-    CLIENT_CONFIGS_DIR = Path("/etc/openvpn/client-configs")
+    CLIENT_CONFIGS_DIR = OPENVPN_CLIENT_CONFIGS_DIR
     
     # Service name
-    SERVICE_NAME = "openvpn-server@server"
-    SERVICE_CANDIDATES = ("openvpn-server@server", "openvpn@server", "openvpn.service")
+    SERVICE_NAME = OPENVPN_SERVICE_NAME
+    SERVICE_CANDIDATES = OPENVPN_SERVICE_CANDIDATES
 
 
 class MockOpenVPNResponse:
@@ -232,9 +247,9 @@ class OpenVPNManager(BaseVPNService):
 
     def _get_management_socket_target(self) -> Tuple[str, int]:
         """Resolve OpenVPN management interface host/port from runtime settings."""
-        host = "127.0.0.1"
-        # Operational constraint: production OpenVPN management interface is pinned to 5555.
-        return host, 5555
+        host = OPENVPN_DEFAULT_MANAGEMENT_HOST
+        # Operational constraint: production OpenVPN management interface is pinned to OPENVPN_DEFAULT_MANAGEMENT_PORT.
+        return host, OPENVPN_DEFAULT_MANAGEMENT_PORT
 
     def _send_management_command(self, command: str, timeout: float = 3.0) -> Tuple[bool, str]:
         """Send a command to OpenVPN management interface and return raw response."""
@@ -648,7 +663,7 @@ class OpenVPNManager(BaseVPNService):
             "keepalive_ping": 10,
             "keepalive_timeout": 120,
             "inactive_timeout": 300,
-            "management_port": 5555,
+            "management_port": OPENVPN_DEFAULT_MANAGEMENT_PORT,
             "verbosity": 3,
             "enable_auth_nocache": True,
             "enable_dns_leak_protection": True,
@@ -905,7 +920,7 @@ except Exception:
     bcrypt = None
 
 
-ATLAS_DB_PATH = (os.environ.get("ATLAS_DB_PATH") or "/etc/openvpn/server/atlas.db").strip()
+ATLAS_DB_PATH = (os.environ.get("ATLAS_DB_PATH") or str(OPENVPN_ATLAS_DB_PATH)).strip()
 AUTH_LOG_PATH = "/var/log/atlas_auth.log"
 PBKDF2_SCHEME = "pbkdf2_sha256"
 BYTES_PER_GB = 1024 ** 3
@@ -2798,8 +2813,8 @@ if __name__ == "__main__":
                 [
                     "setenv opt script-security 2",
                     "setenv opt setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                    "setenv opt up /etc/openvpn/update-resolv-conf",
-                    "setenv opt down /etc/openvpn/update-resolv-conf",
+                    f"setenv opt up {OPENVPN_UPDATE_RESOLV_CONF_PATH}",
+                    f"setenv opt down {OPENVPN_UPDATE_RESOLV_CONF_PATH}",
                     "setenv opt down-pre",
                 ]
             )
@@ -3286,7 +3301,7 @@ if __name__ == "__main__":
             keepalive_ping = int(settings.get("keepalive_ping", 10))
             keepalive_timeout = int(settings.get("keepalive_timeout", 120))
             inactive_timeout = int(settings.get("inactive_timeout", 300))
-            management_port = int(settings.get("management_port", 5555))
+            management_port = int(settings.get("management_port", OPENVPN_DEFAULT_MANAGEMENT_PORT))
             verbosity = int(settings.get("verbosity", 3))
 
             custom_directives = (settings.get("custom_directives") or "").strip()

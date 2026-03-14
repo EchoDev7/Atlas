@@ -455,7 +455,12 @@ class LimitEnforcementScheduler:
         This protects quota enforcement during an ongoing session (before disconnect hooks run).
         """
         if self._enforcement_lock.locked():
-            logger.warning("Skipping live quota enforcement: previous enforcement cycle still running")
+            logger.warning(
+                "Skipping live quota enforcement: previous enforcement cycle still running",
+                extra={
+                    "event_type": "scheduler_live_quota_skip_locked",
+                },
+            )
             return
 
         async with self._enforcement_lock:
@@ -553,6 +558,13 @@ class LimitEnforcementScheduler:
                                 violation_type,
                                 kill_results["openvpn"]["message"],
                                 kill_results["wireguard"]["message"],
+                                extra={
+                                    "event_type": "scheduler_disconnect_failed",
+                                    "username": str(user.username),
+                                    "violation_type": str(violation_type),
+                                    "openvpn_success": bool(kill_results["openvpn"]["success"]),
+                                    "wireguard_success": bool(kill_results["wireguard"]["success"]),
+                                },
                             )
                             continue
 
@@ -561,6 +573,11 @@ class LimitEnforcementScheduler:
                             "Disconnected violation user %s type=%s",
                             user.username,
                             violation_type,
+                            extra={
+                                "event_type": "scheduler_disconnect_violation_user",
+                                "username": str(user.username),
+                                "violation_type": str(violation_type),
+                            },
                         )
 
                     logger.warning(
@@ -573,9 +590,24 @@ class LimitEnforcementScheduler:
                         disconnected,
                         kill_failed,
                         skipped_cooldown,
+                        extra={
+                            "event_type": "scheduler_live_enforcement_summary",
+                            "checked_online": int(checked_online),
+                            "violations_detected": int(violations_detected),
+                            "disconnected": int(disconnected),
+                            "kill_failed": int(kill_failed),
+                            "skipped_cooldown": int(skipped_cooldown),
+                        },
                     )
                 except Exception as exc:
-                    logger.error("Live quota enforcement failed: %s", exc)
+                    logger.error(
+                        "Live quota enforcement failed: %s",
+                        exc,
+                        extra={
+                            "event_type": "scheduler_live_quota_enforcement_failed",
+                            "error_message": str(exc),
+                        },
+                    )
                     db.rollback()
                 finally:
                     db.close()
@@ -586,7 +618,12 @@ class LimitEnforcementScheduler:
         This runs periodically in the background.
         """
         if self._enforcement_lock.locked():
-            logger.warning("Skipping periodic limit enforcement: previous enforcement cycle still running")
+            logger.warning(
+                "Skipping periodic limit enforcement: previous enforcement cycle still running",
+                extra={
+                    "event_type": "scheduler_periodic_enforcement_skip_locked",
+                },
+            )
             return
 
         async with self._enforcement_lock:
@@ -653,12 +690,32 @@ class LimitEnforcementScheduler:
                         self._disconnect_user_across_protocols(username)
                     
                     if disabled_count > 0:
-                        logger.info(f"Limit enforcement complete: {disabled_count} user(s) disabled")
+                        logger.info(
+                            "Limit enforcement complete: %s user(s) disabled",
+                            disabled_count,
+                            extra={
+                                "event_type": "scheduler_limit_enforcement_completed",
+                                "disabled_user_count": int(disabled_count),
+                            },
+                        )
                     else:
-                        logger.info("Limit enforcement complete: No violations found")
+                        logger.info(
+                            "Limit enforcement complete: No violations found",
+                            extra={
+                                "event_type": "scheduler_limit_enforcement_completed",
+                                "disabled_user_count": 0,
+                            },
+                        )
                 
                 except Exception as e:
-                    logger.error(f"Error during limit enforcement: {e}")
+                    logger.error(
+                        "Error during limit enforcement: %s",
+                        e,
+                        extra={
+                            "event_type": "scheduler_limit_enforcement_failed",
+                            "error_message": str(e),
+                        },
+                    )
                     db.rollback()
                 finally:
                     db.close()
