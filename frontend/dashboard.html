@@ -369,6 +369,12 @@
                         }
 
                         const data = await response.json();
+                        const requiresPasswordChange = !!(data && data.requires_password_change);
+                        localStorage.setItem('requires_password_change', requiresPasswordChange ? '1' : '0');
+                        if (requiresPasswordChange) {
+                            window.location.href = '/settings?force_password_change=1';
+                            return;
+                        }
                         this.username = data.username;
 
                         await this.loadDashboardOverview();
@@ -425,6 +431,7 @@
 
                 logout() {
                     localStorage.removeItem('access_token');
+                    localStorage.removeItem('requires_password_change');
                     window.location.href = '/login';
                 }
             }

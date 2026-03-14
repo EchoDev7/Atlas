@@ -13,8 +13,10 @@ from backend.config import settings
 from backend.core.routing.pbr_manager import PBRManager
 from backend.database import SessionLocal, init_db
 from backend.models.general_settings import GeneralSettings
+from backend.models.user import Admin
 from backend.routers import auth, openvpn, settings as server_settings, vpn_users, audit_logs, dashboard, system, terminal, routing
 from backend.services.scheduler_service import get_scheduler
+from backend.services.auth_service import is_default_admin_password_hash
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,21 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     init_db()
+    db = SessionLocal()
+    try:
+        admin = db.query(Admin).filter(Admin.username == settings.ADMIN_USERNAME).first()
+        if admin and is_default_admin_password_hash(admin.hashed_password):
+            logger.critical(
+                (
+                    "SECURITY ALERT: The default admin password is still active. "
+                    "Immediate password rotation is required."
+                )
+            )
+    except Exception as exc:
+        logger.exception("Failed to run startup default-password security check: %s", exc)
+    finally:
+        db.close()
+
     try:
         sync_result = PBRManager().apply_all_active_rules()
         if not sync_result.get("success"):

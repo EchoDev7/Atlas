@@ -12,6 +12,7 @@ from backend.config import settings
 
 PBKDF2_SCHEME = "pbkdf2_sha256"
 PBKDF2_ITERATIONS = 390000
+DEFAULT_ADMIN_PASSWORD_FALLBACK = "admin123"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -69,3 +70,23 @@ def decode_access_token(token: str) -> Optional[str]:
         return username
     except JWTError:
         return None
+
+
+def default_admin_password_candidates() -> tuple[str, ...]:
+    candidates: list[str] = []
+    configured_default = str(getattr(settings, "ADMIN_PASSWORD", "") or "").strip()
+    if configured_default:
+        candidates.append(configured_default)
+    if DEFAULT_ADMIN_PASSWORD_FALLBACK not in candidates:
+        candidates.append(DEFAULT_ADMIN_PASSWORD_FALLBACK)
+    return tuple(candidates)
+
+
+def is_default_admin_password_hash(hashed_password: str) -> bool:
+    normalized_hash = str(hashed_password or "").strip()
+    if not normalized_hash:
+        return False
+    for candidate in default_admin_password_candidates():
+        if verify_password(candidate, normalized_hash):
+            return True
+    return False

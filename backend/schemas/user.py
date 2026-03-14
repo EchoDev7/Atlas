@@ -15,6 +15,7 @@ class AdminCreate(AdminBase):
 class AdminResponse(AdminBase):
     id: int
     is_active: bool
+    requires_password_change: bool = False
     created_at: datetime
     last_login: Optional[datetime] = None
     
@@ -25,6 +26,7 @@ class AdminResponse(AdminBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    requires_password_change: bool = False
 
 
 class TokenData(BaseModel):

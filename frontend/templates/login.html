@@ -327,6 +327,10 @@
                         }
 
                         localStorage.setItem('access_token', data.access_token);
+                        localStorage.setItem(
+                            'requires_password_change',
+                            data && data.requires_password_change ? '1' : '0'
+                        );
                         
                         window.location.href = '/dashboard';
                     } catch (err) {

@@ -30,6 +30,7 @@ class LimitEnforcementScheduler:
         self.openvpn_service = protocol_registry.get("openvpn")
         self.wireguard_service = protocol_registry.get("wireguard")
         self._state_sync_lock = asyncio.Lock()
+        self._enforcement_lock = asyncio.Lock()
         self._runtime_usage_cache: Dict[str, Dict[str, int]] = {}
         self._kill_cooldown_until: Dict[str, datetime] = {}
         self._kill_cooldown_seconds = 45
@@ -453,204 +454,214 @@ class LimitEnforcementScheduler:
 
         This protects quota enforcement during an ongoing session (before disconnect hooks run).
         """
-        async with self._state_sync_lock:
-            db: Session = SessionLocal()
-            try:
-                runtime_stats = self._get_openvpn_runtime_stats()
-                users = db.query(VPNUser).filter(VPNUser.is_enabled == True).all()
+        if self._enforcement_lock.locked():
+            logger.warning("Skipping live quota enforcement: previous enforcement cycle still running")
+            return
 
-                checked_online = 0
-                violations_detected = 0
-                skipped_cooldown = 0
-                disconnected = 0
-                kill_failed = 0
-                now = datetime.utcnow()
+        async with self._enforcement_lock:
+            async with self._state_sync_lock:
+                db: Session = SessionLocal()
+                try:
+                    runtime_stats = self._get_openvpn_runtime_stats()
+                    users = db.query(VPNUser).filter(VPNUser.is_enabled == True).all()
 
-                for user in users:
-                    stats = runtime_stats.get(user.username) or {}
-                    openvpn_live_connections = max(0, int(stats.get("connections") or 0))
-                    persisted_connections = max(0, int(user.current_connections or 0))
-                    effective_connections = max(openvpn_live_connections, persisted_connections)
-                    if effective_connections <= 0:
-                        continue
+                    checked_online = 0
+                    violations_detected = 0
+                    skipped_cooldown = 0
+                    disconnected = 0
+                    kill_failed = 0
+                    now = datetime.utcnow()
 
-                    checked_online += 1
-                    user.refresh_limit_flags(now)
+                    for user in users:
+                        stats = runtime_stats.get(user.username) or {}
+                        openvpn_live_connections = max(0, int(stats.get("connections") or 0))
+                        persisted_connections = max(0, int(user.current_connections or 0))
+                        effective_connections = max(openvpn_live_connections, persisted_connections)
+                        if effective_connections <= 0:
+                            continue
 
-                    if now < self._kill_cooldown_until.get(user.username, datetime.min):
-                        skipped_cooldown += 1
-                        continue
+                        checked_online += 1
+                        user.refresh_limit_flags(now)
 
-                    violation_type: Optional[str] = None
-                    violation_details: Dict[str, int] = {}
+                        if now < self._kill_cooldown_until.get(user.username, datetime.min):
+                            skipped_cooldown += 1
+                            continue
 
-                    if user.is_expired:
-                        violation_type = "expiry"
-                    else:
-                        limit_bytes = self._effective_limit_bytes(user)
-                        if limit_bytes not in {None, 0}:
-                            live_sent = max(0, int(stats.get("bytes_sent") or 0))
-                            live_received = max(0, int(stats.get("bytes_received") or 0))
-                            db_sent = max(0, int(user.total_bytes_sent or 0))
-                            db_received = max(0, int(user.total_bytes_received or 0))
-                            effective_usage = max(
+                        violation_type: Optional[str] = None
+                        violation_details: Dict[str, int] = {}
+
+                        if user.is_expired:
+                            violation_type = "expiry"
+                        else:
+                            limit_bytes = self._effective_limit_bytes(user)
+                            if limit_bytes not in {None, 0}:
+                                live_sent = max(0, int(stats.get("bytes_sent") or 0))
+                                live_received = max(0, int(stats.get("bytes_received") or 0))
+                                db_sent = max(0, int(user.total_bytes_sent or 0))
+                                db_received = max(0, int(user.total_bytes_received or 0))
+                                effective_usage = max(
+                                    max(0, int(user.traffic_used_bytes or 0)),
+                                    db_sent + db_received + live_sent + live_received,
+                                )
+
+                                if effective_usage >= limit_bytes:
+                                    violation_type = "quota"
+                                    violation_details = {
+                                        "effective_usage": effective_usage,
+                                        "limit_bytes": int(limit_bytes),
+                                    }
+
+                        if not violation_type:
+                            continue
+
+                        violations_detected += 1
+                        self._kill_cooldown_until[user.username] = now + timedelta(seconds=self._kill_cooldown_seconds)
+
+                        if violation_type == "quota":
+                            effective_usage = int(violation_details.get("effective_usage") or 0)
+                            user.traffic_used_bytes = max(
                                 max(0, int(user.traffic_used_bytes or 0)),
-                                db_sent + db_received + live_sent + live_received,
+                                effective_usage,
                             )
+                            user.is_data_limit_exceeded = True
+                            used_gb = user.traffic_used_bytes / float(BYTES_PER_GB)
+                            limit_gb = int(violation_details.get("limit_bytes") or 0) / float(BYTES_PER_GB)
+                            user.disabled_reason = (
+                                f"Automatic: Data limit exceeded ({used_gb:.2f} GB / {limit_gb:.2f} GB)"
+                            )
+                        else:
+                            expiry_point = user.effective_access_expires_at
+                            expiry_label = expiry_point.strftime("%Y-%m-%d %H:%M:%S") if expiry_point else "unknown"
+                            user.disabled_reason = f"Automatic: Account expired at {expiry_label}"
 
-                            if effective_usage >= limit_bytes:
-                                violation_type = "quota"
-                                violation_details = {
-                                    "effective_usage": effective_usage,
-                                    "limit_bytes": int(limit_bytes),
-                                }
+                        user.is_enabled = False
+                        user.current_connections = 0
+                        if not user.disabled_at:
+                            user.disabled_at = now
+                        user.updated_at = now
+                        user.refresh_limit_flags(now)
 
-                    if not violation_type:
-                        continue
+                        db.commit()
+                        self._sync_openvpn_auth_db_snapshot()
 
-                    violations_detected += 1
-                    self._kill_cooldown_until[user.username] = now + timedelta(seconds=self._kill_cooldown_seconds)
+                        kill_results = self._disconnect_user_across_protocols(user.username)
+                        if not kill_results["openvpn"]["success"] and not kill_results["wireguard"]["success"]:
+                            kill_failed += 1
+                            logger.warning(
+                                "Failed to disconnect violation user %s type=%s openvpn=%s wireguard=%s",
+                                user.username,
+                                violation_type,
+                                kill_results["openvpn"]["message"],
+                                kill_results["wireguard"]["message"],
+                            )
+                            continue
 
-                    if violation_type == "quota":
-                        effective_usage = int(violation_details.get("effective_usage") or 0)
-                        user.traffic_used_bytes = max(
-                            max(0, int(user.traffic_used_bytes or 0)),
-                            effective_usage,
-                        )
-                        user.is_data_limit_exceeded = True
-                        used_gb = user.traffic_used_bytes / float(BYTES_PER_GB)
-                        limit_gb = int(violation_details.get("limit_bytes") or 0) / float(BYTES_PER_GB)
-                        user.disabled_reason = (
-                            f"Automatic: Data limit exceeded ({used_gb:.2f} GB / {limit_gb:.2f} GB)"
-                        )
-                    else:
-                        expiry_point = user.effective_access_expires_at
-                        expiry_label = expiry_point.strftime("%Y-%m-%d %H:%M:%S") if expiry_point else "unknown"
-                        user.disabled_reason = f"Automatic: Account expired at {expiry_label}"
-
-                    user.is_enabled = False
-                    user.current_connections = 0
-                    if not user.disabled_at:
-                        user.disabled_at = now
-                    user.updated_at = now
-                    user.refresh_limit_flags(now)
-
-                    db.commit()
-                    self._sync_openvpn_auth_db_snapshot()
-
-                    kill_results = self._disconnect_user_across_protocols(user.username)
-                    if not kill_results["openvpn"]["success"] and not kill_results["wireguard"]["success"]:
-                        kill_failed += 1
+                        disconnected += 1
                         logger.warning(
-                            "Failed to disconnect violation user %s type=%s openvpn=%s wireguard=%s",
+                            "Disconnected violation user %s type=%s",
                             user.username,
                             violation_type,
-                            kill_results["openvpn"]["message"],
-                            kill_results["wireguard"]["message"],
                         )
-                        continue
 
-                    disconnected += 1
                     logger.warning(
-                        "Disconnected violation user %s type=%s",
-                        user.username,
-                        violation_type,
+                        (
+                            "Live enforcement summary checked_online=%s violations=%s disconnected=%s "
+                            "kill_failed=%s skipped_cooldown=%s"
+                        ),
+                        checked_online,
+                        violations_detected,
+                        disconnected,
+                        kill_failed,
+                        skipped_cooldown,
                     )
-
-                logger.warning(
-                    (
-                        "Live enforcement summary checked_online=%s violations=%s disconnected=%s "
-                        "kill_failed=%s skipped_cooldown=%s"
-                    ),
-                    checked_online,
-                    violations_detected,
-                    disconnected,
-                    kill_failed,
-                    skipped_cooldown,
-                )
-            except Exception as exc:
-                logger.error("Live quota enforcement failed: %s", exc)
-                db.rollback()
-            finally:
-                db.close()
+                except Exception as exc:
+                    logger.error("Live quota enforcement failed: %s", exc)
+                    db.rollback()
+                finally:
+                    db.close()
     
     async def enforce_limits(self):
         """
         Check all users for limit violations and disable accounts if needed.
         This runs periodically in the background.
         """
-        async with self._state_sync_lock:
-            db: Session = SessionLocal()
-            try:
-                logger.info("Running limit enforcement check...")
-                
-                # Get all enabled users
-                users = db.query(VPNUser).filter(VPNUser.is_enabled == True).all()
-                
-                disabled_count = 0
-                disabled_usernames: list[str] = []
-                
-                for user in users:
-                    should_disable = False
-                    disable_reason = []
-                    now = datetime.utcnow()
+        if self._enforcement_lock.locked():
+            logger.warning("Skipping periodic limit enforcement: previous enforcement cycle still running")
+            return
 
-                    user.refresh_limit_flags(now)
+        async with self._enforcement_lock:
+            async with self._state_sync_lock:
+                db: Session = SessionLocal()
+                try:
+                    logger.info("Running limit enforcement check...")
                     
-                    # Check expiry date
-                    if user.is_expired:
-                        should_disable = True
-                        expiry_point = user.effective_access_expires_at
-                        expiry_label = expiry_point.strftime('%Y-%m-%d') if expiry_point else "unknown"
-                        disable_reason.append(f"Expired on {expiry_label}")
-                        logger.info(f"User {user.username} expired on {expiry_point}")
+                    # Get all enabled users
+                    users = db.query(VPNUser).filter(VPNUser.is_enabled == True).all()
                     
-                    # Check data limit
-                    limit_bytes = user.effective_traffic_limit_bytes
-                    if limit_bytes is not None:
-                        used_bytes = user.total_bytes
-                        if used_bytes >= limit_bytes:
+                    disabled_count = 0
+                    disabled_usernames: list[str] = []
+                    
+                    for user in users:
+                        should_disable = False
+                        disable_reason = []
+                        now = datetime.utcnow()
+
+                        user.refresh_limit_flags(now)
+                        
+                        # Check expiry date
+                        if user.is_expired:
                             should_disable = True
-                            used_gb = used_bytes / (1024 ** 3)
-                            limit_gb = limit_bytes / float(1024 ** 3)
-                            disable_reason.append(f"Data limit exceeded ({used_gb:.2f} GB / {limit_gb:.2f} GB)")
-                            logger.info(f"User {user.username} exceeded data limit: {used_gb:.2f} GB / {limit_gb:.2f} GB")
+                            expiry_point = user.effective_access_expires_at
+                            expiry_label = expiry_point.strftime('%Y-%m-%d') if expiry_point else "unknown"
+                            disable_reason.append(f"Expired on {expiry_label}")
+                            logger.info(f"User {user.username} expired on {expiry_point}")
+                        
+                        # Check data limit
+                        limit_bytes = user.effective_traffic_limit_bytes
+                        if limit_bytes is not None:
+                            used_bytes = user.total_bytes
+                            if used_bytes >= limit_bytes:
+                                should_disable = True
+                                used_gb = used_bytes / (1024 ** 3)
+                                limit_gb = limit_bytes / float(1024 ** 3)
+                                disable_reason.append(f"Data limit exceeded ({used_gb:.2f} GB / {limit_gb:.2f} GB)")
+                                logger.info(f"User {user.username} exceeded data limit: {used_gb:.2f} GB / {limit_gb:.2f} GB")
+                        
+                        # Disable user if any limit is violated
+                        if should_disable:
+                            user.is_enabled = False
+                            user.current_connections = 0
+                            user.disabled_at = now
+                            user.disabled_reason = "; ".join(disable_reason)
+                            
+                            # Revoke all active configs
+                            for config in user.configs:
+                                if config.is_active:
+                                    config.is_active = False
+                                    config.revoked_at = now
+                                    config.revoked_reason = "Automatic: " + user.disabled_reason
+                            
+                            disabled_count += 1
+                            disabled_usernames.append(str(user.username))
+                            logger.warning(f"User {user.username} disabled: {user.disabled_reason}")
                     
-                    # Disable user if any limit is violated
-                    if should_disable:
-                        user.is_enabled = False
-                        user.current_connections = 0
-                        user.disabled_at = now
-                        user.disabled_reason = "; ".join(disable_reason)
-                        
-                        # Revoke all active configs
-                        for config in user.configs:
-                            if config.is_active:
-                                config.is_active = False
-                                config.revoked_at = now
-                                config.revoked_reason = "Automatic: " + user.disabled_reason
-                        
-                        disabled_count += 1
-                        disabled_usernames.append(str(user.username))
-                        logger.warning(f"User {user.username} disabled: {user.disabled_reason}")
-                
-                # Commit all changes
-                db.commit()
-                self._sync_openvpn_auth_db_snapshot()
+                    # Commit all changes
+                    db.commit()
+                    self._sync_openvpn_auth_db_snapshot()
 
-                for username in disabled_usernames:
-                    self._disconnect_user_across_protocols(username)
+                    for username in disabled_usernames:
+                        self._disconnect_user_across_protocols(username)
+                    
+                    if disabled_count > 0:
+                        logger.info(f"Limit enforcement complete: {disabled_count} user(s) disabled")
+                    else:
+                        logger.info("Limit enforcement complete: No violations found")
                 
-                if disabled_count > 0:
-                    logger.info(f"Limit enforcement complete: {disabled_count} user(s) disabled")
-                else:
-                    logger.info("Limit enforcement complete: No violations found")
-            
-            except Exception as e:
-                logger.error(f"Error during limit enforcement: {e}")
-                db.rollback()
-            finally:
-                db.close()
+                except Exception as e:
+                    logger.error(f"Error during limit enforcement: {e}")
+                    db.rollback()
+                finally:
+                    db.close()
     
     async def check_user_limits(self, user_id: int, db: Session) -> dict:
         """

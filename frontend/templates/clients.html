@@ -1408,6 +1408,29 @@
                         window.location.href = '/login';
                         return;
                     }
+
+                    try {
+                        const authResponse = await fetch('/api/auth/me', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        if (!authResponse.ok) {
+                            throw new Error('Authentication failed');
+                        }
+                        const authData = await authResponse.json();
+                        const requiresPasswordChange = !!(authData && authData.requires_password_change);
+                        localStorage.setItem('requires_password_change', requiresPasswordChange ? '1' : '0');
+                        if (requiresPasswordChange) {
+                            window.location.href = '/settings?force_password_change=1';
+                            return;
+                        }
+                    } catch (_) {
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('requires_password_change');
+                        window.location.href = '/login';
+                        return;
+                    }
                     
                     // Load data
                     await this.loadClients({ preservePage: false });
@@ -2204,6 +2227,7 @@
                 
                 logout() {
                     localStorage.removeItem('access_token');
+                    localStorage.removeItem('requires_password_change');
                     window.location.href = '/login';
                 },
                 

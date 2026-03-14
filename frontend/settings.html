@@ -106,6 +106,53 @@
         </div>
     </nav>
 
+    <div x-cloak
+         x-show="requiresPasswordChange"
+         class="fixed inset-0 z-[120] flex items-center justify-center px-4 py-8"
+         :class="darkMode ? 'bg-slate-950/85' : 'bg-slate-900/65'">
+        <div class="w-full max-w-xl rounded-2xl border p-6 sm:p-8 shadow-2xl"
+             :class="darkMode ? 'bg-slate-900 border-red-500/40' : 'bg-white border-red-200'">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold" :class="darkMode ? 'text-red-300' : 'text-red-700'">Immediate Password Change Required</h2>
+                <p class="mt-2 text-sm leading-relaxed" :class="darkMode ? 'text-slate-300' : 'text-slate-600'">
+                    Your account is using a default password. You must set a new password now before continuing.
+                </p>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-1.5" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Current Password</label>
+                    <input type="password"
+                           x-model="adminPasswordForm.current_password"
+                           autocomplete="current-password"
+                           class="w-full rounded-xl border px-4 py-3 text-sm"
+                           :class="darkMode ? 'bg-slate-800 border-slate-600 text-slate-100 placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'"
+                           placeholder="Enter current password"
+                           :disabled="changingAdminPassword">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-1.5" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">New Password</label>
+                    <input type="password"
+                           x-model="adminPasswordForm.new_password"
+                           autocomplete="new-password"
+                           class="w-full rounded-xl border px-4 py-3 text-sm"
+                           :class="darkMode ? 'bg-slate-800 border-slate-600 text-slate-100 placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'"
+                           placeholder="Enter strong new password"
+                           :disabled="changingAdminPassword">
+                </div>
+            </div>
+
+            <button type="button"
+                    @click="changeAdminPassword()"
+                    :disabled="changingAdminPassword"
+                    class="mt-6 w-full rounded-xl py-3 text-sm font-semibold transition"
+                    :class="changingAdminPassword ? (darkMode ? 'bg-red-800 text-red-200 cursor-not-allowed' : 'bg-red-200 text-red-700 cursor-not-allowed') : (darkMode ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-red-600 hover:bg-red-700 text-white')">
+                <span x-show="!changingAdminPassword">Update Password Now</span>
+                <span x-show="changingAdminPassword">Updating Password...</span>
+            </button>
+        </div>
+    </div>
+
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div class="mb-6">
             <h1 class="text-3xl sm:text-4xl font-bold theme-transition mb-1" :class="darkMode ? 'text-white' : 'text-slate-900'">Server Settings</h1>
@@ -1784,6 +1831,7 @@
                     current_password: '',
                     new_password: '',
                 },
+                requiresPasswordChange: false,
                 changingAdminPassword: false,
                 serverIps: {
                     public_ipv4: 'Loading...',
@@ -2305,6 +2353,15 @@
                         return;
                     }
 
+                    try {
+                        await this.syncAdminSecurityState();
+                    } catch (_) {
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('requires_password_change');
+                        window.location.href = '/login';
+                        return;
+                    }
+
                     this.$watch('generalForm.panel_https_port', (panelPort) => {
                         if (Number(this.generalForm.subscription_https_port) === Number(panelPort)) {
                             const fallbackPort = [2053, 2083, 2087, 2096, 8443].find(port => port !== Number(panelPort));
@@ -2399,6 +2456,29 @@
                     await this.loadRoutingInterfaces({ silent: true });
                     await this.loadRoutingProxyPorts({ silent: true });
                     await this.loadRoutingRules({ silent: true });
+                },
+
+                async syncAdminSecurityState() {
+                    const token = localStorage.getItem('access_token');
+                    if (!token) {
+                        throw new Error('Not authenticated');
+                    }
+                    const response = await fetch('/api/auth/me', {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    if (response.status === 401) {
+                        throw new Error('Authentication failed');
+                    }
+                    if (!response.ok) {
+                        throw new Error('Failed to load admin security state');
+                    }
+                    const payload = await response.json();
+                    this.requiresPasswordChange = !!(payload && payload.requires_password_change);
+                    localStorage.setItem('requires_password_change', this.requiresPasswordChange ? '1' : '0');
+                    if (this.requiresPasswordChange) {
+                        this.activeProtocolTab = 'general';
+                        this.activeGeneralSection = 'security';
+                    }
                 },
 
                 async loadServerIps() {
@@ -3381,8 +3461,16 @@
                         return;
                     }
 
-                    if (newPassword.length < 8) {
-                        this.showToast('New password must be at least 8 characters', 'error');
+                    if (newPassword.length < 10) {
+                        this.showToast('New password must be at least 10 characters', 'error');
+                        return;
+                    }
+                    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+                        this.showToast('New password must include uppercase, lowercase, and a number', 'error');
+                        return;
+                    }
+                    if (!/[^A-Za-z0-9]/.test(newPassword)) {
+                        this.showToast('New password must include at least one symbol', 'error');
                         return;
                     }
 
@@ -3424,6 +3512,13 @@
 
                         this.adminPasswordForm.current_password = '';
                         this.adminPasswordForm.new_password = '';
+                        this.requiresPasswordChange = false;
+                        localStorage.setItem('requires_password_change', '0');
+                        const currentUrl = new URL(window.location.href);
+                        if (currentUrl.searchParams.has('force_password_change')) {
+                            currentUrl.searchParams.delete('force_password_change');
+                            window.history.replaceState({}, '', currentUrl.toString());
+                        }
                         this.showToast('Admin password updated successfully', 'success');
                     } catch (error) {
                         this.showToast(error.message || 'Failed to update admin password', 'error');
@@ -3798,6 +3893,7 @@
 
                 logout() {
                     localStorage.removeItem('access_token');
+                    localStorage.removeItem('requires_password_change');
                     window.location.href = '/login';
                 },
             };

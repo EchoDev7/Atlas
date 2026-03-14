@@ -13,7 +13,12 @@ from backend.schemas.user import (
     AdminPasswordChangeRequest,
     AdminPasswordChangeResponse,
 )
-from backend.services.auth_service import verify_password, create_access_token, get_password_hash
+from backend.services.auth_service import (
+    verify_password,
+    create_access_token,
+    get_password_hash,
+    is_default_admin_password_hash,
+)
 from backend.services.audit_service import extract_client_ip, record_audit_event
 from backend.dependencies import get_current_user
 from backend.config import settings
@@ -93,7 +98,13 @@ def _clear_login_failures(ip: str) -> None:
         _login_attempts_by_ip.pop(ip, None)
 
 
-def _authenticate_and_issue_token(login_data: LoginRequest, db: Session) -> Dict[str, str]:
+def _requires_admin_password_change(user: Admin) -> bool:
+    if not user or user.username != settings.ADMIN_USERNAME:
+        return False
+    return is_default_admin_password_hash(user.hashed_password)
+
+
+def _authenticate_and_issue_token(login_data: LoginRequest, db: Session) -> Dict[str, Any]:
     user = db.query(Admin).filter(Admin.username == login_data.username).first()
 
     if not user:
@@ -131,10 +142,14 @@ def _authenticate_and_issue_token(login_data: LoginRequest, db: Session) -> Dict
     db.commit()
 
     access_token = create_access_token(data={"sub": user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "requires_password_change": _requires_admin_password_change(user),
+    }
 
 
-def _login_with_rate_limit(login_data: LoginRequest, request: Request, db: Session) -> Dict[str, str]:
+def _login_with_rate_limit(login_data: LoginRequest, request: Request, db: Session) -> Dict[str, Any]:
     client_ip = extract_client_ip(request)
     now = datetime.utcnow()
     max_failures, block_duration = _safe_rate_limit_config_from_db()
@@ -190,7 +205,15 @@ def issue_token(login_data: LoginRequest, request: Request, db: Session = Depend
 
 @router.get("/me", response_model=AdminResponse)
 def get_current_admin(current_user: Admin = Depends(get_current_user)):
-    return current_user
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "email": current_user.email,
+        "is_active": current_user.is_active,
+        "requires_password_change": _requires_admin_password_change(current_user),
+        "created_at": current_user.created_at,
+        "last_login": current_user.last_login,
+    }
 
 
 @router.post("/change-password", response_model=AdminPasswordChangeResponse)
