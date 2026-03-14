@@ -9,41 +9,15 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 
 IPSEC_PSK="${ATLAS_IPSEC_PSK:-atlas-change-me-strong-psk}"
-PPTP_LOCAL_IP="10.10.10.1"
-PPTP_REMOTE_POOL="10.10.10.100-200"
 L2TP_LOCAL_IP="10.10.11.1"
 L2TP_REMOTE_POOL="10.10.11.100-200"
-PPTP_SUBNET="10.10.10.0/24"
 L2TP_SUBNET="10.10.11.0/24"
 
 echo "[1/7] Installing required native PPP/IPsec packages..."
 apt-get update
 apt-get install -y xl2tpd strongswan iptables-persistent
 
-echo "[2/7] Skipping PPTP daemon configuration (pptpd deprecated on Ubuntu 24.04)..."
-# cat > /etc/pptpd.conf <<EOF
-# option /etc/ppp/pptpd-options
-# logwtmp
-# localip ${PPTP_LOCAL_IP}
-# remoteip ${PPTP_REMOTE_POOL}
-# EOF
-#
-# cat > /etc/ppp/pptpd-options <<'EOF'
-# name pptpd
-# refuse-pap
-# refuse-chap
-# refuse-mschap
-# require-mschap-v2
-# require-mppe-128
-# ms-dns 1.1.1.1
-# ms-dns 8.8.8.8
-# proxyarp
-# lock
-# nobsdcomp
-# novj
-# novjccomp
-# nologfd
-# EOF
+echo "[2/7] Preparing L2TP/IPsec baseline..."
 
 echo "[3/7] Writing L2TP/IPsec baseline configuration..."
 cat > /etc/ipsec.conf <<'EOF'
@@ -110,26 +84,21 @@ else
   echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 fi
 
-echo "[5/7] Applying firewall allow rules (PPTP/L2TP/IPsec)..."
+echo "[5/7] Applying firewall allow rules (L2TP/IPsec)..."
 ensure_rule() {
   if ! iptables -C "$@" 2>/dev/null; then
     iptables -A "$@"
   fi
 }
 
-ensure_rule INPUT -p tcp --dport 1723 -j ACCEPT
 ensure_rule INPUT -p udp --dport 1701 -j ACCEPT
 ensure_rule INPUT -p udp --dport 500 -j ACCEPT
 ensure_rule INPUT -p udp --dport 4500 -j ACCEPT
-ensure_rule INPUT -p 47 -j ACCEPT
 ensure_rule INPUT -p 50 -j ACCEPT
 
 echo "[6/7] Applying NAT/MASQUERADE rules for PPP client subnets..."
-ensure_rule FORWARD -s "${PPTP_SUBNET}" -j ACCEPT
-ensure_rule FORWARD -d "${PPTP_SUBNET}" -j ACCEPT
 ensure_rule FORWARD -s "${L2TP_SUBNET}" -j ACCEPT
 ensure_rule FORWARD -d "${L2TP_SUBNET}" -j ACCEPT
-iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -j MASQUERADE
 iptables -t nat -A POSTROUTING -s 10.10.11.0/24 -j MASQUERADE
 
 if command -v netfilter-persistent >/dev/null 2>&1; then
@@ -153,6 +122,5 @@ fi
 echo
 
 echo "Native PPP/IPsec provisioning completed."
-echo "PPTP local/remote: ${PPTP_LOCAL_IP}, ${PPTP_REMOTE_POOL}"
 echo "L2TP local/remote: ${L2TP_LOCAL_IP}, ${L2TP_REMOTE_POOL}"
 echo "IPsec PSK source: ATLAS_IPSEC_PSK env var (fallback default if unset)."

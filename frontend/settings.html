@@ -2655,7 +2655,7 @@
                         return 'wg+ (All WireGuard Users)';
                     }
                     if (normalized === 'ppp+') {
-                        return 'ppp+ (All L2TP/PPTP Users)';
+                        return 'ppp+ (All L2TP Users)';
                     }
                     if (normalized.startsWith('tun')) {
                         return `${iface} (OpenVPN)`;
@@ -2664,7 +2664,7 @@
                         return `${iface} (WireGuard)`;
                     }
                     if (normalized.startsWith('ppp')) {
-                        return `${iface} (L2TP/PPTP)`;
+                        return `${iface} (L2TP)`;
                     }
                     if (normalized.startsWith('eth') || normalized.startsWith('ens')) {
                         return `${iface} (Main Server Network)`;

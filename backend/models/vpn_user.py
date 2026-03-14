@@ -25,7 +25,6 @@ class VPNUser(Base):
     wg_allocated_ip = Column(String(64), nullable=True)
     enable_openvpn = Column(Boolean, nullable=True, default=True)
     enable_l2tp = Column(Boolean, nullable=True, default=False)
-    enable_pptp = Column(Boolean, nullable=True, default=False)
     ppp_password = Column(String(255), nullable=True)
     
     # Limits and restrictions
@@ -179,13 +178,6 @@ class VPNUser(Base):
             return True
         return any(c.protocol == "l2tp" and c.is_active for c in self.configs)
 
-    @property
-    def has_pptp(self) -> bool:
-        """Check if user has PPTP config."""
-        if getattr(self, "enable_pptp", None) is True:
-            return True
-        return any(c.protocol == "pptp" and c.is_active for c in self.configs)
-    
     @staticmethod
     def generate_random_username(prefix: str = "user") -> str:
         """Generate a random username like user_8f2a"""

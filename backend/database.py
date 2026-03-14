@@ -73,7 +73,6 @@ def init_db():
             "wg_allocated_ip": "ALTER TABLE vpn_users ADD COLUMN wg_allocated_ip VARCHAR(64)",
             "enable_openvpn": "ALTER TABLE vpn_users ADD COLUMN enable_openvpn BOOLEAN NOT NULL DEFAULT 1",
             "enable_l2tp": "ALTER TABLE vpn_users ADD COLUMN enable_l2tp BOOLEAN NOT NULL DEFAULT 0",
-            "enable_pptp": "ALTER TABLE vpn_users ADD COLUMN enable_pptp BOOLEAN NOT NULL DEFAULT 0",
             "ppp_password": "ALTER TABLE vpn_users ADD COLUMN ppp_password VARCHAR(255)",
         }
         for column_name, migration_sql in vpn_user_column_migrations.items():
@@ -112,16 +111,6 @@ def init_db():
                     UPDATE vpn_users
                     SET enable_l2tp = 0
                     WHERE enable_l2tp IS NULL
-                    """
-                )
-            )
-        if "enable_pptp" in column_names:
-            connection.execute(
-                text(
-                    """
-                    UPDATE vpn_users
-                    SET enable_pptp = 0
-                    WHERE enable_pptp IS NULL
                     """
                 )
             )

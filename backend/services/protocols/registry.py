@@ -4,7 +4,6 @@ from backend.services.protocols.base import BaseProtocolService
 from backend.services.protocols.base_vpn_service import BaseVPNService
 from backend.services.l2tp_service import L2TPService
 from backend.services.openvpn_service import OpenVPNService
-from backend.services.pptp_service import PPTPService
 from backend.services.wireguard_service import WireGuardService
 
 
@@ -34,4 +33,3 @@ protocol_registry = ProtocolRegistry()
 protocol_registry.register(OpenVPNService())
 protocol_registry.register(WireGuardService())
 protocol_registry.register(L2TPService())
-protocol_registry.register(PPTPService())

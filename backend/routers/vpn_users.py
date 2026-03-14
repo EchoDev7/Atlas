@@ -43,7 +43,6 @@ router = APIRouter(prefix="/users", tags=["VPN Users"])
 openvpn_service = protocol_registry.get("openvpn")
 wireguard_service = protocol_registry.get("wireguard")
 l2tp_service = protocol_registry.get("l2tp")
-pptp_service = protocol_registry.get("pptp")
 
 # Fallback runtime accounting cache keyed by username.
 # It captures the latest active-session counters to preserve traffic totals
@@ -117,20 +116,17 @@ def _disconnect_user_across_protocols(username: str) -> Dict[str, Dict[str, Any]
     openvpn_result = openvpn_service.stop_client(username)
     wireguard_result = wireguard_service.stop_client(username)
     l2tp_result = l2tp_service.stop_client(username)
-    pptp_result = pptp_service.stop_client(username)
     logger.warning(
-        "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s l2tp_success=%s pptp_success=%s",
+        "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s l2tp_success=%s",
         username,
         bool(openvpn_result.get("success")),
         bool(wireguard_result.get("success")),
         bool(l2tp_result.get("success")),
-        bool(pptp_result.get("success")),
     )
     return {
         "openvpn": openvpn_result,
         "wireguard": wireguard_result,
         "l2tp": l2tp_result,
-        "pptp": pptp_result,
     }
 
 
@@ -250,7 +246,7 @@ def _get_wireguard_online_usernames(db: Session, online_window_seconds: int = 90
 
 def _get_ppp_online_usernames() -> Set[str]:
     online: Set[str] = set()
-    for service in (l2tp_service, pptp_service):
+    for service in (l2tp_service,):
         try:
             sessions = service.get_active_sessions()
         except Exception as exc:
@@ -265,7 +261,7 @@ def _get_ppp_online_usernames() -> Set[str]:
 
 def _get_ppp_runtime_stats() -> Dict[str, Dict[str, int]]:
     stats: Dict[str, Dict[str, int]] = {}
-    for service in (l2tp_service, pptp_service):
+    for service in (l2tp_service,):
         try:
             sessions = service.get_active_sessions()
         except Exception as exc:
@@ -752,7 +748,6 @@ async def create_user(
     enable_openvpn = bool(user_data.enable_openvpn)
     enable_wireguard = bool(user_data.enable_wireguard)
     enable_l2tp = bool(user_data.enable_l2tp)
-    enable_pptp = bool(user_data.enable_pptp)
     ppp_password = str(user_data.ppp_password or "").strip() or plain_password
     
     # Create user
@@ -770,7 +765,6 @@ async def create_user(
         max_concurrent_connections=user_data.max_concurrent_connections,
         enable_openvpn=enable_openvpn,
         enable_l2tp=enable_l2tp,
-        enable_pptp=enable_pptp,
         ppp_password=ppp_password,
         created_by=current_user.id
     )
@@ -819,16 +813,6 @@ async def create_user(
             if not l2tp_result.get("success"):
                 raise HTTPException(status_code=500, detail=l2tp_result.get("message") or "L2TP provisioning failed")
 
-        if enable_pptp:
-            pptp_config = VPNConfig(
-                user_id=new_user.id,
-                protocol="pptp",
-                is_active=True,
-            )
-            db.add(pptp_config)
-            pptp_result = pptp_service.start_client(db, username)
-            if not pptp_result.get("success"):
-                raise HTTPException(status_code=500, detail=pptp_result.get("message") or "PPTP provisioning failed")
     except HTTPException:
         db.rollback()
         raise
@@ -856,7 +840,7 @@ async def create_user(
     return VPNUserCredentials(
         username=username,
         password=plain_password,
-        ppp_password=ppp_password if (enable_l2tp or enable_pptp) else None,
+        ppp_password=ppp_password if enable_l2tp else None,
         ipsec_psk=_resolve_ipsec_psk() if enable_l2tp else None,
         enabled_protocols=[
             protocol
@@ -864,7 +848,6 @@ async def create_user(
                 ("openvpn", enable_openvpn),
                 ("wireguard", enable_wireguard),
                 ("l2tp", enable_l2tp),
-                ("pptp", enable_pptp),
             )
             if enabled
         ],
@@ -947,7 +930,6 @@ async def update_user(
                 kill_results["openvpn"].get("success")
                 or kill_results["wireguard"].get("success")
                 or kill_results["l2tp"].get("success")
-                or kill_results["pptp"].get("success")
             ):
                 logger.warning(
                     "Disable-path kill-switch could not disconnect any protocol for %s",
@@ -1121,34 +1103,23 @@ async def download_config(
             logger.error("Error generating WireGuard config for user %s: %s", user.username, exc)
             raise HTTPException(status_code=500, detail=f"Failed to generate WireGuard config: {exc}") from exc
 
-    if protocol in {"l2tp", "pptp"}:
+    if protocol == "l2tp":
         config = next((c for c in user.configs if c.protocol == protocol and c.is_active), None)
         if not config:
-            raise HTTPException(status_code=404, detail=f"{protocol.upper()} is not enabled for this user")
+            raise HTTPException(status_code=404, detail="L2TP is not enabled for this user")
 
         server_host = (_get_or_create_general_settings(db).server_address or "SERVER_IP_OR_DOMAIN").strip()
         ppp_password = str(user.ppp_password or "").strip() or "(not-set)"
-        if protocol == "l2tp":
-            content = "\n".join(
-                [
-                    f"Server Address: {server_host}",
-                    "VPN Type: L2TP/IPsec with pre-shared key (PSK)",
-                    f"Username: {user.username}",
-                    f"Password: {ppp_password}",
-                    f"Pre-Shared Key: {_resolve_ipsec_psk()}",
-                    "* Note: Leave ports as default. No extra app required.",
-                ]
-            ) + "\n"
-        else:
-            content = "\n".join(
-                [
-                    f"Server Address: {server_host}",
-                    "VPN Type: Point to Point Tunneling Protocol (PPTP)",
-                    f"Username: {user.username}",
-                    f"Password: {ppp_password}",
-                    "* Note: Windows users may need to allow Optional Encryption.",
-                ]
-            ) + "\n"
+        content = "\n".join(
+            [
+                f"Server Address: {server_host}",
+                "VPN Type: L2TP/IPsec with pre-shared key (PSK)",
+                f"Username: {user.username}",
+                f"Password: {ppp_password}",
+                f"Pre-Shared Key: {_resolve_ipsec_psk()}",
+                "* Note: Leave ports as default. No extra app required.",
+            ]
+        ) + "\n"
         return Response(
             content=content,
             media_type="text/plain",
@@ -1218,33 +1189,22 @@ async def get_config(
             logger.error("Error generating WireGuard config payload for user %s: %s", user.username, exc)
             raise HTTPException(status_code=500, detail=f"Failed to generate WireGuard config: {exc}") from exc
 
-    if protocol in {"l2tp", "pptp"}:
+    if protocol == "l2tp":
         if not config:
-            raise HTTPException(status_code=404, detail=f"{protocol.upper()} is not enabled for this user")
+            raise HTTPException(status_code=404, detail="L2TP is not enabled for this user")
 
         server_host = (_get_or_create_general_settings(db).server_address or "SERVER_IP_OR_DOMAIN").strip()
         ppp_password = str(user.ppp_password or "").strip() or "(not-set)"
-        if protocol == "l2tp":
-            config_content = "\n".join(
-                [
-                    f"Server Address: {server_host}",
-                    "VPN Type: L2TP/IPsec with pre-shared key (PSK)",
-                    f"Username: {user.username}",
-                    f"Password: {ppp_password}",
-                    f"Pre-Shared Key: {_resolve_ipsec_psk()}",
-                    "* Note: Leave ports as default. No extra app required.",
-                ]
-            )
-        else:
-            config_content = "\n".join(
-                [
-                    f"Server Address: {server_host}",
-                    "VPN Type: Point to Point Tunneling Protocol (PPTP)",
-                    f"Username: {user.username}",
-                    f"Password: {ppp_password}",
-                    "* Note: Windows users may need to allow Optional Encryption.",
-                ]
-            )
+        config_content = "\n".join(
+            [
+                f"Server Address: {server_host}",
+                "VPN Type: L2TP/IPsec with pre-shared key (PSK)",
+                f"Username: {user.username}",
+                f"Password: {ppp_password}",
+                f"Pre-Shared Key: {_resolve_ipsec_psk()}",
+                "* Note: Leave ports as default. No extra app required.",
+            ]
+        )
         return VPNConfigFileResponse(
             username=user.username,
             protocol=protocol,
@@ -1286,7 +1246,7 @@ async def revoke_config(
         user.wg_private_key = None
         user.wg_public_key = None
         user.wg_allocated_ip = None
-    if protocol in {"l2tp", "pptp"}:
+    if protocol == "l2tp":
         _disconnect_user_across_protocols(user.username)
     
     config.is_active = False

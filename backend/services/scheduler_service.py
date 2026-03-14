@@ -30,7 +30,6 @@ class LimitEnforcementScheduler:
         self.openvpn_service = protocol_registry.get("openvpn")
         self.wireguard_service = protocol_registry.get("wireguard")
         self.l2tp_service = protocol_registry.get("l2tp")
-        self.pptp_service = protocol_registry.get("pptp")
         self._state_sync_lock = asyncio.Lock()
         self._enforcement_lock = asyncio.Lock()
         self._runtime_usage_cache: Dict[str, Dict[str, int]] = {}
@@ -42,14 +41,12 @@ class LimitEnforcementScheduler:
         openvpn_result = self.openvpn_service.stop_client(username)
         wireguard_result = self.wireguard_service.stop_client(username)
         l2tp_result = self.l2tp_service.stop_client(username)
-        pptp_result = self.pptp_service.stop_client(username)
         logger.warning(
-            "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s l2tp_success=%s pptp_success=%s",
+            "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s l2tp_success=%s",
             username,
             bool(openvpn_result.get("success")),
             bool(wireguard_result.get("success")),
             bool(l2tp_result.get("success")),
-            bool(pptp_result.get("success")),
         )
         return {
             "openvpn": {
@@ -63,10 +60,6 @@ class LimitEnforcementScheduler:
             "l2tp": {
                 "success": bool(l2tp_result.get("success")),
                 "message": str(l2tp_result.get("message") or ""),
-            },
-            "pptp": {
-                "success": bool(pptp_result.get("success")),
-                "message": str(pptp_result.get("message") or ""),
             },
         }
     
@@ -260,7 +253,7 @@ class LimitEnforcementScheduler:
 
     def _get_ppp_runtime_stats(self) -> Dict[str, Dict[str, int]]:
         runtime_stats: Dict[str, Dict[str, int]] = {}
-        for service in (self.l2tp_service, self.pptp_service):
+        for service in (self.l2tp_service,):
             try:
                 sessions = service.get_active_sessions()
             except Exception as exc:
@@ -609,17 +602,15 @@ class LimitEnforcementScheduler:
                             kill_results["openvpn"]["success"]
                             or kill_results["wireguard"]["success"]
                             or kill_results["l2tp"]["success"]
-                            or kill_results["pptp"]["success"]
                         ):
                             kill_failed += 1
                             logger.warning(
-                                "Failed to disconnect violation user %s type=%s openvpn=%s wireguard=%s l2tp=%s pptp=%s",
+                                "Failed to disconnect violation user %s type=%s openvpn=%s wireguard=%s l2tp=%s",
                                 user.username,
                                 violation_type,
                                 kill_results["openvpn"]["message"],
                                 kill_results["wireguard"]["message"],
                                 kill_results["l2tp"]["message"],
-                                kill_results["pptp"]["message"],
                                 extra={
                                     "event_type": "scheduler_disconnect_failed",
                                     "username": str(user.username),
@@ -627,7 +618,6 @@ class LimitEnforcementScheduler:
                                     "openvpn_success": bool(kill_results["openvpn"]["success"]),
                                     "wireguard_success": bool(kill_results["wireguard"]["success"]),
                                     "l2tp_success": bool(kill_results["l2tp"]["success"]),
-                                    "pptp_success": bool(kill_results["pptp"]["success"]),
                                 },
                             )
                             continue
