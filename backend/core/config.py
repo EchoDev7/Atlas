@@ -48,6 +48,9 @@ PPP_RADATTR_DIR = Path("/var/run")
 PPP_INTERFACE_PREFIX = "ppp"
 PPP_SESSION_SCAN_COMMAND = ("ip", "-o", "link", "show")
 PPP_PS_COMMAND = ("ps", "-eo", "pid,args")
+IPSEC_SECRETS_PATH = Path("/etc/ipsec.secrets")
+XL2TPD_CONFIG_PATH = Path("/etc/xl2tpd/xl2tpd.conf")
+L2TP_DEFAULT_LOCAL_IP = "10.10.11.1"
 
 L2TP_DEFAULT_PORT = 1701
 IPSEC_DEFAULT_IKE_PORT = 500

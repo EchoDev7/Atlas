@@ -458,6 +458,8 @@ def init_db():
                 "wan_interface": "ALTER TABLE general_settings ADD COLUMN wan_interface VARCHAR(32) NOT NULL DEFAULT 'eth0'",
                 "server_system_dns_primary": "ALTER TABLE general_settings ADD COLUMN server_system_dns_primary VARCHAR(64) NOT NULL DEFAULT '1.1.1.1'",
                 "server_system_dns_secondary": "ALTER TABLE general_settings ADD COLUMN server_system_dns_secondary VARCHAR(64) NOT NULL DEFAULT '8.8.8.8'",
+                "l2tp_ipsec_psk": "ALTER TABLE general_settings ADD COLUMN l2tp_ipsec_psk VARCHAR(255) NOT NULL DEFAULT 'atlas-change-me-strong-psk'",
+                "l2tp_client_subnet": "ALTER TABLE general_settings ADD COLUMN l2tp_client_subnet VARCHAR(32) NOT NULL DEFAULT '10.10.11.0/24'",
                 "is_tunnel_enabled": "ALTER TABLE general_settings ADD COLUMN is_tunnel_enabled BOOLEAN NOT NULL DEFAULT 0",
                 "foreign_server_ip": "ALTER TABLE general_settings ADD COLUMN foreign_server_ip VARCHAR(64)",
                 "foreign_server_port": "ALTER TABLE general_settings ADD COLUMN foreign_server_port INTEGER NOT NULL DEFAULT 22",
@@ -551,6 +553,24 @@ def init_db():
                     )
                 )
 
+
+            if {"l2tp_ipsec_psk", "l2tp_client_subnet"}.issubset(general_column_names):
+                connection.execute(
+                    text(
+                        """
+                        UPDATE general_settings
+                        SET l2tp_ipsec_psk = CASE
+                                                                WHEN l2tp_ipsec_psk IS NULL OR TRIM(l2tp_ipsec_psk) = '' THEN 'atlas-change-me-strong-psk'
+                                ELSE TRIM(l2tp_ipsec_psk)
+                            END,
+                            l2tp_client_subnet = CASE
+                                                                WHEN l2tp_client_subnet IS NULL OR TRIM(l2tp_client_subnet) = '' THEN '10.10.11.0/24'
+                                ELSE TRIM(l2tp_client_subnet)
+                            END
+                        """
+                    )
+                )
+
             general_settings_row_count = connection.execute(
                 text("SELECT COUNT(*) FROM general_settings")
             ).scalar_one()
@@ -567,6 +587,8 @@ def init_db():
                             wan_interface,
                             server_system_dns_primary,
                             server_system_dns_secondary,
+                            l2tp_ipsec_psk,
+                            l2tp_client_subnet,
                             is_tunnel_enabled,
                             foreign_server_ip,
                             foreign_server_port,
@@ -598,6 +620,8 @@ def init_db():
                             'eth0',
                             '1.1.1.1',
                             '8.8.8.8',
+                            'atlas-change-me-strong-psk',
+                            '10.10.11.0/24',
                             0,
                             NULL,
                             22,

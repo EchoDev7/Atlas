@@ -13,6 +13,8 @@ class GeneralSettingsBase(BaseModel):
     wan_interface: str = Field("eth0", min_length=1, max_length=32)
     server_system_dns_primary: str = Field("1.1.1.1", min_length=3, max_length=64)
     server_system_dns_secondary: str = Field("8.8.8.8", min_length=3, max_length=64)
+    l2tp_ipsec_psk: str = Field("atlas-change-me-strong-psk", min_length=8, max_length=255)
+    l2tp_client_subnet: str = Field("10.10.11.0/24", min_length=9, max_length=32)
     is_tunnel_enabled: bool = Field(False)
     foreign_server_ip: Optional[str] = Field(default=None, max_length=64)
     foreign_server_port: int = Field(22, ge=1, le=65535)
@@ -84,6 +86,28 @@ class GeneralSettingsBase(BaseModel):
         except ValueError as exc:
             raise ValueError("Server DNS must be a valid IPv4 or IPv6 address") from exc
         return normalized
+
+    @field_validator("l2tp_ipsec_psk")
+    @classmethod
+    def validate_l2tp_ipsec_psk(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 8:
+            raise ValueError("L2TP IPsec PSK must be at least 8 characters")
+        return normalized
+
+    @field_validator("l2tp_client_subnet")
+    @classmethod
+    def validate_l2tp_client_subnet(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("L2TP client subnet cannot be empty")
+        try:
+            subnet = ipaddress.ip_network(normalized, strict=False)
+        except ValueError as exc:
+            raise ValueError("L2TP client subnet must be a valid IPv4 CIDR") from exc
+        if subnet.version != 4:
+            raise ValueError("L2TP client subnet must be an IPv4 CIDR")
+        return str(subnet)
 
     @field_validator(
         "server_address",

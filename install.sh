@@ -72,7 +72,7 @@ VENV_PATH="${PROJECT_ROOT}/.venv"
 step "Installing system dependencies"
 apt-get install -y \
   python3 python3-venv python3-pip \
-  openvpn easy-rsa wireguard wireguard-tools sqlite3 certbot \
+  openvpn easy-rsa wireguard wireguard-tools xl2tpd strongswan sqlite3 certbot \
   "linux-headers-$(uname -r)" openvpn-dco-dkms \
   iproute2 iptables iptables-persistent \
   openssl
@@ -189,6 +189,14 @@ if not config_result.get("success"):
 print("Atlas DB + PKI + OpenVPN server config ready")
 PY
 ok "Database and OpenVPN configuration initialized"
+
+step "Provisioning native L2TP/IPsec services"
+if [[ -f "${PROJECT_ROOT}/scripts/setup_ppp_native.sh" ]]; then
+  bash "${PROJECT_ROOT}/scripts/setup_ppp_native.sh"
+  ok "L2TP/IPsec provisioning applied"
+else
+  warn "L2TP/IPsec provisioning script missing at ${PROJECT_ROOT}/scripts/setup_ppp_native.sh"
+fi
 
 step "Configuring dual-stack network forwarding and NAT"
 MAIN_INTERFACE="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')"

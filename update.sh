@@ -39,7 +39,7 @@ step "Ensuring critical system dependencies are installed"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y \
-  openvpn easy-rsa wireguard wireguard-tools certbot \
+  openvpn easy-rsa wireguard wireguard-tools xl2tpd strongswan certbot \
   "linux-headers-$(uname -r)" openvpn-dco-dkms \
   iptables-persistent netfilter-persistent
 ok "Critical system dependencies verified"
@@ -72,6 +72,14 @@ init_db()
 print("Database schema is up to date")
 PY
 ok "Database migration completed without data wipe"
+
+step "Applying L2TP/IPsec provisioning hook"
+if [[ -f "${PROJECT_ROOT}/scripts/setup_ppp_native.sh" ]]; then
+  bash "${PROJECT_ROOT}/scripts/setup_ppp_native.sh"
+  ok "L2TP/IPsec provisioning applied"
+else
+  warn "L2TP/IPsec provisioning script missing at ${PROJECT_ROOT}/scripts/setup_ppp_native.sh"
+fi
 
 step "Ensuring atlas-backend.service uses dynamic HTTP/HTTPS runner"
 cat > "${SERVICE_FILE}" <<EOF

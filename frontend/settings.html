@@ -160,7 +160,7 @@
         </div>
 
         <div class="glass-effect rounded-2xl border p-3 sm:p-4 mb-6" :class="darkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200/60'">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
                 <button class="w-full px-4 py-3 rounded-xl text-sm font-semibold"
                         :class="activeProtocolTab === 'general' ? (darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-cyan-50 text-cyan-700 border border-cyan-200') : (darkMode ? 'text-slate-400 border border-slate-700/60' : 'text-slate-600 border border-slate-200')"
                         @click="activeProtocolTab = 'general'">
@@ -175,6 +175,11 @@
                         :class="activeProtocolTab === 'wireguard' ? (darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-cyan-50 text-cyan-700 border border-cyan-200') : (darkMode ? 'text-slate-400 border border-slate-700/60' : 'text-slate-600 border border-slate-200')"
                         @click="activeProtocolTab = 'wireguard'">
                     WireGuard
+                </button>
+                <button class="w-full px-4 py-3 rounded-xl text-sm font-semibold"
+                        :class="activeProtocolTab === 'l2tp' ? (darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-cyan-50 text-cyan-700 border border-cyan-200') : (darkMode ? 'text-slate-400 border border-slate-700/60' : 'text-slate-600 border border-slate-200')"
+                        @click="activeProtocolTab = 'l2tp'">
+                    L2TP / IPsec
                 </button>
                 <button class="w-full px-4 py-3 rounded-xl text-sm font-semibold"
                         :class="activeProtocolTab === 'routing' ? (darkMode ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-cyan-50 text-cyan-700 border border-cyan-200') : (darkMode ? 'text-slate-400 border border-slate-700/60' : 'text-slate-600 border border-slate-200')"
@@ -979,6 +984,53 @@
                                 </button>
                             </div>
                         </label>
+                    </div>
+                </div>
+
+                <div class="mt-8 sticky bottom-0 pt-4 flex justify-end border-t backdrop-blur-sm"
+                     :class="darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white/80'">
+                    <button @click="saveChanges()" :disabled="saving || loading"
+                            class="px-6 py-3 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'">
+                        <span x-text="saving ? 'Saving...' : 'Save Settings'"></span>
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <div x-show="activeProtocolTab === 'l2tp'" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <section class="lg:col-span-12 glass-effect rounded-2xl border p-5 sm:p-6"
+                     :class="darkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200/60'">
+                <div class="space-y-6">
+                    <div>
+                        <h2 class="text-xl font-bold theme-transition" :class="darkMode ? 'text-white' : 'text-slate-900'">L2TP / IPsec Runtime Settings</h2>
+                        <p class="text-sm mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                            Atlas applies these settings directly to <code>/etc/ipsec.secrets</code> and <code>/etc/xl2tpd/xl2tpd.conf</code>, then restarts StrongSwan and XL2TPD.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">L2TP IPsec PSK</span>
+                            <input type="text"
+                                   x-model="generalForm.l2tp_ipsec_psk"
+                                   placeholder="Minimum 8 characters"
+                                   class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                   :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">L2TP Client Subnet (CIDR)</span>
+                            <input type="text"
+                                   x-model="generalForm.l2tp_client_subnet"
+                                   placeholder="10.10.11.0/24"
+                                   class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
+                                   :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        </label>
+                    </div>
+
+                    <div class="rounded-xl border p-4 text-sm theme-transition"
+                         :class="darkMode ? 'border-slate-700 bg-slate-900/30 text-slate-300' : 'border-slate-300 bg-slate-50 text-slate-700'">
+                        Keep this subnet isolated from OpenVPN and WireGuard pools to prevent protocol conflicts.
                     </div>
                 </div>
 
@@ -1811,6 +1863,8 @@
                     wan_interface: 'eth0',
                     server_system_dns_primary: '1.1.1.1',
                     server_system_dns_secondary: '8.8.8.8',
+                    l2tp_ipsec_psk: 'atlas-change-me-strong-psk',
+                    l2tp_client_subnet: '10.10.11.0/24',
                     admin_allowed_ips: '0.0.0.0/0',
                     login_max_failed_attempts: 5,
                     login_block_duration_minutes: 15,
@@ -3071,6 +3125,8 @@
                             wan_interface: generalData.wan_interface || 'eth0',
                             server_system_dns_primary: generalData.server_system_dns_primary || '1.1.1.1',
                             server_system_dns_secondary: generalData.server_system_dns_secondary || '8.8.8.8',
+                            l2tp_ipsec_psk: generalData.l2tp_ipsec_psk || 'atlas-change-me-strong-psk',
+                            l2tp_client_subnet: generalData.l2tp_client_subnet || '10.10.11.0/24',
                             panel_domain: generalData.panel_domain || '',
                             panel_https_port: Number(generalData.panel_https_port) || 2053,
                             subscription_domain: generalData.subscription_domain || '',
@@ -3238,6 +3294,10 @@
                     }
                     if (this.activeProtocolTab === 'wireguard') {
                         await this.saveWireGuardSettings();
+                        return;
+                    }
+                    if (this.activeProtocolTab === 'l2tp') {
+                        await this.saveGeneralSettings();
                         return;
                     }
                     if (this.activeProtocolTab !== 'openvpn') {
@@ -3682,6 +3742,8 @@
                             wan_interface: (this.generalForm.wan_interface || '').trim(),
                             server_system_dns_primary: (this.generalForm.server_system_dns_primary || '').trim(),
                             server_system_dns_secondary: (this.generalForm.server_system_dns_secondary || '').trim(),
+                            l2tp_ipsec_psk: (this.generalForm.l2tp_ipsec_psk || '').trim(),
+                            l2tp_client_subnet: (this.generalForm.l2tp_client_subnet || '').trim(),
                             admin_allowed_ips: (this.generalForm.admin_allowed_ips || '').trim(),
                             login_max_failed_attempts: loginMaxFailedAttempts,
                             login_block_duration_minutes: loginBlockDurationMinutes,
@@ -3736,6 +3798,8 @@
                             wan_interface: updated.wan_interface || 'eth0',
                             server_system_dns_primary: updated.server_system_dns_primary || '1.1.1.1',
                             server_system_dns_secondary: updated.server_system_dns_secondary || '8.8.8.8',
+                            l2tp_ipsec_psk: updated.l2tp_ipsec_psk || 'atlas-change-me-strong-psk',
+                            l2tp_client_subnet: updated.l2tp_client_subnet || '10.10.11.0/24',
                             panel_domain: updated.panel_domain || '',
                             panel_https_port: Number(updated.panel_https_port) || 2053,
                             subscription_domain: updated.subscription_domain || '',

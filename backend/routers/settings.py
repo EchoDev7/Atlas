@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from backend.core.ppp_manager import PPPManager
 from backend.core.routing.pbr_manager import PBRManager
 from backend.core.obfuscation_manager import ObfuscationManager
 from backend.database import get_db
@@ -499,6 +500,8 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         wan_interface=settings.wan_interface,
         server_system_dns_primary=settings.server_system_dns_primary,
         server_system_dns_secondary=settings.server_system_dns_secondary,
+        l2tp_ipsec_psk=settings.l2tp_ipsec_psk,
+        l2tp_client_subnet=settings.l2tp_client_subnet,
         is_tunnel_enabled=settings.is_tunnel_enabled,
         foreign_server_ip=settings.foreign_server_ip,
         foreign_server_port=settings.foreign_server_port,
@@ -596,6 +599,8 @@ def update_general_settings(
     previous_admin_allowed_ips = settings.admin_allowed_ips or ""
     previous_login_max_failed_attempts = settings.login_max_failed_attempts
     previous_login_block_duration_minutes = settings.login_block_duration_minutes
+    previous_l2tp_ipsec_psk = settings.l2tp_ipsec_psk
+    previous_l2tp_client_subnet = settings.l2tp_client_subnet
 
     if payload.panel_https_port == payload.subscription_https_port:
         raise HTTPException(
@@ -613,6 +618,8 @@ def update_general_settings(
     settings.wan_interface = detected_wan
     settings.server_system_dns_primary = payload.server_system_dns_primary
     settings.server_system_dns_secondary = payload.server_system_dns_secondary
+    settings.l2tp_ipsec_psk = payload.l2tp_ipsec_psk
+    settings.l2tp_client_subnet = payload.l2tp_client_subnet
     settings.is_tunnel_enabled = payload.is_tunnel_enabled
     settings.foreign_server_ip = payload.foreign_server_ip
     settings.foreign_server_port = payload.foreign_server_port
@@ -645,6 +652,30 @@ def update_general_settings(
         raise HTTPException(
             status_code=500,
             detail=dns_apply_result.get("message", "Failed to update server DNS settings"),
+        )
+
+    try:
+        l2tp_apply_result = PPPManager().apply_l2tp_runtime_settings(
+            ipsec_psk=payload.l2tp_ipsec_psk,
+            client_subnet=payload.l2tp_client_subnet,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to apply L2TP/IPsec settings: {exc}") from exc
+
+    if not l2tp_apply_result.get("success"):
+        db.rollback()
+        restart_failure = l2tp_apply_result.get("restart", {}).get("failed") or []
+        details = "; ".join(
+            f"{item.get('command')}: {item.get('stderr') or item.get('stdout') or 'failed'}"
+            for item in restart_failure
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to restart L2TP/IPsec daemons after settings update{': ' + details if details else ''}",
         )
 
     sync_result = openvpn_service.sync_system_general_settings(
@@ -684,6 +715,10 @@ def update_general_settings(
         changed_fields.append("subscription_https_port")
     if previous_tunnel_enabled != settings.is_tunnel_enabled:
         changed_fields.append("is_tunnel_enabled")
+    if previous_l2tp_ipsec_psk != settings.l2tp_ipsec_psk:
+        changed_fields.append("l2tp_ipsec_psk")
+    if previous_l2tp_client_subnet != settings.l2tp_client_subnet:
+        changed_fields.append("l2tp_client_subnet")
 
     record_audit_event(
         action="general_settings_updated",

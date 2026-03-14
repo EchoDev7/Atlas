@@ -3,24 +3,125 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import shutil
 import string
 import subprocess
+from ipaddress import IPv4Network, ip_network
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from backend.core.config import (
+    IPSEC_SECRETS_PATH,
+    L2TP_DEFAULT_LOCAL_IP,
     PPP_CHAP_SECRETS_PATH,
     PPP_INTERFACE_PREFIX,
     PPP_PS_COMMAND,
     PPP_RADATTR_DIR,
+    XL2TPD_CONFIG_PATH,
 )
 
 
 class PPPManager:
-    """Shared PPP core manager for L2TP/PPTP credentials and runtime sessions."""
+    """Shared PPP core manager for L2TP credentials and runtime sessions."""
 
     def __init__(self, chap_secrets_path: Optional[Path] = None) -> None:
         self.chap_secrets_path = Path(chap_secrets_path or PPP_CHAP_SECRETS_PATH)
+
+    @staticmethod
+    def _extract_l2tp_pool(subnet_cidr: str) -> tuple[str, str]:
+        network: IPv4Network = ip_network(str(subnet_cidr or "").strip(), strict=False)
+        hosts = list(network.hosts())
+        if len(hosts) < 12:
+            raise ValueError("L2TP subnet must have at least 12 usable host IPs")
+        local_ip = str(hosts[0])
+        remote_start = str(hosts[9])
+        remote_end = str(hosts[-1])
+        return local_ip, f"{remote_start}-{remote_end}"
+
+    @staticmethod
+    def _render_ipsec_secrets(psk: str) -> str:
+        normalized_psk = str(psk or "").strip()
+        if len(normalized_psk) < 8:
+            raise ValueError("L2TP IPsec PSK must be at least 8 characters")
+        return f'%any %any : PSK "{normalized_psk}"\n'
+
+    @staticmethod
+    def _render_xl2tpd_config(local_ip: str, remote_pool: str) -> str:
+        normalized_local = str(local_ip or "").strip() or L2TP_DEFAULT_LOCAL_IP
+        normalized_pool = str(remote_pool or "").strip()
+        if not normalized_pool:
+            raise ValueError("L2TP remote pool cannot be empty")
+        return "\n".join(
+            [
+                "[global]",
+                "ipsec saref = yes",
+                "",
+                "[lns default]",
+                f"ip range = {normalized_pool}",
+                f"local ip = {normalized_local}",
+                "require chap = yes",
+                "refuse pap = yes",
+                "require authentication = yes",
+                "name = xl2tpd",
+                "pppoptfile = /etc/ppp/options.xl2tpd",
+                "length bit = yes",
+                "",
+            ]
+        )
+
+    @staticmethod
+    def _restart_l2tp_daemons() -> Dict[str, Any]:
+        actions: list[Dict[str, Any]] = []
+
+        if shutil.which("systemctl"):
+            for unit in ("strongswan-starter", "strongswan", "xl2tpd"):
+                result = subprocess.run(["systemctl", "restart", unit], capture_output=True, text=True, check=False)
+                actions.append(
+                    {
+                        "command": f"systemctl restart {unit}",
+                        "returncode": int(result.returncode),
+                        "stdout": (result.stdout or "").strip(),
+                        "stderr": (result.stderr or "").strip(),
+                    }
+                )
+        elif shutil.which("ipsec"):
+            result = subprocess.run(["ipsec", "restart"], capture_output=True, text=True, check=False)
+            actions.append(
+                {
+                    "command": "ipsec restart",
+                    "returncode": int(result.returncode),
+                    "stdout": (result.stdout or "").strip(),
+                    "stderr": (result.stderr or "").strip(),
+                }
+            )
+
+        failed = [action for action in actions if action.get("returncode") != 0]
+        return {
+            "success": len(failed) == 0,
+            "actions": actions,
+            "failed": failed,
+        }
+
+    def apply_l2tp_runtime_settings(self, ipsec_psk: str, client_subnet: str) -> Dict[str, Any]:
+        local_ip, remote_pool = self._extract_l2tp_pool(client_subnet)
+        ipsec_content = self._render_ipsec_secrets(ipsec_psk)
+        xl2tpd_content = self._render_xl2tpd_config(local_ip=local_ip, remote_pool=remote_pool)
+
+        IPSEC_SECRETS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        XL2TPD_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        IPSEC_SECRETS_PATH.write_text(ipsec_content, encoding="utf-8")
+        XL2TPD_CONFIG_PATH.write_text(xl2tpd_content, encoding="utf-8")
+
+        restart_result = self._restart_l2tp_daemons()
+        return {
+            "success": bool(restart_result.get("success")),
+            "ipsec_secrets_path": str(IPSEC_SECRETS_PATH),
+            "xl2tpd_config_path": str(XL2TPD_CONFIG_PATH),
+            "local_ip": local_ip,
+            "remote_pool": remote_pool,
+            "client_subnet": str(ip_network(str(client_subnet or "").strip(), strict=False)),
+            "restart": restart_result,
+        }
 
     @staticmethod
     def _run_command(command: List[str], check: bool = False) -> subprocess.CompletedProcess[str]:
@@ -152,9 +253,7 @@ class PPPManager:
 
             protocol = "unknown"
             lowered = args.lower()
-            if "pptp" in lowered:
-                protocol = "pptp"
-            elif "pppol2tp" in lowered or "xl2tpd" in lowered or "l2tp" in lowered:
+            if "pppol2tp" in lowered or "xl2tpd" in lowered or "l2tp" in lowered:
                 protocol = "l2tp"
 
             interface_match = re.search(rf"\b({PPP_INTERFACE_PREFIX}\d+)\b", args)
