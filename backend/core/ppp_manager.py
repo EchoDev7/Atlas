@@ -74,28 +74,75 @@ class PPPManager:
         actions: list[Dict[str, Any]] = []
 
         if shutil.which("systemctl"):
-            result = subprocess.run(
-                ["systemctl", "restart", "strongswan", "xl2tpd"],
+            strongswan_unit: Optional[str] = None
+            for candidate in ("strongswan", "strongswan-swanctl", "strongswan-starter"):
+                probe = subprocess.run(
+                    ["systemctl", "cat", candidate],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if int(probe.returncode) == 0:
+                    strongswan_unit = candidate
+                    break
+
+            if strongswan_unit:
+                strongswan_result = subprocess.run(
+                    ["systemctl", "restart", strongswan_unit],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                actions.append(
+                    {
+                        "command": f"systemctl restart {strongswan_unit}",
+                        "returncode": int(strongswan_result.returncode),
+                        "stdout": (strongswan_result.stdout or "").strip(),
+                        "stderr": (strongswan_result.stderr or "").strip(),
+                    }
+                )
+            elif shutil.which("ipsec"):
+                ipsec_result = subprocess.run(["ipsec", "restart"], capture_output=True, text=True, check=False)
+                actions.append(
+                    {
+                        "command": "ipsec restart",
+                        "returncode": int(ipsec_result.returncode),
+                        "stdout": (ipsec_result.stdout or "").strip(),
+                        "stderr": (ipsec_result.stderr or "").strip(),
+                    }
+                )
+            else:
+                actions.append(
+                    {
+                        "command": "strongswan restart unavailable",
+                        "returncode": 127,
+                        "stdout": "",
+                        "stderr": "No supported StrongSwan unit or ipsec command found",
+                    }
+                )
+
+            xl2tpd_result = subprocess.run(
+                ["systemctl", "restart", "xl2tpd"],
                 capture_output=True,
                 text=True,
                 check=False,
             )
             actions.append(
                 {
-                    "command": "systemctl restart strongswan xl2tpd",
-                    "returncode": int(result.returncode),
-                    "stdout": (result.stdout or "").strip(),
-                    "stderr": (result.stderr or "").strip(),
+                    "command": "systemctl restart xl2tpd",
+                    "returncode": int(xl2tpd_result.returncode),
+                    "stdout": (xl2tpd_result.stdout or "").strip(),
+                    "stderr": (xl2tpd_result.stderr or "").strip(),
                 }
             )
         elif shutil.which("ipsec"):
-            result = subprocess.run(["ipsec", "restart"], capture_output=True, text=True, check=False)
+            ipsec_result = subprocess.run(["ipsec", "restart"], capture_output=True, text=True, check=False)
             actions.append(
                 {
                     "command": "ipsec restart",
-                    "returncode": int(result.returncode),
-                    "stdout": (result.stdout or "").strip(),
-                    "stderr": (result.stderr or "").strip(),
+                    "returncode": int(ipsec_result.returncode),
+                    "stdout": (ipsec_result.stdout or "").strip(),
+                    "stderr": (ipsec_result.stderr or "").strip(),
                 }
             )
 

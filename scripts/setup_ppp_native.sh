@@ -108,14 +108,26 @@ echo "[7/7] Restarting and enabling VPN daemons..."
 systemctl enable --now xl2tpd
 systemctl restart xl2tpd
 
-if systemctl list-unit-files | grep -q '^strongswan.service'; then
-  systemctl enable --now strongswan
-  systemctl restart strongswan
-elif systemctl list-unit-files | grep -q '^strongswan-starter.service'; then
-  systemctl enable --now strongswan
-  systemctl restart strongswan
+resolve_strongswan_unit() {
+  local candidate
+  for candidate in strongswan strongswan-swanctl strongswan-starter; do
+    if systemctl cat "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if STRONGSWAN_UNIT="$(resolve_strongswan_unit)"; then
+  systemctl enable --now "${STRONGSWAN_UNIT}" || true
+  systemctl restart "${STRONGSWAN_UNIT}" || true
+  echo "StrongSwan service active unit: ${STRONGSWAN_UNIT}"
+elif command -v ipsec >/dev/null 2>&1; then
+  ipsec restart || true
+  echo "StrongSwan controlled through ipsec command fallback."
 else
-  echo "StrongSwan service unit not found (expected strongswan or strongswan-starter)" >&2
+  echo "StrongSwan service unit/command not found (tried strongswan,strongswan-swanctl,strongswan-starter,ipsec)" >&2
 fi
 
 echo

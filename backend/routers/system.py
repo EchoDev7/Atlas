@@ -43,7 +43,8 @@ BACKEND_SERVICE_CANDIDATES = (
     "atlas-panel-backend",
     "atlas",
 )
-L2TP_IPSEC_UNITS = ("strongswan", "xl2tpd")
+L2TP_STRONGSWAN_CANDIDATES = ("strongswan", "strongswan-swanctl", "strongswan-starter")
+L2TP_XL2TPD_UNIT = "xl2tpd"
 LETSENCRYPT_LIVE_DIR = Path("/etc/letsencrypt/live")
 DEFAULT_WIREGUARD_INTERFACE = "wg0"
 
@@ -266,6 +267,25 @@ def _sqlite_database_path() -> Path:
 def _ensure_systemctl_available() -> None:
     if shutil.which("systemctl") is None:
         raise HTTPException(status_code=503, detail="systemctl is not available on this host")
+
+
+def _resolve_l2tp_units() -> tuple[list[str], bool]:
+    _ensure_systemctl_available()
+    resolved_units: list[str] = []
+    strongswan_found = False
+
+    for candidate in L2TP_STRONGSWAN_CANDIDATES:
+        code, _, _ = _run_system_subprocess(["systemctl", "cat", candidate], timeout_seconds=10)
+        if code == 0:
+            resolved_units.append(candidate)
+            strongswan_found = True
+            break
+
+    code, _, _ = _run_system_subprocess(["systemctl", "cat", L2TP_XL2TPD_UNIT], timeout_seconds=10)
+    if code == 0:
+        resolved_units.append(L2TP_XL2TPD_UNIT)
+
+    return resolved_units, strongswan_found
 
 
 def _run_system_subprocess(command: list[str], timeout_seconds: int = 40) -> tuple[int, str, str]:
@@ -627,9 +647,12 @@ def run_service_action(
 
     target_alias = (payload.service_name or "").strip().lower()
     if target_alias == "l2tp":
-        _ensure_systemctl_available()
+        resolved_units, has_strongswan_unit = _resolve_l2tp_units()
+        if not resolved_units and not shutil.which("ipsec"):
+            raise HTTPException(status_code=500, detail="No L2TP/IPsec service unit or ipsec command is available on this host")
+
         unit_results: list[dict[str, Any]] = []
-        for unit in L2TP_IPSEC_UNITS:
+        for unit in resolved_units:
             try:
                 code, stdout, stderr = _run_system_subprocess(["systemctl", action, unit], timeout_seconds=20)
             except subprocess.TimeoutExpired:
@@ -637,6 +660,20 @@ def run_service_action(
             unit_results.append(
                 {
                     "service_unit": unit,
+                    "return_code": code,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                }
+            )
+
+        if not has_strongswan_unit and shutil.which("ipsec"):
+            try:
+                code, stdout, stderr = _run_system_subprocess(["ipsec", action], timeout_seconds=20)
+            except subprocess.TimeoutExpired:
+                code, stdout, stderr = 124, "", "ipsec command timed out"
+            unit_results.append(
+                {
+                    "service_unit": "ipsec",
                     "return_code": code,
                     "stdout": stdout,
                     "stderr": stderr,
@@ -665,7 +702,7 @@ def run_service_action(
         return {
             "success": True,
             "service_name": target_alias,
-            "service_unit": ",".join(L2TP_IPSEC_UNITS),
+            "service_unit": ",".join(str(item.get("service_unit") or "") for item in unit_results if str(item.get("service_unit") or "").strip()),
             "action": action,
             "message": f"L2TP/IPsec services {action} executed successfully",
             "output": "\n".join(
@@ -733,20 +770,41 @@ def read_l2tp_status(
     current_user: Admin = Depends(get_current_user),
 ):
     _ = current_user
-    _ensure_systemctl_available()
 
     unit_states: dict[str, dict[str, Any]] = {}
-    all_active = True
-    for unit in L2TP_IPSEC_UNITS:
+    resolved_units, has_strongswan_unit = _resolve_l2tp_units()
+    for unit in resolved_units:
         code, stdout, stderr = _run_system_subprocess(["systemctl", "is-active", unit], timeout_seconds=10)
         is_active = int(code) == 0
-        all_active = all_active and is_active
         unit_states[unit] = {
             "is_active": is_active,
             "stdout": stdout,
             "stderr": stderr,
             "return_code": code,
         }
+
+    strongswan_active = False
+    if has_strongswan_unit:
+        strongswan_active = any(bool(unit_states.get(unit, {}).get("is_active")) for unit in L2TP_STRONGSWAN_CANDIDATES if unit in unit_states)
+    elif shutil.which("ipsec"):
+        code, stdout, stderr = _run_system_subprocess(["ipsec", "status"], timeout_seconds=15)
+        strongswan_active = int(code) == 0
+        unit_states["ipsec"] = {
+            "is_active": strongswan_active,
+            "stdout": stdout,
+            "stderr": stderr,
+            "return_code": code,
+        }
+    else:
+        unit_states["ipsec"] = {
+            "is_active": False,
+            "stdout": "",
+            "stderr": "No supported StrongSwan unit or ipsec command found",
+            "return_code": 127,
+        }
+
+    xl2tpd_active = bool(unit_states.get(L2TP_XL2TPD_UNIT, {}).get("is_active"))
+    all_active = strongswan_active and xl2tpd_active
 
     return {
         "success": True,

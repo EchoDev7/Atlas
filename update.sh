@@ -169,8 +169,43 @@ else
   warn "No WireGuard interface config found under /etc/wireguard. Skipping WireGuard restart."
 fi
 
-systemctl restart strongswan xl2tpd || true
-if systemctl is-active --quiet strongswan && systemctl is-active --quiet xl2tpd; then
+resolve_strongswan_unit() {
+  local candidate
+  for candidate in strongswan strongswan-swanctl strongswan-starter; do
+    if systemctl cat "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+l2tp_restart_ok=1
+if STRONGSWAN_UNIT="$(resolve_strongswan_unit)"; then
+  systemctl restart "${STRONGSWAN_UNIT}" || true
+  if systemctl is-active --quiet "${STRONGSWAN_UNIT}"; then
+    ok "${STRONGSWAN_UNIT} restarted"
+  else
+    warn "${STRONGSWAN_UNIT} restart finished but service is not active"
+    l2tp_restart_ok=0
+  fi
+elif command -v ipsec >/dev/null 2>&1; then
+  ipsec restart || true
+  ok "ipsec restart command executed (StrongSwan fallback)"
+else
+  warn "No StrongSwan unit/command found (tried strongswan,strongswan-swanctl,strongswan-starter,ipsec)"
+  l2tp_restart_ok=0
+fi
+
+systemctl restart xl2tpd || true
+if systemctl is-active --quiet xl2tpd; then
+  ok "xl2tpd restarted"
+else
+  warn "xl2tpd restart finished but service is not active"
+  l2tp_restart_ok=0
+fi
+
+if [[ "${l2tp_restart_ok}" -eq 1 ]]; then
   ok "L2TP/IPsec services restarted"
 else
   warn "L2TP/IPsec restart finished but one or more services are not active"
