@@ -529,13 +529,13 @@
                                             </svg>
                                         </button>
 
-                                        <!-- Download OpenVPN Config Dropdown -->
+                                        <!-- Download Config / Credentials Dropdown -->
                                         <div class="relative" @click.away="downloadOpen = false">
                                             <button @click="downloadOpen = !downloadOpen"
                                                     class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
                                                     :class="darkMode ? 'text-cyan-400 hover:bg-slate-700/50' : 'text-cyan-600 hover:bg-cyan-50'"
-                                                    title="Download OpenVPN Config"
-                                                    x-show="client.has_openvpn || client.enable_openvpn">
+                                                    title="Download Config / Credentials"
+                                                    x-show="client.has_openvpn || client.enable_openvpn || client.has_openconnect || client.enable_openconnect">
                                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                                                 </svg>
@@ -553,33 +553,58 @@
                                                  :class="darkMode ? 'bg-slate-800/95 border-slate-700/50' : 'bg-white/95 border-slate-200/50'">
                                                 <div class="py-2">
                                                     <button @click.prevent="downloadOpenVPNConfig(client.id, 'windows'); downloadOpen = false"
+                                                            x-show="client.has_openvpn || client.enable_openvpn"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>🪟</span><span>Download for Windows</span>
                                                     </button>
                                                     <button @click.prevent="downloadOpenVPNConfig(client.id, 'mac'); downloadOpen = false"
+                                                            x-show="client.has_openvpn || client.enable_openvpn"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>🖥️</span><span>Download for macOS</span>
                                                     </button>
                                                     <button @click.prevent="downloadOpenVPNConfig(client.id, 'ios'); downloadOpen = false"
+                                                            x-show="client.has_openvpn || client.enable_openvpn"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>📱</span><span>Download for iOS</span>
                                                     </button>
                                                     <button @click.prevent="downloadOpenVPNConfig(client.id, 'android'); downloadOpen = false"
+                                                            x-show="client.has_openvpn || client.enable_openvpn"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>🤖</span><span>Download for Android</span>
                                                     </button>
                                                     <button @click.prevent="downloadOpenVPNConfig(client.id, 'linux'); downloadOpen = false"
+                                                            x-show="client.has_openvpn || client.enable_openvpn"
                                                             class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
                                                             :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
                                                         <span>🐧</span><span>Download for Linux / Router</span>
                                                     </button>
+                                                    <div x-show="(client.has_openvpn || client.enable_openvpn) && (client.has_openconnect || client.enable_openconnect)"
+                                                         class="mx-4 my-1 border-t"
+                                                         :class="darkMode ? 'border-slate-700/50' : 'border-slate-200/60'"></div>
+                                                    <button @click.prevent="downloadOpenConnectConfig(client.username); downloadOpen = false"
+                                                            x-show="client.has_openconnect || client.enable_openconnect"
+                                                            class="w-full px-4 py-2 text-left text-xs flex items-center space-x-2 theme-transition"
+                                                            :class="darkMode ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'">
+                                                        <span>🔐</span><span>Download OpenConnect Credentials (.txt)</span>
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <!-- OpenConnect Info / Share -->
+                                        <button @click="openOpenConnectInfoModal(client)"
+                                                x-show="client.has_openconnect || client.enable_openconnect"
+                                                class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
+                                                :class="darkMode ? 'text-indigo-300 hover:bg-slate-700/50' : 'text-indigo-600 hover:bg-indigo-50'"
+                                                title="OpenConnect Info / Share">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z"/>
+                                            </svg>
+                                        </button>
 
                                         <!-- Download WireGuard Config -->
                                         <button @click="downloadWireGuardConfig(client.id)"
@@ -1351,6 +1376,75 @@
         </div>
     </div>
 
+    <!-- OpenConnect Info / Share Modal -->
+    <div x-show="showOpenConnectInfoModal"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 overflow-y-auto"
+         style="display: none;">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity modal-backdrop"
+                 :class="darkMode ? 'bg-slate-900/80' : 'bg-slate-900/50'"
+                 @click="closeOpenConnectInfoModal()"></div>
+
+            <div class="inline-block align-bottom glass-effect rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-slide-down"
+                 :class="darkMode ? 'bg-slate-800/90 border border-slate-700/50' : 'bg-white/90 border border-slate-200/50'">
+                <div class="px-6 py-5 border-b theme-transition"
+                     :class="darkMode ? 'border-slate-700/50' : 'border-slate-200/50'">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xl font-semibold theme-transition"
+                            :class="darkMode ? 'text-white' : 'text-slate-900'">
+                            OpenConnect Info / Share
+                        </h3>
+                        <button @click="closeOpenConnectInfoModal()"
+                                class="rounded-lg p-1 theme-transition hover:scale-110 active:scale-95"
+                                :class="darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-700/50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="px-6 py-5 space-y-4">
+                    <div class="rounded-xl p-4 border theme-transition"
+                         :class="darkMode ? 'border-slate-700/60 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
+                        <p class="text-xs uppercase tracking-wide mb-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Server Address</p>
+                        <p class="text-sm font-semibold break-all theme-transition"
+                           :class="darkMode ? 'text-slate-100' : 'text-slate-800'"
+                           x-text="`${openConnectInfo.serverHost}:${openConnectInfo.port}`"></p>
+                    </div>
+
+                    <div class="rounded-xl p-4 border theme-transition"
+                         :class="darkMode ? 'border-slate-700/60 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
+                        <p class="text-xs uppercase tracking-wide mb-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Username</p>
+                        <p class="text-sm font-semibold break-all theme-transition"
+                           :class="darkMode ? 'text-slate-100' : 'text-slate-800'"
+                           x-text="openConnectInfo.username"></p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3 pt-1">
+                        <a :href="openConnectDeepLink()"
+                           class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white theme-transition hover:scale-105 active:scale-95 transition-transform shadow-lg"
+                           :class="darkMode ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-indigo-600 hover:bg-indigo-700'">
+                            1-Click Setup
+                        </a>
+                        <button type="button"
+                                @click="copyOpenConnectInfo()"
+                                class="px-4 py-2.5 rounded-xl text-sm font-semibold theme-transition hover:scale-105 active:scale-95 transition-transform"
+                                :class="darkMode ? 'bg-slate-700/50 text-slate-200 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+                            Copy to Clipboard
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         function themeManager() {
             return {
@@ -1450,6 +1544,15 @@
                 qrCodeLoading: false,
                 qrCodeData: null,
                 selectedClient: null,
+
+                // OpenConnect Info / Share Modal
+                showOpenConnectInfoModal: false,
+                openConnectInfo: {
+                    username: '',
+                    serverHost: '',
+                    port: 4433,
+                },
+                openConnectShareText: '',
                 
                 // Revoke Modal
                 showRevokeModal: false,
@@ -1956,6 +2059,99 @@
                     }
                 },
 
+                normalizeServerHost(rawValue) {
+                    const raw = String(rawValue || '').trim();
+                    const fallbackHost = window.location.hostname || 'SERVER_IP_OR_DOMAIN';
+                    if (!raw) {
+                        return fallbackHost;
+                    }
+
+                    try {
+                        const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+                        const parsed = new URL(candidate);
+                        return parsed.hostname || fallbackHost;
+                    } catch (_) {
+                        return raw.replace(/^https?:\/\//i, '').split('/')[0] || fallbackHost;
+                    }
+                },
+
+                async openOpenConnectInfoModal(client) {
+                    let serverHost = this.normalizeServerHost(window.location.hostname);
+                    let ocservPort = 4433;
+                    const username = String(client?.username || '').trim();
+
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        if (token) {
+                            const response = await fetch('/api/settings/general', {
+                                method: 'GET',
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            });
+                            if (response.ok) {
+                                const settings = await response.json();
+                                serverHost = this.normalizeServerHost(settings?.server_address || serverHost);
+                                const parsedPort = Number.parseInt(settings?.ocserv_port, 10);
+                                if (Number.isFinite(parsedPort) && parsedPort > 0) {
+                                    ocservPort = parsedPort;
+                                }
+                            }
+                        }
+                    } catch (_) {
+                        // fallback host/port is used
+                    }
+
+                    this.openConnectInfo = {
+                        username,
+                        serverHost,
+                        port: ocservPort,
+                    };
+                    this.openConnectShareText = [
+                        '--- OpenConnect / Cisco AnyConnect ---',
+                        `Server Address: ${serverHost}:${ocservPort}`,
+                        `Username: ${username}`,
+                        'Password: As provided by admin',
+                        'Instructions: Download Cisco Secure Client (AnyConnect) on your device, enter the Server Address, and login.',
+                    ].join('\n');
+                    this.showOpenConnectInfoModal = true;
+                },
+
+                closeOpenConnectInfoModal() {
+                    this.showOpenConnectInfoModal = false;
+                },
+
+                openConnectDeepLink() {
+                    const hostWithPort = `${this.openConnectInfo.serverHost}:${this.openConnectInfo.port}`;
+                    return `anyconnect://create?name=AtlasVPN&host=${hostWithPort}`;
+                },
+
+                async copyOpenConnectInfo() {
+                    const shareText = String(this.openConnectShareText || '').trim();
+                    if (!shareText) {
+                        return;
+                    }
+
+                    try {
+                        if (navigator?.clipboard?.writeText) {
+                            await navigator.clipboard.writeText(shareText);
+                        } else {
+                            const textarea = document.createElement('textarea');
+                            textarea.value = shareText;
+                            textarea.setAttribute('readonly', '');
+                            textarea.style.position = 'absolute';
+                            textarea.style.left = '-9999px';
+                            document.body.appendChild(textarea);
+                            textarea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textarea);
+                        }
+                        this.successMessage = 'OpenConnect info copied to clipboard';
+                    } catch (_) {
+                        this.error = 'Failed to copy OpenConnect info to clipboard';
+                    }
+                },
+
                 async downloadOpenVPNConfig(userId, osType) {
                     this.error = '';
                     
@@ -2130,6 +2326,67 @@
                     } catch (err) {
                         this.error = err.message || `Failed to download ${protocol.toUpperCase()} credentials`;
                         console.error(`Download ${protocol} credentials error:`, err);
+                    }
+                },
+
+                async downloadOpenConnectConfig(username) {
+                    this.error = '';
+
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            throw new Error('Not authenticated. Please log in again.');
+                        }
+
+                        const normalizedUsername = String(username || '').trim();
+                        if (!normalizedUsername) {
+                            throw new Error('Missing username for OpenConnect config download');
+                        }
+
+                        const response = await fetch(`/api/users/${encodeURIComponent(normalizedUsername)}/openconnect/config`, {
+                            method: 'GET',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+
+                        if (!response.ok) {
+                            let errorMessage = 'Failed to download OpenConnect credentials';
+                            try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.detail || errorMessage;
+                            } catch (_) {
+                                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            }
+                            throw new Error(errorMessage);
+                        }
+
+                        const blob = await response.blob();
+                        if (!blob || blob.size === 0) {
+                            throw new Error('Empty OpenConnect credentials file received');
+                        }
+
+                        const disposition = response.headers.get('Content-Disposition') || response.headers.get('content-disposition') || '';
+                        const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+                        const rawHeaderFilename = (filenameMatch && (filenameMatch[1] || filenameMatch[2])) || '';
+                        const headerFilename = rawHeaderFilename ? decodeURIComponent(rawHeaderFilename) : '';
+
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.style.display = 'none';
+                        a.download = headerFilename || `${normalizedUsername}_openconnect.txt`;
+                        document.body.appendChild(a);
+                        a.click();
+                        requestAnimationFrame(() => {
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                        });
+
+                        this.successMessage = `OpenConnect credentials downloaded successfully for ${normalizedUsername}`;
+                    } catch (err) {
+                        this.error = err.message || 'Failed to download OpenConnect credentials';
+                        console.error('Download OpenConnect credentials error:', err);
                     }
                 },
 

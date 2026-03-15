@@ -2,12 +2,14 @@
 # Multi-protocol user management with limits enforcement
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, asc, desc, func, or_
 from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
 from pathlib import Path
 import logging
+import io
 
 from backend.database import get_db
 from backend.dependencies import get_current_user
@@ -1192,6 +1194,51 @@ async def download_config(
         )
 
     raise HTTPException(status_code=400, detail=f"Protocol {protocol} not yet supported")
+
+
+@router.get("/{username}/openconnect/config")
+async def download_openconnect_credentials(
+    username: str,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    normalized_username = str(username or "").strip()
+    if not normalized_username:
+        raise HTTPException(status_code=400, detail="Username is required")
+
+    user = db.query(VPNUser).filter(VPNUser.username == normalized_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not bool(user.enable_openconnect or user.has_openconnect):
+        raise HTTPException(status_code=404, detail="OpenConnect is not enabled for this user")
+
+    general_settings = _get_or_create_general_settings(db)
+    server_host = str(general_settings.server_address or "").strip() or "SERVER_IP_OR_DOMAIN"
+    ocserv_port = int(getattr(general_settings, "ocserv_port", 4433) or 4433)
+    server_address = f"{server_host}:{ocserv_port}"
+
+    content = "\n".join(
+        [
+            "--- OpenConnect / Cisco AnyConnect ---",
+            f"Server Address: {server_address}",
+            f"Username: {user.username}",
+            "Password: As provided by admin",
+            "Instructions: Download Cisco Secure Client (AnyConnect) on your device, enter the Server Address, and login.",
+            "",
+        ]
+    )
+    filename = f"{user.username}_openconnect.txt"
+
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/{user_id}/configs/{protocol}", response_model=VPNConfigFileResponse)
