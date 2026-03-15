@@ -2044,10 +2044,28 @@
                 </template>
                 <template x-if="vlessModal.security === 'tls' || vlessModal.security === 'reality'">
                     <label class="block">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">ALPN</span>
+                        <select x-model="vlessModal.tls_settings.alpn"
+                                class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            <option value="h2,http/1.1">h2,http/1.1 (Standard/Auto)</option>
+                            <option value="h2">h2 (Required for gRPC)</option>
+                            <option value="http/1.1">http/1.1 (Required for WS)</option>
+                            <option value="h3">h3 (QUIC/XHTTP)</option>
+                        </select>
+                    </label>
+                </template>
+                <template x-if="vlessModal.security === 'tls' || vlessModal.security === 'reality'">
+                    <label class="block">
                         <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Fingerprint</span>
-                        <input type="text" x-model="vlessModal.fingerprint" placeholder="chrome"
-                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <select x-model="vlessModal.fingerprint"
+                                class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            <option value="chrome">Chrome</option>
+                            <option value="firefox">Firefox</option>
+                            <option value="safari">Safari</option>
+                            <option value="randomized">Randomized (Best for Anti-DPI)</option>
+                        </select>
                     </label>
                 </template>
 
@@ -2366,6 +2384,7 @@
                         private_key: '',
                         public_key: '',
                         short_id: '',
+                        alpn: 'h2,http/1.1',
                     },
                     is_active: true,
                 },
@@ -3559,6 +3578,7 @@
                             private_key: '',
                             public_key: '',
                             short_id: '',
+                            alpn: 'h2,http/1.1',
                         },
                         is_active: true,
                     };
@@ -3757,18 +3777,22 @@
                     }
 
                     if (security === 'tls') {
+                        const alpn = String(this.vlessModal.tls_settings.alpn || 'h2,http/1.1').trim() || 'h2,http/1.1';
                         payload.tls_settings = {
                             server_name: normalizedSni || null,
+                            alpn,
                         };
                     }
                     if (security === 'reality') {
                         const privateKey = String(this.vlessModal.tls_settings.private_key || '').trim();
                         const publicKey = String(this.vlessModal.tls_settings.public_key || '').trim();
                         const shortId = String(this.vlessModal.tls_settings.short_id || '').trim();
+                        const alpn = String(this.vlessModal.tls_settings.alpn || 'h2,http/1.1').trim() || 'h2,http/1.1';
                         payload.tls_settings = {
                             private_key: privateKey,
                             public_key: publicKey,
                             short_id: shortId || this.generateRandomHex(16),
+                            alpn,
                         };
                     }
 
