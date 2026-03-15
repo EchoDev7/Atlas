@@ -1164,96 +1164,6 @@
                                 <option value="fatal">fatal</option>
                             </select>
                         </label>
-                        <label class="block">
-                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">VLESS Port</span>
-                            <input type="number"
-                                   min="1"
-                                   max="65535"
-                                   x-model.number="generalForm.vless_port"
-                                   placeholder="443"
-                                   class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
-                                   :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                        </label>
-                    </div>
-
-                    <div class="rounded-xl border p-4 space-y-4 theme-transition"
-                         :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <h3 class="text-base font-semibold theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">VLESS - REALITY</h3>
-                                <p class="text-xs mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
-                                    Sing-box 1.12+ inbound over TCP with REALITY handshake and route sniff action.
-                                </p>
-                            </div>
-                            <label class="inline-flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" x-model="generalForm.enable_vless" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable VLESS</span>
-                            </label>
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY SNI</span>
-                                <input type="text"
-                                       x-model="generalForm.singbox_reality_sni"
-                                       placeholder="yahoo.com"
-                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
-                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                            </label>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Short IDs (comma separated)</span>
-                                <input type="text"
-                                       x-model="generalForm.singbox_reality_short_ids"
-                                       placeholder="0123456789abcdef"
-                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
-                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                            </label>
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Public Key</span>
-                                <div class="mt-1 flex items-center gap-2">
-                                    <input type="text"
-                                           x-model="generalForm.singbox_reality_public_key"
-                                           readonly
-                                           class="w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition cursor-not-allowed"
-                                           :class="darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-500'">
-                                    <button type="button"
-                                            @click="copyToClipboard(generalForm.singbox_reality_public_key || '', 'REALITY Public Key')"
-                                            class="px-3 py-2 rounded-lg text-xs font-semibold transition"
-                                            :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
-                                        Copy
-                                    </button>
-                                </div>
-                            </label>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Private Key</span>
-                                <div class="mt-1 flex items-center gap-2">
-                                    <input type="text"
-                                           x-model="generalForm.singbox_reality_private_key"
-                                           readonly
-                                           class="w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition cursor-not-allowed"
-                                           :class="darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-500'">
-                                    <button type="button"
-                                            @click="copyToClipboard(generalForm.singbox_reality_private_key || '', 'REALITY Private Key')"
-                                            class="px-3 py-2 rounded-lg text-xs font-semibold transition"
-                                            :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
-                                        Copy
-                                    </button>
-                                </div>
-                            </label>
-                        </div>
-
-                        <div class="flex justify-end">
-                            <button type="button"
-                                    @click="generateSingboxRealityKeypair()"
-                                    :disabled="singboxKeygenLoading || saving || loading"
-                                    class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                    :class="darkMode ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'">
-                                <span x-text="singboxKeygenLoading ? 'Generating...' : 'Generate New Keys'"></span>
-                            </button>
-                        </div>
                     </div>
 
                     <div class="rounded-xl border p-4 text-sm theme-transition"
@@ -2126,7 +2036,7 @@
 
                 <template x-if="vlessModal.security === 'tls' || vlessModal.security === 'reality'">
                     <label class="block">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SNI / Server Name</span>
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="vlessModal.security === 'reality' ? 'REALITY SNI' : 'SNI / Server Name'"></span>
                         <input type="text" x-model="vlessModal.sni" placeholder="www.microsoft.com"
                                class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                                :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
@@ -2156,18 +2066,24 @@
                             <button type="button" @click="generateInboundRealityKeypair()" :disabled="vlessRealityKeygenLoading"
                                     class="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition disabled:opacity-50"
                                     :class="darkMode ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'">
-                                <span x-text="vlessRealityKeygenLoading ? 'Generating...' : 'Generate Keys'"></span>
+                                <span x-text="vlessRealityKeygenLoading ? 'Generating...' : '🎲 Generate New REALITY Keys'"></span>
                             </button>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label class="block md:col-span-2">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Private Key</span>
+                                <input type="text" x-model="vlessModal.tls_settings.private_key"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
                             <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Public Key</span>
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Public Key</span>
                                 <input type="text" x-model="vlessModal.tls_settings.public_key"
                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
                             <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Short ID</span>
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Short ID</span>
                                 <input type="text" x-model="vlessModal.tls_settings.short_id"
                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
@@ -2447,9 +2363,9 @@
                         extra: '',
                     },
                     tls_settings: {
+                        private_key: '',
                         public_key: '',
                         short_id: '',
-                        server_name: '',
                     },
                     is_active: true,
                 },
@@ -3640,9 +3556,9 @@
                             extra: '',
                         },
                         tls_settings: {
+                            private_key: '',
                             public_key: '',
                             short_id: '',
-                            server_name: '',
                         },
                         is_active: true,
                     };
@@ -3703,7 +3619,6 @@
                     this.vlessEditingId = null;
                     this.vlessModal = this.createDefaultVlessModal();
                     this.vlessModal.sni = String(this.generalForm.singbox_reality_sni || 'www.microsoft.com');
-                    this.vlessModal.tls_settings.server_name = this.vlessModal.sni;
                     this.vlessModalOpen = true;
                 },
 
@@ -3719,10 +3634,16 @@
                     this.vlessRealityKeygenLoading = true;
                     try {
                         const token = localStorage.getItem('access_token');
-                        const response = await fetch('/api/settings/singbox/reality-keypair', {
-                            method: 'POST',
+                        let response = await fetch('/api/settings/singbox/reality-keypair', {
+                            method: 'GET',
                             headers: { Authorization: `Bearer ${token}` },
                         });
+                        if (response.status === 405 || response.status === 404) {
+                            response = await fetch('/api/settings/singbox/reality-keypair', {
+                                method: 'POST',
+                                headers: { Authorization: `Bearer ${token}` },
+                            });
+                        }
                         if (response.status === 401) {
                             localStorage.removeItem('access_token');
                             window.location.href = '/login';
@@ -3732,8 +3653,10 @@
                         if (!response.ok) {
                             throw new Error(this.getApiErrorMessage(payload, 'Failed to generate REALITY keypair'));
                         }
-                        this.vlessModal.tls_settings.public_key = String(payload.public_key || '');
-                        this.vlessModal.tls_settings.server_name = String(this.vlessModal.sni || '');
+                        const generatedShortId = String(payload.short_id || payload.shortId || this.generateRandomHex(16));
+                        this.vlessModal.tls_settings.private_key = String(payload.private_key || payload.privateKey || '');
+                        this.vlessModal.tls_settings.public_key = String(payload.public_key || payload.publicKey || '');
+                        this.vlessModal.tls_settings.short_id = generatedShortId;
                         this.showToast(payload.message || 'REALITY keypair generated', 'success');
                     } catch (error) {
                         this.showToast(error.message || 'Failed to generate REALITY keypair', 'error');
@@ -3774,12 +3697,19 @@
                         ...draft.tls_settings,
                         ...(current.tls_settings && typeof current.tls_settings === 'object' ? current.tls_settings : {}),
                     };
-                    if (!draft.tls_settings.server_name) {
-                        draft.tls_settings.server_name = draft.sni || '';
-                    }
                     this.vlessEditingId = numericId;
                     this.vlessModal = draft;
                     this.vlessModalOpen = true;
+                },
+
+                generateRandomHex(length = 16) {
+                    const size = Math.max(1, Number(length) || 16);
+                    const alphabet = '0123456789abcdef';
+                    let output = '';
+                    for (let i = 0; i < size; i += 1) {
+                        output += alphabet[Math.floor(Math.random() * alphabet.length)];
+                    }
+                    return output;
                 },
 
                 buildInboundPayload() {
@@ -3832,10 +3762,13 @@
                         };
                     }
                     if (security === 'reality') {
+                        const privateKey = String(this.vlessModal.tls_settings.private_key || '').trim();
+                        const publicKey = String(this.vlessModal.tls_settings.public_key || '').trim();
+                        const shortId = String(this.vlessModal.tls_settings.short_id || '').trim();
                         payload.tls_settings = {
-                            public_key: String(this.vlessModal.tls_settings.public_key || '').trim(),
-                            short_id: String(this.vlessModal.tls_settings.short_id || '').trim(),
-                            server_name: String(this.vlessModal.tls_settings.server_name || normalizedSni || '').trim(),
+                            private_key: privateKey,
+                            public_key: publicKey,
+                            short_id: shortId || this.generateRandomHex(16),
                         };
                     }
 
