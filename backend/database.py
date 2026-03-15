@@ -45,6 +45,8 @@ def get_db():
 
 
 def init_db():
+    from backend.models.vless_inbound import VlessInbound  # noqa: F401
+
     Base.metadata.create_all(bind=engine)
     # Lightweight SQLite migration for existing deployments
     with engine.begin() as connection:

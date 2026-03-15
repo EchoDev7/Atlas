@@ -6,6 +6,7 @@ from backend.models.openvpn_settings import OpenVPNSettings
 from backend.models.wireguard_settings import WireGuardSettings
 from backend.models.audit_log import AuditLog
 from backend.models.routing_rule import RoutingRule
+from backend.models.vless_inbound import VlessInbound
 
 __all__ = [
     "Admin",
@@ -19,4 +20,5 @@ __all__ = [
     "WireGuardSettings",
     "AuditLog",
     "RoutingRule",
+    "VlessInbound",
 ]
