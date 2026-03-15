@@ -54,7 +54,7 @@ class PPPManager:
         return "\n".join(
             [
                 "[global]",
-                "ipsec saref = yes",
+                "ipsec saref = no",
                 "",
                 "[lns default]",
                 f"ip range = {normalized_pool}",

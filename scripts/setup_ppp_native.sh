@@ -10,7 +10,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 IPSEC_PSK="${ATLAS_IPSEC_PSK:-atlas-change-me-strong-psk}"
 L2TP_LOCAL_IP="10.10.11.1"
-L2TP_REMOTE_POOL="10.10.11.100-200"
+L2TP_REMOTE_POOL="10.10.11.100-10.10.11.200"
 L2TP_SUBNET="10.10.11.0/24"
 
 echo "[1/7] Installing required native PPP/IPsec packages..."
@@ -46,7 +46,7 @@ EOF
 mkdir -p /etc/xl2tpd
 cat > /etc/xl2tpd/xl2tpd.conf <<EOF
 [global]
-ipsec saref = yes
+ipsec saref = no
 
 [lns default]
 ip range = ${L2TP_REMOTE_POOL}
