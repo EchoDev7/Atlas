@@ -473,6 +473,7 @@ def init_db():
                 "l2tp_client_subnet": "ALTER TABLE general_settings ADD COLUMN l2tp_client_subnet VARCHAR(32) NOT NULL DEFAULT '10.10.11.0/24'",
                 "ocserv_port": "ALTER TABLE general_settings ADD COLUMN ocserv_port INTEGER NOT NULL DEFAULT 4433",
                 "ocserv_client_subnet": "ALTER TABLE general_settings ADD COLUMN ocserv_client_subnet VARCHAR(32) NOT NULL DEFAULT '10.10.12.0/24'",
+                "singbox_log_level": "ALTER TABLE general_settings ADD COLUMN singbox_log_level VARCHAR(16) NOT NULL DEFAULT 'info'",
                 "is_tunnel_enabled": "ALTER TABLE general_settings ADD COLUMN is_tunnel_enabled BOOLEAN NOT NULL DEFAULT 0",
                 "foreign_server_ip": "ALTER TABLE general_settings ADD COLUMN foreign_server_ip VARCHAR(64)",
                 "foreign_server_port": "ALTER TABLE general_settings ADD COLUMN foreign_server_port INTEGER NOT NULL DEFAULT 22",
@@ -601,6 +602,24 @@ def init_db():
                     )
                 )
 
+            if "singbox_log_level" in general_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE general_settings
+                        SET singbox_log_level = CASE LOWER(TRIM(COALESCE(singbox_log_level, 'info')))
+                                WHEN 'trace' THEN 'trace'
+                                WHEN 'debug' THEN 'debug'
+                                WHEN 'info' THEN 'info'
+                                WHEN 'warn' THEN 'warn'
+                                WHEN 'error' THEN 'error'
+                                WHEN 'fatal' THEN 'fatal'
+                                ELSE 'info'
+                            END
+                        """
+                    )
+                )
+
             general_settings_row_count = connection.execute(
                 text("SELECT COUNT(*) FROM general_settings")
             ).scalar_one()
@@ -621,6 +640,7 @@ def init_db():
                             l2tp_client_subnet,
                             ocserv_port,
                             ocserv_client_subnet,
+                            singbox_log_level,
                             is_tunnel_enabled,
                             foreign_server_ip,
                             foreign_server_port,
@@ -656,6 +676,7 @@ def init_db():
                             '10.10.11.0/24',
                             4433,
                             '10.10.12.0/24',
+                            'info',
                             0,
                             NULL,
                             22,

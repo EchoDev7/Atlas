@@ -17,6 +17,7 @@ class GeneralSettingsBase(BaseModel):
     l2tp_client_subnet: str = Field("10.10.11.0/24", min_length=9, max_length=32)
     ocserv_port: int = Field(4433, ge=1, le=65535)
     ocserv_client_subnet: str = Field("10.10.12.0/24", min_length=9, max_length=32)
+    singbox_log_level: Literal["trace", "debug", "info", "warn", "error", "fatal"] = Field("info")
     is_tunnel_enabled: bool = Field(False)
     foreign_server_ip: Optional[str] = Field(default=None, max_length=64)
     foreign_server_port: int = Field(22, ge=1, le=65535)

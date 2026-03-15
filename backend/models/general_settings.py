@@ -22,6 +22,7 @@ class GeneralSettings(Base):
     l2tp_client_subnet = Column(String(32), nullable=False, default="10.10.11.0/24")
     ocserv_port = Column(Integer, nullable=False, default=4433)
     ocserv_client_subnet = Column(String(32), nullable=False, default="10.10.12.0/24")
+    singbox_log_level = Column(String(16), nullable=False, default="info")
     is_tunnel_enabled = Column(Boolean, nullable=False, default=False)
     foreign_server_ip = Column(String(64), nullable=True)
     foreign_server_port = Column(Integer, nullable=False, default=22)

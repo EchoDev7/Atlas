@@ -206,6 +206,14 @@ else
   warn "OpenConnect provisioning script missing at ${PROJECT_ROOT}/scripts/setup_ocserv.sh"
 fi
 
+step "Provisioning Sing-box core service"
+if [[ -f "${PROJECT_ROOT}/scripts/setup_singbox.sh" ]]; then
+  bash "${PROJECT_ROOT}/scripts/setup_singbox.sh"
+  ok "Sing-box provisioning applied"
+else
+  warn "Sing-box provisioning script missing at ${PROJECT_ROOT}/scripts/setup_singbox.sh"
+fi
+
 step "Configuring dual-stack network forwarding and NAT"
 MAIN_INTERFACE="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')"
 if [[ -z "${MAIN_INTERFACE}" ]]; then

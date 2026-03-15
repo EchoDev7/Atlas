@@ -89,6 +89,14 @@ else
   warn "OpenConnect provisioning script missing at ${PROJECT_ROOT}/scripts/setup_ocserv.sh"
 fi
 
+step "Applying Sing-box provisioning hook"
+if [[ -f "${PROJECT_ROOT}/scripts/setup_singbox.sh" ]]; then
+  bash "${PROJECT_ROOT}/scripts/setup_singbox.sh"
+  ok "Sing-box provisioning applied"
+else
+  warn "Sing-box provisioning script missing at ${PROJECT_ROOT}/scripts/setup_singbox.sh"
+fi
+
 step "Ensuring atlas-backend.service uses dynamic HTTP/HTTPS runner"
 cat > "${SERVICE_FILE}" <<EOF
 [Unit]

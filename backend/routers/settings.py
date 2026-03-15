@@ -34,6 +34,7 @@ openvpn_service = protocol_registry.get("openvpn")
 obfuscation_manager = ObfuscationManager()
 wireguard_service = protocol_registry.get("wireguard")
 openconnect_service = protocol_registry.get("openconnect")
+singbox_service = protocol_registry.get("singbox")
 logger = logging.getLogger(__name__)
 RESOLVED_DROPIN_DIR = Path("/etc/systemd/resolved.conf.d")
 ATLAS_DNS_DROPIN_FILE = RESOLVED_DROPIN_DIR / "atlas-dns.conf"
@@ -505,6 +506,7 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         l2tp_client_subnet=settings.l2tp_client_subnet,
         ocserv_port=settings.ocserv_port,
         ocserv_client_subnet=settings.ocserv_client_subnet,
+        singbox_log_level=settings.singbox_log_level,
         is_tunnel_enabled=settings.is_tunnel_enabled,
         foreign_server_ip=settings.foreign_server_ip,
         foreign_server_port=settings.foreign_server_port,
@@ -631,6 +633,7 @@ def update_general_settings(
     previous_l2tp_client_subnet = settings.l2tp_client_subnet
     previous_ocserv_port = settings.ocserv_port
     previous_ocserv_client_subnet = settings.ocserv_client_subnet
+    previous_singbox_log_level = settings.singbox_log_level
 
     openvpn_settings = _get_or_create_openvpn_settings(db)
     wireguard_settings = _get_or_create_wireguard_settings(db)
@@ -656,6 +659,7 @@ def update_general_settings(
     settings.l2tp_client_subnet = payload.l2tp_client_subnet
     settings.ocserv_port = payload.ocserv_port
     settings.ocserv_client_subnet = payload.ocserv_client_subnet
+    settings.singbox_log_level = payload.singbox_log_level
     settings.is_tunnel_enabled = payload.is_tunnel_enabled
     settings.foreign_server_ip = payload.foreign_server_ip
     settings.foreign_server_port = payload.foreign_server_port
@@ -733,6 +737,14 @@ def update_general_settings(
             detail=str(ocserv_apply_result.get("message") or "Failed to apply OpenConnect settings"),
         )
 
+    singbox_apply_result = singbox_service.apply_settings(db)
+    if not singbox_apply_result.get("success"):
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(singbox_apply_result.get("message") or "Failed to apply Sing-box settings"),
+        )
+
     sync_result = openvpn_service.sync_system_general_settings(
         old_global_ipv6_support=previous_ipv6_support,
         new_global_ipv6_support=settings.global_ipv6_support,
@@ -778,6 +790,8 @@ def update_general_settings(
         changed_fields.append("ocserv_port")
     if previous_ocserv_client_subnet != settings.ocserv_client_subnet:
         changed_fields.append("ocserv_client_subnet")
+    if previous_singbox_log_level != settings.singbox_log_level:
+        changed_fields.append("singbox_log_level")
 
     record_audit_event(
         action="general_settings_updated",

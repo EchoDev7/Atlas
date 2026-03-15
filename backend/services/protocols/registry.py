@@ -5,6 +5,7 @@ from backend.services.protocols.base_vpn_service import BaseVPNService
 from backend.services.l2tp_service import L2TPService
 from backend.services.openconnect_service import OpenConnectService
 from backend.services.openvpn_service import OpenVPNService
+from backend.services.singbox_service import SingBoxService
 from backend.services.wireguard_service import WireGuardService
 
 
@@ -35,3 +36,4 @@ protocol_registry.register(OpenVPNService())
 protocol_registry.register(WireGuardService())
 protocol_registry.register(L2TPService())
 protocol_registry.register(OpenConnectService())
+protocol_registry.register(SingBoxService())

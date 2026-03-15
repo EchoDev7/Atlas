@@ -32,6 +32,7 @@ router = APIRouter(prefix="/system", tags=["System"])
 openvpn_service = protocol_registry.get("openvpn")
 wireguard_service = protocol_registry.get("wireguard")
 openconnect_service = protocol_registry.get("openconnect")
+singbox_service = protocol_registry.get("singbox")
 tunnel_manager = TunnelManager()
 
 MAX_BACKUP_UPLOAD_BYTES = 512 * 1024 * 1024  # 512MB safety ceiling
@@ -334,7 +335,9 @@ def _resolve_service_unit(alias: str, db: Session | None = None) -> str:
         return f"wg-quick@{interface_name}"
     if normalized == "openconnect":
         return getattr(openconnect_service, "service_name", "ocserv")
-    raise HTTPException(status_code=400, detail="Unsupported service_name. Use 'openvpn', 'wireguard', 'l2tp', 'openconnect', or 'backend'")
+    if normalized == "singbox":
+        return getattr(singbox_service, "service_name", "sing-box")
+    raise HTTPException(status_code=400, detail="Unsupported service_name. Use 'openvpn', 'wireguard', 'l2tp', 'openconnect', 'singbox', or 'backend'")
 
 
 def _safe_extract_tar(archive_path: Path, destination_dir: Path) -> None:
