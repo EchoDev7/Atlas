@@ -11,6 +11,7 @@ from pathlib import Path
 import logging
 import io
 import uuid
+from urllib.parse import quote
 
 from backend.database import get_db
 from backend.dependencies import get_current_user
@@ -1241,6 +1242,59 @@ async def download_openconnect_credentials(
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.get("/{username}/vless/link")
+async def get_vless_link(
+    username: str,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    normalized_username = str(username or "").strip()
+    if not normalized_username:
+        raise HTTPException(status_code=400, detail="Username is required")
+
+    user = db.query(VPNUser).filter(VPNUser.username == normalized_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    vless_uuid = str(getattr(user, "vless_uuid", "") or "").strip()
+    if not vless_uuid:
+        raise HTTPException(status_code=404, detail="VLESS UUID is not configured for this user")
+
+    settings = _get_or_create_general_settings(db)
+    server_host = str(settings.server_address or settings.panel_domain or settings.public_ipv4_address or "").strip()
+    if not server_host:
+        raise HTTPException(status_code=400, detail="Server address is not configured in general settings")
+
+    vless_port = int(getattr(settings, "vless_port", 443) or 443)
+    if vless_port < 1 or vless_port > 65535:
+        raise HTTPException(status_code=400, detail="VLESS port is invalid")
+
+    reality_public_key = str(getattr(settings, "singbox_reality_public_key", "") or "").strip()
+    if not reality_public_key:
+        raise HTTPException(status_code=400, detail="REALITY public key is not configured")
+
+    reality_sni = str(getattr(settings, "singbox_reality_sni", "") or "").strip()
+    if not reality_sni:
+        raise HTTPException(status_code=400, detail="REALITY SNI is not configured")
+
+    short_ids_raw = str(getattr(settings, "singbox_reality_short_ids", "") or "").strip()
+    short_id = next((item.strip() for item in short_ids_raw.split(",") if item.strip()), "")
+    if not short_id:
+        raise HTTPException(status_code=400, detail="REALITY short ID is not configured")
+
+    panel_name = str(settings.panel_domain or "atlas-panel").strip() or "atlas-panel"
+    fragment = f"{panel_name}-{user.username}"
+    query = (
+        f"type=tcp&security=reality&pbk={quote(reality_public_key, safe='')}"
+        f"&fp=chrome&sni={quote(reality_sni, safe='')}"
+        f"&sid={quote(short_id, safe='')}&spx=%2F&flow=xtls-rprx-vision"
+    )
+    link = f"vless://{vless_uuid}@{server_host}:{vless_port}?{query}#{quote(fragment, safe='-_.')}"
+
+    return {"link": link}
 
 
 @router.get("/{user_id}/configs/{protocol}", response_model=VPNConfigFileResponse)
