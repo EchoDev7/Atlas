@@ -46,6 +46,7 @@ class VPNUserCreate(BaseModel):
     enable_wireguard: Optional[bool] = Field(None, description="Enable WireGuard artifact generation")
     enable_l2tp: Optional[bool] = Field(None, description="Enable L2TP/IPsec credential provisioning")
     enable_openconnect: Optional[bool] = Field(None, description="Enable OpenConnect / AnyConnect credential provisioning")
+    enable_vless: Optional[bool] = False
     ppp_password: Optional[str] = Field(None, min_length=3, description="Optional explicit PPP password")
     # Backward-compatible aliases (deprecated)
     create_openvpn: Optional[bool] = Field(None, description="Deprecated alias for enable_openvpn")
@@ -84,6 +85,7 @@ class VPNUserCreate(BaseModel):
         enable_wireguard = values.get("enable_wireguard")
         enable_l2tp = values.get("enable_l2tp")
         enable_openconnect = values.get("enable_openconnect")
+        enable_vless = values.get("enable_vless")
 
         if enable_openvpn is None:
             legacy_openvpn = values.get("create_openvpn")
@@ -99,14 +101,16 @@ class VPNUserCreate(BaseModel):
 
         enable_l2tp = bool(enable_l2tp) if enable_l2tp is not None else False
         enable_openconnect = bool(enable_openconnect) if enable_openconnect is not None else True
+        enable_vless = bool(enable_vless) if enable_vless is not None else False
 
-        if not enable_openvpn and not enable_wireguard and not enable_l2tp and not enable_openconnect:
+        if not enable_openvpn and not enable_wireguard and not enable_l2tp and not enable_openconnect and not enable_vless:
             raise ValueError("At least one protocol must be enabled")
 
         values["enable_openvpn"] = enable_openvpn
         values["enable_wireguard"] = enable_wireguard
         values["enable_l2tp"] = enable_l2tp
         values["enable_openconnect"] = enable_openconnect
+        values["enable_vless"] = enable_vless
 
         return values
 
@@ -130,6 +134,7 @@ class VPNUserUpdate(BaseModel):
     current_connections: Optional[int] = Field(None, ge=0)
     is_enabled: Optional[bool] = None
     enable_openconnect: Optional[bool] = None
+    enable_vless: Optional[bool] = False
 
     @model_validator(mode='before')
     @classmethod
