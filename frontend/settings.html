@@ -2034,134 +2034,149 @@
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Active Inbound</span>
                 </label>
 
-                <template x-if="vlessModal.security === 'tls' || vlessModal.security === 'reality'">
-                    <label class="block">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="vlessModal.security === 'reality' ? 'REALITY SNI' : 'SNI / Server Name'"></span>
-                        <input type="text" x-model="vlessModal.sni" placeholder="www.microsoft.com"
-                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                    </label>
-                </template>
-                <template x-if="vlessModal.security === 'tls' || vlessModal.security === 'reality'">
-                    <label class="block">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">ALPN</span>
-                        <select x-model="vlessModal.tls_settings.alpn"
-                                class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                                :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                            <option value="h2,http/1.1">h2,http/1.1 (Standard/Auto)</option>
-                            <option value="h2">h2 (Required for gRPC)</option>
-                            <option value="http/1.1">http/1.1 (Required for WS)</option>
-                            <option value="h3">h3 (QUIC/XHTTP)</option>
-                        </select>
-                    </label>
-                </template>
-                <template x-if="vlessModal.security === 'tls' || vlessModal.security === 'reality'">
-                    <label class="block">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Fingerprint</span>
-                        <select x-model="vlessModal.fingerprint"
-                                class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                                :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                            <option value="chrome">Chrome</option>
-                            <option value="firefox">Firefox</option>
-                            <option value="safari">Safari</option>
-                            <option value="randomized">Randomized (Best for Anti-DPI)</option>
-                        </select>
-                    </label>
-                </template>
-
-                <template x-if="vlessModal.security === 'reality'">
-                    <label class="block">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Spider X</span>
-                        <input type="text" x-model="vlessModal.spider_x" placeholder="/"
-                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                    </label>
-                </template>
-                <template x-if="vlessModal.security === 'reality'">
-                    <div class="md:col-span-2 rounded-xl border p-3 space-y-3" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
-                        <div class="flex items-center justify-between">
-                            <p class="text-xs font-semibold uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">REALITY Settings</p>
-                            <button type="button" @click="generateInboundRealityKeypair()" :disabled="vlessRealityKeygenLoading"
-                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition disabled:opacity-50"
-                                    :class="darkMode ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'">
-                                <span x-text="vlessRealityKeygenLoading ? 'Generating...' : '🎲 Generate New REALITY Keys'"></span>
-                            </button>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <label class="block md:col-span-2">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Private Key</span>
-                                <input type="text" x-model="vlessModal.tls_settings.private_key"
-                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
-                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                            </label>
+                <div x-show="vlessModal.security === 'tls' || vlessModal.security === 'reality'" x-transition.opacity.duration.200ms
+                     class="md:col-span-2 rounded-2xl border p-4 space-y-4"
+                     :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'">
+                    <h4 class="text-sm font-semibold tracking-wide"
+                        :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🔒 Security &amp; Encryption Settings</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="vlessModal.security === 'reality' ? 'REALITY SNI' : 'SNI / Server Name'"></span>
+                            <input type="text" x-model="vlessModal.sni" placeholder="www.microsoft.com"
+                                   class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                   :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">ALPN</span>
+                            <select x-model="vlessModal.tls_settings.alpn"
+                                    class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="h2,http/1.1">h2,http/1.1 (Standard/Auto)</option>
+                                <option value="h3,h2,http/1.1">h3,h2,http/1.1 (Comprehensive/Modern)</option>
+                                <option value="h2">h2 (Required for gRPC)</option>
+                                <option value="http/1.1">http/1.1 (Required for WS)</option>
+                                <option value="h3">h3 (QUIC/XHTTP)</option>
+                            </select>
+                        </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Fingerprint</span>
+                            <select x-model="vlessModal.fingerprint"
+                                    class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="chrome">Chrome</option>
+                                <option value="firefox">Firefox</option>
+                                <option value="safari">Safari</option>
+                                <option value="randomized">Randomized (Best for Anti-DPI)</option>
+                            </select>
+                        </label>
+                        <template x-if="vlessModal.security === 'reality'">
                             <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Public Key</span>
-                                <input type="text" x-model="vlessModal.tls_settings.public_key"
-                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Spider X</span>
+                                <input type="text" x-model="vlessModal.spider_x" placeholder="/"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                             </label>
-                            <label class="block">
-                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Short ID</span>
-                                <input type="text" x-model="vlessModal.tls_settings.short_id"
-                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
-                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                            </label>
-                        </div>
+                        </template>
                     </div>
-                </template>
+                    <template x-if="vlessModal.security === 'reality'">
+                        <div class="rounded-xl border p-3 space-y-3" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
+                            <div class="flex items-center justify-between">
+                                <p class="text-xs font-semibold uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">REALITY Keys</p>
+                                <button type="button" @click="generateInboundRealityKeypair()" :disabled="vlessRealityKeygenLoading"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition disabled:opacity-50"
+                                        :class="darkMode ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'">
+                                    <span x-text="vlessRealityKeygenLoading ? 'Generating...' : '🎲 Generate New REALITY Keys'"></span>
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <label class="block md:col-span-2">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Private Key</span>
+                                    <input type="text" x-model="vlessModal.tls_settings.private_key"
+                                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Public Key</span>
+                                    <input type="text" x-model="vlessModal.tls_settings.public_key"
+                                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Short ID</span>
+                                    <input type="text" x-model="vlessModal.tls_settings.short_id"
+                                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                </label>
+                            </div>
+                        </div>
+                    </template>
+                </div>
 
-                <template x-if="vlessModal.network === 'ws' || vlessModal.network === 'httpupgrade' || vlessModal.network === 'xhttp'">
-                    <label class="block">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Path</span>
-                        <input type="text" x-model="vlessModal.transport_settings.path"
-                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                    </label>
-                </template>
-                <template x-if="vlessModal.network === 'ws' || vlessModal.network === 'httpupgrade' || vlessModal.network === 'xhttp'">
-                    <label class="block">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Host</span>
-                        <input type="text" x-model="vlessModal.transport_settings.host"
-                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                    </label>
-                </template>
-
-                <template x-if="vlessModal.network === 'grpc'">
-                    <label class="block">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Service Name</span>
-                        <input type="text" x-model="vlessModal.transport_settings.service_name"
-                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                    </label>
-                </template>
-                <template x-if="vlessModal.network === 'grpc'">
-                    <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
-                        <input type="checkbox" x-model="vlessModal.transport_settings.multi_mode" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Multi Mode</span>
-                    </label>
-                </template>
-
-                <template x-if="vlessModal.network === 'xhttp'">
-                    <label class="block">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Mode</span>
-                        <select x-model="vlessModal.transport_settings.mode"
-                                class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
-                                :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
-                            <option value="auto">auto</option>
-                            <option value="packet-up">packet-up</option>
-                            <option value="stream-up">stream-up</option>
-                        </select>
-                    </label>
-                </template>
-                <template x-if="vlessModal.network === 'xhttp'">
-                    <label class="block md:col-span-2">
-                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Extra (Raw JSON)</span>
-                        <textarea x-model="vlessModal.transport_settings.extra" rows="4"
-                                  class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
-                                  :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
-                    </label>
-                </template>
+                <div x-show="vlessModal.network === 'ws' || vlessModal.network === 'httpupgrade' || vlessModal.network === 'xhttp' || vlessModal.network === 'grpc'"
+                     x-transition.opacity.duration.200ms
+                     class="md:col-span-2 rounded-2xl border p-4 space-y-4"
+                     :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'">
+                    <h4 class="text-sm font-semibold tracking-wide"
+                        :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🌐 Network Specific Settings</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <template x-if="vlessModal.network === 'ws' || vlessModal.network === 'httpupgrade' || vlessModal.network === 'xhttp'">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Path</span>
+                                <input type="text" x-model="vlessModal.transport_settings.path"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </template>
+                        <template x-if="vlessModal.network === 'ws' || vlessModal.network === 'httpupgrade' || vlessModal.network === 'xhttp'">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Host</span>
+                                <input type="text" x-model="vlessModal.transport_settings.host"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </template>
+                        <template x-if="vlessModal.network === 'httpupgrade'">
+                            <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
+                                <input type="checkbox" x-model="vlessModal.transport_settings.accept_proxy" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Accept Proxy</span>
+                            </label>
+                        </template>
+                        <template x-if="vlessModal.network === 'grpc'">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Service Name</span>
+                                <input type="text" x-model="vlessModal.transport_settings.service_name"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </template>
+                        <template x-if="vlessModal.network === 'grpc'">
+                            <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
+                                <input type="checkbox" x-model="vlessModal.transport_settings.multi_mode" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Multi Mode</span>
+                            </label>
+                        </template>
+                        <template x-if="vlessModal.network === 'xhttp'">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Mode</span>
+                                <select x-model="vlessModal.transport_settings.mode"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="auto">auto</option>
+                                    <option value="packet-up">packet-up</option>
+                                    <option value="stream-up">stream-up</option>
+                                </select>
+                            </label>
+                        </template>
+                        <template x-if="vlessModal.network === 'xhttp'">
+                            <label class="block md:col-span-2">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Extra (Raw JSON)</span>
+                                <textarea x-model="vlessModal.transport_settings.extra" rows="4"
+                                          class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                          :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                            </label>
+                        </template>
+                    </div>
+                </div>
             </div>
             <div class="px-5 py-4 border-t flex justify-end gap-2" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
                 <button type="button" @click="closeVlessInboundModal()"
@@ -2377,6 +2392,7 @@
                         host: '',
                         service_name: '',
                         multi_mode: false,
+                        accept_proxy: false,
                         mode: 'auto',
                         extra: '',
                     },
@@ -3571,6 +3587,7 @@
                             host: '',
                             service_name: '',
                             multi_mode: false,
+                            accept_proxy: false,
                             mode: 'auto',
                             extra: '',
                         },
@@ -3756,6 +3773,9 @@
                     if (network === 'ws' || network === 'httpupgrade' || network === 'xhttp') {
                         transport.path = String(this.vlessModal.transport_settings.path || '/').trim() || '/';
                         transport.host = String(this.vlessModal.transport_settings.host || '').trim();
+                    }
+                    if (network === 'httpupgrade') {
+                        transport.accept_proxy = !!this.vlessModal.transport_settings.accept_proxy;
                     }
                     if (network === 'grpc') {
                         transport.service_name = String(this.vlessModal.transport_settings.service_name || '').trim();
