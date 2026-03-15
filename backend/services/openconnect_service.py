@@ -203,6 +203,7 @@ class OpenConnectService(BaseProtocolService):
                 "auth = \"plain[/etc/ocserv/ocpasswd]\"",
                 f"tcp-port = {int(port)}",
                 f"udp-port = {int(port)}",
+                "device = vpns",
                 f"ipv4-network = {client_subnet}",
                 "ipv4-netmask = 255.255.255.0",
                 "max-clients = 1024",

@@ -93,6 +93,7 @@ cat > "${OCSERV_CONF}" <<EOF
 auth = "plain[/etc/ocserv/ocpasswd]"
 tcp-port = 4433
 udp-port = 4433
+device = vpns
 run-as-user = nobody
 run-as-group = daemon
 socket-file = /run/ocserv-socket
