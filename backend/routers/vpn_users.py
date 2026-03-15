@@ -752,6 +752,7 @@ async def create_user(
     enable_openvpn = bool(user_data.enable_openvpn)
     enable_wireguard = bool(user_data.enable_wireguard)
     enable_l2tp = bool(user_data.enable_l2tp)
+    enable_openconnect = bool(user_data.enable_openconnect)
     ppp_password = str(user_data.ppp_password or "").strip() or plain_password
     
     # Create user
@@ -769,6 +770,7 @@ async def create_user(
         max_concurrent_connections=user_data.max_concurrent_connections,
         enable_openvpn=enable_openvpn,
         enable_l2tp=enable_l2tp,
+        enable_openconnect=enable_openconnect,
         ppp_password=ppp_password,
         created_by=current_user.id
     )
@@ -817,12 +819,13 @@ async def create_user(
             if not l2tp_result.get("success"):
                 raise HTTPException(status_code=500, detail=l2tp_result.get("message") or "L2TP provisioning failed")
 
-        openconnect_result = openconnect_service.create_user(username=username, password=plain_password)
-        if not openconnect_result.get("success"):
-            raise HTTPException(
-                status_code=500,
-                detail=openconnect_result.get("message") or "OpenConnect provisioning failed",
-            )
+        if enable_openconnect:
+            openconnect_result = openconnect_service.create_user(username=username, password=plain_password)
+            if not openconnect_result.get("success"):
+                raise HTTPException(
+                    status_code=500,
+                    detail=openconnect_result.get("message") or "OpenConnect provisioning failed",
+                )
 
     except HTTPException:
         db.rollback()
@@ -859,7 +862,7 @@ async def create_user(
                 ("openvpn", enable_openvpn),
                 ("wireguard", enable_wireguard),
                 ("l2tp", enable_l2tp),
-                ("openconnect", True),
+                ("openconnect", enable_openconnect),
             )
             if enabled
         ],
@@ -942,6 +945,7 @@ async def update_user(
                 kill_results["openvpn"].get("success")
                 or kill_results["wireguard"].get("success")
                 or kill_results["l2tp"].get("success")
+                or kill_results["openconnect"].get("success")
             ):
                 logger.warning(
                     "Disable-path kill-switch could not disconnect any protocol for %s",
@@ -971,17 +975,46 @@ async def update_user(
         )
     )
 
+    if user_data.enable_openconnect is not None:
+        target_openconnect = bool(user_data.enable_openconnect)
+        current_openconnect = bool(user.enable_openconnect)
+        if target_openconnect != current_openconnect:
+            if target_openconnect:
+                if not user_data.new_password:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="new_password is required when enabling OpenConnect for an existing user",
+                    )
+                openconnect_enable_result = openconnect_service.create_user(
+                    username=user.username,
+                    password=user_data.new_password,
+                )
+                if not openconnect_enable_result.get("success"):
+                    raise HTTPException(
+                        status_code=500,
+                        detail=openconnect_enable_result.get("message") or "Failed to enable OpenConnect for user",
+                    )
+            else:
+                openconnect_disable_result = openconnect_service.delete_user(username=user.username)
+                if not openconnect_disable_result.get("success"):
+                    raise HTTPException(
+                        status_code=500,
+                        detail=openconnect_disable_result.get("message") or "Failed to disable OpenConnect for user",
+                    )
+            user.enable_openconnect = target_openconnect
+
     if user_data.new_password:
-        openconnect_password_result = openconnect_service.update_user(
-            username=user.username,
-            password=user_data.new_password,
-        )
-        if not openconnect_password_result.get("success"):
-            db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail=openconnect_password_result.get("message") or "Failed to sync OpenConnect password",
+        if bool(user.enable_openconnect):
+            openconnect_password_result = openconnect_service.update_user(
+                username=user.username,
+                password=user_data.new_password,
             )
+            if not openconnect_password_result.get("success"):
+                db.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail=openconnect_password_result.get("message") or "Failed to sync OpenConnect password",
+                )
 
     db.commit()
     _sync_openvpn_auth_db_snapshot()
@@ -1036,12 +1069,13 @@ async def delete_user(
     else:
         _disconnect_user_across_protocols(username)
 
-    openconnect_delete_result = openconnect_service.delete_user(username=username)
-    if not openconnect_delete_result.get("success"):
-        raise HTTPException(
-            status_code=500,
-            detail=openconnect_delete_result.get("message") or "Failed to remove OpenConnect user",
-        )
+    if bool(user.enable_openconnect):
+        openconnect_delete_result = openconnect_service.delete_user(username=username)
+        if not openconnect_delete_result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=openconnect_delete_result.get("message") or "Failed to remove OpenConnect user",
+            )
     
     db.delete(user)
     try:
@@ -1319,16 +1353,17 @@ async def reset_password(
     user.password = get_password_hash(new_password)
     user.updated_at = datetime.utcnow()
 
-    openconnect_password_result = openconnect_service.update_user(
-        username=user.username,
-        password=new_password,
-    )
-    if not openconnect_password_result.get("success"):
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=openconnect_password_result.get("message") or "Failed to sync OpenConnect password",
+    if bool(user.enable_openconnect):
+        openconnect_password_result = openconnect_service.update_user(
+            username=user.username,
+            password=new_password,
         )
+        if not openconnect_password_result.get("success"):
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=openconnect_password_result.get("message") or "Failed to sync OpenConnect password",
+            )
     
     db.commit()
     _sync_openvpn_auth_db_snapshot()

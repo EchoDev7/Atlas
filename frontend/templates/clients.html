@@ -219,6 +219,10 @@
                               :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                             L2TP/IPsec: <span :class="serviceStatus.l2tp_is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.l2tp_is_active ? 'Online' : 'Offline'"></span>
                         </span>
+                        <span class="text-xs sm:text-sm font-medium theme-transition"
+                              :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                            OpenConnect: <span :class="serviceStatus.openconnect_is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.openconnect_is_active ? 'Online' : 'Offline'"></span>
+                        </span>
                         <span x-show="serviceStatus.is_mock" class="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">
                             DEV
                         </span>
@@ -415,8 +419,10 @@
                                                 <span x-show="client.has_l2tp || client.enable_l2tp"
                                                       class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 transition-opacity duration-200"
                                                       :class="client.l2tp_online ? 'opacity-100' : 'opacity-40'">L2TP/IPsec</span>
+                                                <span x-show="client.has_openconnect || client.enable_openconnect"
+                                                      class="px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">OpenConnect</span>
                                                 <span x-show="client.has_singbox" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Sing-box</span>
-                                                <span x-show="!(client.has_openvpn || client.enable_openvpn) && !client.has_wireguard && !(client.has_l2tp || client.enable_l2tp) && !client.has_singbox" class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-400'">No protocols</span>
+                                                <span x-show="!(client.has_openvpn || client.enable_openvpn) && !client.has_wireguard && !(client.has_l2tp || client.enable_l2tp) && !(client.has_openconnect || client.enable_openconnect) && !client.has_singbox" class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-400'">No protocols</span>
                                             </div>
                                             <div class="mt-2 md:hidden space-y-1">
                                                 <div class="flex flex-wrap items-center gap-1">
@@ -602,7 +608,8 @@
                                             <button @click="qrOpen = !qrOpen"
                                                     class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
                                                     :class="darkMode ? 'text-purple-400 hover:bg-slate-700/50' : 'text-purple-600 hover:bg-purple-50'"
-                                                    title="Show QR Code">
+                                                    title="Show QR Code"
+                                                    x-show="client.has_openvpn || client.enable_openvpn">
                                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
                                                 </svg>
@@ -885,7 +892,7 @@
                     <div class="space-y-2">
                         <label class="block text-sm font-medium theme-transition"
                                :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                            Protocol Generation
+                            Allowed Protocols
                         </label>
                         <label class="flex items-center justify-between px-4 py-3 rounded-xl border theme-transition"
                                :class="darkMode ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'">
@@ -906,6 +913,13 @@
                             <span class="text-sm font-medium" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable L2TP/IPsec</span>
                             <input type="checkbox"
                                    x-model="newClient.enable_l2tp"
+                                   class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                        </label>
+                        <label class="flex items-center justify-between px-4 py-3 rounded-xl border theme-transition"
+                               :class="darkMode ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'">
+                            <span class="text-sm font-medium" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable OpenConnect / AnyConnect</span>
+                            <input type="checkbox"
+                                   x-model="newClient.enable_openconnect"
                                    class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
                         </label>
                         <div x-show="newClient.enable_l2tp">
@@ -1295,6 +1309,23 @@
                                   :class="darkMode ? 'input-dark text-white placeholder-slate-500 focus:ring-cyan-500/50' : 'bg-white border-2 border-slate-200 focus:border-cyan-500 focus:ring-cyan-100 text-slate-900 placeholder-slate-400'"></textarea>
                     </div>
 
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium theme-transition"
+                               :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                            Allowed Protocols
+                        </label>
+                        <label class="flex items-center justify-between px-4 py-3 rounded-xl border theme-transition"
+                               :class="darkMode ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'">
+                            <span class="text-sm font-medium" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable OpenConnect / AnyConnect</span>
+                            <input type="checkbox"
+                                   x-model="editForm.enable_openconnect"
+                                   class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                        </label>
+                        <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
+                            If enabling OpenConnect for an existing user, provide a new password in this form.
+                        </p>
+                    </div>
+
                     <div x-show="editError" x-transition class="p-3 rounded-lg glass-effect border text-sm"
                          :class="darkMode ? 'bg-red-900/20 border-red-500/50 text-red-300' : 'bg-red-50 border-red-200 text-red-700'">
                         <p x-text="editError"></p>
@@ -1383,6 +1414,7 @@
                     is_mock: false,
                     wireguard_is_active: false,
                     l2tp_is_active: false,
+                    openconnect_is_active: false,
                 },
                 autoRefreshTimerId: null,
                 autoRefreshMs: 3000,
@@ -1410,6 +1442,7 @@
                     enable_openvpn: true,
                     enable_wireguard: true,
                     enable_l2tp: false,
+                    enable_openconnect: true,
                 },
                 
                 // QR Code Modal
@@ -1441,7 +1474,8 @@
                     max_devices: 1,
                     data_limit_gb: '',
                     expiry_date: '',
-                    notes: ''
+                    notes: '',
+                    enable_openconnect: true,
                 },
                 
                 async init() {
@@ -1660,6 +1694,7 @@
                                 openvpn_online: !!runtime.openvpn_online,
                                 wireguard_online: !!runtime.wireguard_online,
                                 l2tp_online: !!(runtime.l2tp_online ?? runtime.ppp_online),
+                                openconnect_online: !!runtime.openconnect_online,
                             };
                         });
                         return true;
@@ -1671,7 +1706,7 @@
                 async loadServiceStatus() {
                     try {
                         const token = localStorage.getItem('access_token');
-                        const [openvpnResponse, wireguardDiagnosticsResponse, l2tpStatusResponse] = await Promise.all([
+                        const [openvpnResponse, wireguardDiagnosticsResponse, l2tpStatusResponse, openconnectStatusResponse] = await Promise.all([
                             fetch('/api/openvpn/service/status', {
                                 headers: {
                                     'Authorization': `Bearer ${token}`
@@ -1683,6 +1718,11 @@
                                 }
                             }),
                             fetch('/api/system/l2tp/status', {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            }),
+                            fetch('/api/system/openconnect/status', {
                                 headers: {
                                     'Authorization': `Bearer ${token}`
                                 }
@@ -1709,9 +1749,16 @@
                             nextStatus.l2tp_is_active = false;
                         }
 
+                        if (openconnectStatusResponse.ok) {
+                            const openconnectStatus = await openconnectStatusResponse.json();
+                            nextStatus.openconnect_is_active = !!openconnectStatus?.is_active;
+                        } else {
+                            nextStatus.openconnect_is_active = false;
+                        }
+
                         this.serviceStatus = nextStatus;
                     } catch (_) {
-                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false, wireguard_is_active: false, l2tp_is_active: false };
+                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false, wireguard_is_active: false, l2tp_is_active: false, openconnect_is_active: false };
                     }
                 },
 
@@ -1738,7 +1785,7 @@
                     this.createError = '';
                     this.successMessage = '';
 
-                    if (!this.newClient.enable_openvpn && !this.newClient.enable_wireguard && !this.newClient.enable_l2tp) {
+                    if (!this.newClient.enable_openvpn && !this.newClient.enable_wireguard && !this.newClient.enable_l2tp && !this.newClient.enable_openconnect) {
                         this.createError = 'Select at least one protocol before creating the user.';
                         this.creating = false;
                         return;
@@ -1758,6 +1805,7 @@
                             enable_openvpn: !!this.newClient.enable_openvpn,
                             enable_wireguard: !!this.newClient.enable_wireguard,
                             enable_l2tp: !!this.newClient.enable_l2tp,
+                            enable_openconnect: !!this.newClient.enable_openconnect,
                             ppp_password: this.newClient.ppp_password ? this.newClient.ppp_password : null,
                         };
                         
@@ -1818,6 +1866,7 @@
                             enable_openvpn: true,
                             enable_wireguard: true,
                             enable_l2tp: false,
+                            enable_openconnect: true,
                         };
                         this.successMessage = `User ${credentials.username} created successfully`;
                         await this.loadClients();
@@ -1841,7 +1890,8 @@
                         max_devices: this.getMaxConcurrent(client),
                         data_limit_gb: limitGB || '',
                         expiry_date: expiryDate ? expiryDate.split('T')[0] : '',
-                        notes: client.notes || client.description || ''
+                        notes: client.notes || client.description || '',
+                        enable_openconnect: !!(client.enable_openconnect ?? client.has_openconnect),
                     };
                     this.showEditModal = true;
                 },
@@ -1867,7 +1917,8 @@
                             max_devices: this.editForm.max_devices ? parseInt(this.editForm.max_devices, 10) : 1,
                             data_limit_gb: this.editForm.data_limit_gb === '' ? null : parseFloat(this.editForm.data_limit_gb),
                             expiry_date: this.editForm.expiry_date ? new Date(this.editForm.expiry_date).toISOString() : null,
-                            new_password: this.editForm.new_password || null
+                            new_password: this.editForm.new_password || null,
+                            enable_openconnect: !!this.editForm.enable_openconnect,
                         };
 
                         const response = await fetch(`/api/users/${this.editClientId}`, {

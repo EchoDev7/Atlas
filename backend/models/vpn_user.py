@@ -25,6 +25,7 @@ class VPNUser(Base):
     wg_allocated_ip = Column(String(64), nullable=True)
     enable_openvpn = Column(Boolean, nullable=True, default=True)
     enable_l2tp = Column(Boolean, nullable=True, default=False)
+    enable_openconnect = Column(Boolean, nullable=True, default=True)
     ppp_password = Column(String(255), nullable=True)
     
     # Limits and restrictions
@@ -177,6 +178,11 @@ class VPNUser(Base):
         if getattr(self, "enable_l2tp", None) is True:
             return True
         return any(c.protocol == "l2tp" and c.is_active for c in self.configs)
+
+    @property
+    def has_openconnect(self) -> bool:
+        """Check if user has OpenConnect enabled."""
+        return bool(getattr(self, "enable_openconnect", False))
 
     @staticmethod
     def generate_random_username(prefix: str = "user") -> str:

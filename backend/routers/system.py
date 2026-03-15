@@ -817,6 +817,21 @@ def read_l2tp_status(
     }
 
 
+@router.get("/openconnect/status")
+def read_openconnect_status(
+    current_user: Admin = Depends(get_current_user),
+):
+    _ = current_user
+    status = openconnect_service.get_status()
+    return {
+        "success": bool(status.get("success", True)),
+        "protocol": "openconnect",
+        "is_active": bool(status.get("is_active", False)),
+        "service_name": status.get("service_name", "ocserv"),
+        "status_raw": status,
+    }
+
+
 @router.get("/logs/{service_name}")
 def read_service_logs(
     service_name: str,
