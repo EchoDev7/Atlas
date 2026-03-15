@@ -15,6 +15,8 @@ class GeneralSettingsBase(BaseModel):
     server_system_dns_secondary: str = Field("8.8.8.8", min_length=3, max_length=64)
     l2tp_ipsec_psk: str = Field("atlas-change-me-strong-psk", min_length=8, max_length=255)
     l2tp_client_subnet: str = Field("10.10.11.0/24", min_length=9, max_length=32)
+    ocserv_port: int = Field(4433, ge=1, le=65535)
+    ocserv_client_subnet: str = Field("10.10.12.0/24", min_length=9, max_length=32)
     is_tunnel_enabled: bool = Field(False)
     foreign_server_ip: Optional[str] = Field(default=None, max_length=64)
     foreign_server_port: int = Field(22, ge=1, le=65535)
@@ -109,6 +111,20 @@ class GeneralSettingsBase(BaseModel):
             raise ValueError("L2TP client subnet must be an IPv4 CIDR")
         return str(subnet)
 
+    @field_validator("ocserv_client_subnet")
+    @classmethod
+    def validate_ocserv_client_subnet(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("OpenConnect client subnet cannot be empty")
+        try:
+            subnet = ipaddress.ip_network(normalized, strict=False)
+        except ValueError as exc:
+            raise ValueError("OpenConnect client subnet must be a valid IPv4 CIDR") from exc
+        if subnet.version != 4:
+            raise ValueError("OpenConnect client subnet must be an IPv4 CIDR")
+        return str(subnet)
+
     @field_validator(
         "server_address",
         "panel_domain",
@@ -157,6 +173,17 @@ class GeneralSettingsBase(BaseModel):
         if self.ssl_mode != "custom":
             self.custom_ssl_certificate = None
             self.custom_ssl_private_key = None
+
+        local_protocol_ports = {
+            "Panel HTTPS": int(self.panel_https_port),
+            "Subscription HTTPS": int(self.subscription_https_port),
+            "OpenConnect": int(self.ocserv_port),
+        }
+        seen_ports: dict[int, str] = {}
+        for owner, port in local_protocol_ports.items():
+            if port in seen_ports:
+                raise ValueError(f"Port conflict detected: Port {port} is already used by another protocol.")
+            seen_ports[port] = owner
 
         return self
 

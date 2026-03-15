@@ -20,6 +20,8 @@ class GeneralSettings(Base):
     server_system_dns_secondary = Column(String(64), nullable=False, default="8.8.8.8")
     l2tp_ipsec_psk = Column(String(255), nullable=False, default="atlas-change-me-strong-psk")
     l2tp_client_subnet = Column(String(32), nullable=False, default="10.10.11.0/24")
+    ocserv_port = Column(Integer, nullable=False, default=4433)
+    ocserv_client_subnet = Column(String(32), nullable=False, default="10.10.12.0/24")
     is_tunnel_enabled = Column(Boolean, nullable=False, default=False)
     foreign_server_ip = Column(String(64), nullable=True)
     foreign_server_port = Column(Integer, nullable=False, default=22)

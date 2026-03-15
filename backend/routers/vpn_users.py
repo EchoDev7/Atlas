@@ -43,6 +43,7 @@ router = APIRouter(prefix="/users", tags=["VPN Users"])
 openvpn_service = protocol_registry.get("openvpn")
 wireguard_service = protocol_registry.get("wireguard")
 l2tp_service = protocol_registry.get("l2tp")
+openconnect_service = protocol_registry.get("openconnect")
 
 # Fallback runtime accounting cache keyed by username.
 # It captures the latest active-session counters to preserve traffic totals
@@ -116,17 +117,20 @@ def _disconnect_user_across_protocols(username: str) -> Dict[str, Dict[str, Any]
     openvpn_result = openvpn_service.stop_client(username)
     wireguard_result = wireguard_service.stop_client(username)
     l2tp_result = l2tp_service.stop_client(username)
+    openconnect_result = openconnect_service.stop_client(username)
     logger.warning(
-        "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s l2tp_success=%s",
+        "Kill-switch executed for user=%s openvpn_success=%s wireguard_success=%s l2tp_success=%s openconnect_success=%s",
         username,
         bool(openvpn_result.get("success")),
         bool(wireguard_result.get("success")),
         bool(l2tp_result.get("success")),
+        bool(openconnect_result.get("success")),
     )
     return {
         "openvpn": openvpn_result,
         "wireguard": wireguard_result,
         "l2tp": l2tp_result,
+        "openconnect": openconnect_result,
     }
 
 
@@ -813,6 +817,13 @@ async def create_user(
             if not l2tp_result.get("success"):
                 raise HTTPException(status_code=500, detail=l2tp_result.get("message") or "L2TP provisioning failed")
 
+        openconnect_result = openconnect_service.create_user(username=username, password=plain_password)
+        if not openconnect_result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=openconnect_result.get("message") or "OpenConnect provisioning failed",
+            )
+
     except HTTPException:
         db.rollback()
         raise
@@ -848,6 +859,7 @@ async def create_user(
                 ("openvpn", enable_openvpn),
                 ("wireguard", enable_wireguard),
                 ("l2tp", enable_l2tp),
+                ("openconnect", True),
             )
             if enabled
         ],
@@ -959,6 +971,18 @@ async def update_user(
         )
     )
 
+    if user_data.new_password:
+        openconnect_password_result = openconnect_service.update_user(
+            username=user.username,
+            password=user_data.new_password,
+        )
+        if not openconnect_password_result.get("success"):
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=openconnect_password_result.get("message") or "Failed to sync OpenConnect password",
+            )
+
     db.commit()
     _sync_openvpn_auth_db_snapshot()
     db.refresh(user)
@@ -1011,6 +1035,13 @@ async def delete_user(
             logger.error(f"Error revoking certificate for {username}: {e}")
     else:
         _disconnect_user_across_protocols(username)
+
+    openconnect_delete_result = openconnect_service.delete_user(username=username)
+    if not openconnect_delete_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=openconnect_delete_result.get("message") or "Failed to remove OpenConnect user",
+        )
     
     db.delete(user)
     try:
@@ -1287,6 +1318,17 @@ async def reset_password(
     new_password = VPNUser.generate_secure_password()
     user.password = get_password_hash(new_password)
     user.updated_at = datetime.utcnow()
+
+    openconnect_password_result = openconnect_service.update_user(
+        username=user.username,
+        password=new_password,
+    )
+    if not openconnect_password_result.get("success"):
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=openconnect_password_result.get("message") or "Failed to sync OpenConnect password",
+        )
     
     db.commit()
     _sync_openvpn_auth_db_snapshot()

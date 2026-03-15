@@ -81,6 +81,14 @@ else
   warn "L2TP/IPsec provisioning script missing at ${PROJECT_ROOT}/scripts/setup_ppp_native.sh"
 fi
 
+step "Applying OpenConnect provisioning hook"
+if [[ -f "${PROJECT_ROOT}/scripts/setup_ocserv.sh" ]]; then
+  bash "${PROJECT_ROOT}/scripts/setup_ocserv.sh"
+  ok "OpenConnect provisioning applied"
+else
+  warn "OpenConnect provisioning script missing at ${PROJECT_ROOT}/scripts/setup_ocserv.sh"
+fi
+
 step "Ensuring atlas-backend.service uses dynamic HTTP/HTTPS runner"
 cat > "${SERVICE_FILE}" <<EOF
 [Unit]
@@ -209,6 +217,17 @@ if [[ "${l2tp_restart_ok}" -eq 1 ]]; then
   ok "L2TP/IPsec services restarted"
 else
   warn "L2TP/IPsec restart finished but one or more services are not active"
+fi
+
+if systemctl cat ocserv >/dev/null 2>&1; then
+  systemctl restart ocserv || true
+  if systemctl is-active --quiet ocserv; then
+    ok "ocserv restarted"
+  else
+    warn "ocserv restart finished but service is not active"
+  fi
+else
+  warn "ocserv service unit not found. Skipping OpenConnect restart."
 fi
 
 step "Update completed"

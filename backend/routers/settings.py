@@ -33,6 +33,7 @@ router = APIRouter(prefix="/settings", tags=["Server Settings"])
 openvpn_service = protocol_registry.get("openvpn")
 obfuscation_manager = ObfuscationManager()
 wireguard_service = protocol_registry.get("wireguard")
+openconnect_service = protocol_registry.get("openconnect")
 logger = logging.getLogger(__name__)
 RESOLVED_DROPIN_DIR = Path("/etc/systemd/resolved.conf.d")
 ATLAS_DNS_DROPIN_FILE = RESOLVED_DROPIN_DIR / "atlas-dns.conf"
@@ -502,6 +503,8 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         server_system_dns_secondary=settings.server_system_dns_secondary,
         l2tp_ipsec_psk=settings.l2tp_ipsec_psk,
         l2tp_client_subnet=settings.l2tp_client_subnet,
+        ocserv_port=settings.ocserv_port,
+        ocserv_client_subnet=settings.ocserv_client_subnet,
         is_tunnel_enabled=settings.is_tunnel_enabled,
         foreign_server_ip=settings.foreign_server_ip,
         foreign_server_port=settings.foreign_server_port,
@@ -525,6 +528,31 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
+
+
+def _validate_global_port_anti_collision(
+    *,
+    openvpn_port: int,
+    wireguard_port: int,
+    ocserv_port: int,
+    panel_https_port: int,
+    subscription_https_port: int,
+) -> None:
+    allocated = {
+        "OpenVPN": int(openvpn_port),
+        "WireGuard": int(wireguard_port),
+        "OpenConnect": int(ocserv_port),
+        "Panel HTTPS": int(panel_https_port),
+        "Subscription HTTPS": int(subscription_https_port),
+    }
+    seen: dict[int, str] = {}
+    for owner, port in allocated.items():
+        if port in seen:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Port conflict detected: Port {port} is already used by another protocol.",
+            )
+        seen[port] = owner
 
 
 @router.get("/general", response_model=GeneralSettingsResponse)
@@ -601,12 +629,18 @@ def update_general_settings(
     previous_login_block_duration_minutes = settings.login_block_duration_minutes
     previous_l2tp_ipsec_psk = settings.l2tp_ipsec_psk
     previous_l2tp_client_subnet = settings.l2tp_client_subnet
+    previous_ocserv_port = settings.ocserv_port
+    previous_ocserv_client_subnet = settings.ocserv_client_subnet
 
-    if payload.panel_https_port == payload.subscription_https_port:
-        raise HTTPException(
-            status_code=400,
-            detail="Panel HTTPS Port and Subscription HTTPS Port must be different",
-        )
+    openvpn_settings = _get_or_create_openvpn_settings(db)
+    wireguard_settings = _get_or_create_wireguard_settings(db)
+    _validate_global_port_anti_collision(
+        openvpn_port=int(openvpn_settings.port),
+        wireguard_port=int(wireguard_settings.listen_port),
+        ocserv_port=int(payload.ocserv_port),
+        panel_https_port=int(payload.panel_https_port),
+        subscription_https_port=int(payload.subscription_https_port),
+    )
 
     detected_ipv4 = _detect_public_ipv4(detected_wan)
     detected_ipv6 = _detect_public_ipv6(detected_wan)
@@ -620,6 +654,8 @@ def update_general_settings(
     settings.server_system_dns_secondary = payload.server_system_dns_secondary
     settings.l2tp_ipsec_psk = payload.l2tp_ipsec_psk
     settings.l2tp_client_subnet = payload.l2tp_client_subnet
+    settings.ocserv_port = payload.ocserv_port
+    settings.ocserv_client_subnet = payload.ocserv_client_subnet
     settings.is_tunnel_enabled = payload.is_tunnel_enabled
     settings.foreign_server_ip = payload.foreign_server_ip
     settings.foreign_server_port = payload.foreign_server_port
@@ -678,6 +714,25 @@ def update_general_settings(
             detail=f"Failed to restart L2TP/IPsec daemons after settings update{': ' + details if details else ''}",
         )
 
+    try:
+        ocserv_apply_result = openconnect_service.apply_settings(
+            port=int(payload.ocserv_port),
+            client_subnet=str(payload.ocserv_client_subnet),
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to apply OpenConnect settings: {exc}") from exc
+
+    if not ocserv_apply_result.get("success"):
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(ocserv_apply_result.get("message") or "Failed to apply OpenConnect settings"),
+        )
+
     sync_result = openvpn_service.sync_system_general_settings(
         old_global_ipv6_support=previous_ipv6_support,
         new_global_ipv6_support=settings.global_ipv6_support,
@@ -719,6 +774,10 @@ def update_general_settings(
         changed_fields.append("l2tp_ipsec_psk")
     if previous_l2tp_client_subnet != settings.l2tp_client_subnet:
         changed_fields.append("l2tp_client_subnet")
+    if previous_ocserv_port != settings.ocserv_port:
+        changed_fields.append("ocserv_port")
+    if previous_ocserv_client_subnet != settings.ocserv_client_subnet:
+        changed_fields.append("ocserv_client_subnet")
 
     record_audit_event(
         action="general_settings_updated",
@@ -817,6 +876,15 @@ def update_wireguard_settings(
     _ = current_user
     settings = _get_or_create_wireguard_settings(db)
     general_settings = _get_or_create_general_settings(db)
+    openvpn_settings = _get_or_create_openvpn_settings(db)
+
+    _validate_global_port_anti_collision(
+        openvpn_port=int(openvpn_settings.port),
+        wireguard_port=int(payload.listen_port),
+        ocserv_port=int(general_settings.ocserv_port),
+        panel_https_port=int(general_settings.panel_https_port),
+        subscription_https_port=int(general_settings.subscription_https_port),
+    )
 
     if not (settings.server_private_key or "").strip() or not (settings.server_public_key or "").strip():
         try:
@@ -878,6 +946,16 @@ def update_openvpn_settings(
 ):
     _ = current_user
     settings = _get_or_create_openvpn_settings(db)
+    general_settings = _get_or_create_general_settings(db)
+    wireguard_settings = _get_or_create_wireguard_settings(db)
+
+    _validate_global_port_anti_collision(
+        openvpn_port=int(payload.port),
+        wireguard_port=int(wireguard_settings.listen_port),
+        ocserv_port=int(general_settings.ocserv_port),
+        panel_https_port=int(general_settings.panel_https_port),
+        subscription_https_port=int(general_settings.subscription_https_port),
+    )
 
     previous_port = settings.port
     previous_protocol = settings.protocol

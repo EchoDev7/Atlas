@@ -460,6 +460,8 @@ def init_db():
                 "server_system_dns_secondary": "ALTER TABLE general_settings ADD COLUMN server_system_dns_secondary VARCHAR(64) NOT NULL DEFAULT '8.8.8.8'",
                 "l2tp_ipsec_psk": "ALTER TABLE general_settings ADD COLUMN l2tp_ipsec_psk VARCHAR(255) NOT NULL DEFAULT 'atlas-change-me-strong-psk'",
                 "l2tp_client_subnet": "ALTER TABLE general_settings ADD COLUMN l2tp_client_subnet VARCHAR(32) NOT NULL DEFAULT '10.10.11.0/24'",
+                "ocserv_port": "ALTER TABLE general_settings ADD COLUMN ocserv_port INTEGER NOT NULL DEFAULT 4433",
+                "ocserv_client_subnet": "ALTER TABLE general_settings ADD COLUMN ocserv_client_subnet VARCHAR(32) NOT NULL DEFAULT '10.10.12.0/24'",
                 "is_tunnel_enabled": "ALTER TABLE general_settings ADD COLUMN is_tunnel_enabled BOOLEAN NOT NULL DEFAULT 0",
                 "foreign_server_ip": "ALTER TABLE general_settings ADD COLUMN foreign_server_ip VARCHAR(64)",
                 "foreign_server_port": "ALTER TABLE general_settings ADD COLUMN foreign_server_port INTEGER NOT NULL DEFAULT 22",
@@ -571,6 +573,23 @@ def init_db():
                     )
                 )
 
+            if {"ocserv_port", "ocserv_client_subnet"}.issubset(general_column_names):
+                connection.execute(
+                    text(
+                        """
+                        UPDATE general_settings
+                        SET ocserv_port = CASE
+                                WHEN ocserv_port BETWEEN 1 AND 65535 THEN ocserv_port
+                                ELSE 4433
+                            END,
+                            ocserv_client_subnet = CASE
+                                WHEN ocserv_client_subnet IS NULL OR TRIM(ocserv_client_subnet) = '' THEN '10.10.12.0/24'
+                                ELSE TRIM(ocserv_client_subnet)
+                            END
+                        """
+                    )
+                )
+
             general_settings_row_count = connection.execute(
                 text("SELECT COUNT(*) FROM general_settings")
             ).scalar_one()
@@ -589,6 +608,8 @@ def init_db():
                             server_system_dns_secondary,
                             l2tp_ipsec_psk,
                             l2tp_client_subnet,
+                            ocserv_port,
+                            ocserv_client_subnet,
                             is_tunnel_enabled,
                             foreign_server_ip,
                             foreign_server_port,
@@ -622,6 +643,8 @@ def init_db():
                             '8.8.8.8',
                             'atlas-change-me-strong-psk',
                             '10.10.11.0/24',
+                            4433,
+                            '10.10.12.0/24',
                             0,
                             NULL,
                             22,

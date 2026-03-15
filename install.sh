@@ -198,6 +198,14 @@ else
   warn "L2TP/IPsec provisioning script missing at ${PROJECT_ROOT}/scripts/setup_ppp_native.sh"
 fi
 
+step "Provisioning OpenConnect (ocserv) service"
+if [[ -f "${PROJECT_ROOT}/scripts/setup_ocserv.sh" ]]; then
+  bash "${PROJECT_ROOT}/scripts/setup_ocserv.sh"
+  ok "OpenConnect provisioning applied"
+else
+  warn "OpenConnect provisioning script missing at ${PROJECT_ROOT}/scripts/setup_ocserv.sh"
+fi
+
 step "Configuring dual-stack network forwarding and NAT"
 MAIN_INTERFACE="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')"
 if [[ -z "${MAIN_INTERFACE}" ]]; then
