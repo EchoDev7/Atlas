@@ -1260,6 +1260,87 @@
                          :class="darkMode ? 'border-slate-700 bg-slate-900/30 text-slate-300' : 'border-slate-300 bg-slate-50 text-slate-700'">
                         Applying changes regenerates <code>/usr/local/etc/sing-box/config.json</code> and restarts <code>sing-box.service</code>.
                     </div>
+
+                    <div class="rounded-2xl border p-4 sm:p-5 space-y-4 theme-transition"
+                         :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50/70'">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h3 class="text-base sm:text-lg font-semibold theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                    VLESS Inbounds (Nodes)
+                                </h3>
+                                <p class="text-xs sm:text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    Manage multiple VLESS inbound profiles dynamically (TCP+REALITY, WS+TLS, gRPC, HTTPUpgrade, XHTTP).
+                                </p>
+                            </div>
+                            <button type="button"
+                                    @click="openVlessInboundModal()"
+                                    class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition"
+                                    :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'">
+                                + Add VLESS Inbound
+                            </button>
+                        </div>
+
+                        <div x-show="vlessInboundsLoading" class="py-8 flex justify-center">
+                            <div class="animate-spin rounded-full h-9 w-9 border-b-2" :class="darkMode ? 'border-cyan-400' : 'border-cyan-600'"></div>
+                        </div>
+
+                        <div x-show="!vlessInboundsLoading" class="overflow-x-auto rounded-xl border"
+                             :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                            <table class="min-w-full text-sm">
+                                <thead :class="darkMode ? 'bg-slate-900/40 text-slate-300' : 'bg-slate-50 text-slate-600'">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left font-semibold">Remark</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Port</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Network</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Security</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Status</th>
+                                        <th class="px-4 py-3 text-right font-semibold">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-if="vlessInbounds.length === 0">
+                                        <tr>
+                                            <td colspan="6" class="px-4 py-8 text-center" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                                No VLESS inbounds yet. Add your first inbound node.
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-for="inbound in vlessInbounds" :key="`vless-inbound-${inbound.id}`">
+                                        <tr class="border-t" :class="darkMode ? 'border-slate-700/70' : 'border-slate-200'">
+                                            <td class="px-4 py-3 font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="inbound.remark"></td>
+                                            <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.port"></td>
+                                            <td class="px-4 py-3 uppercase" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.network"></td>
+                                            <td class="px-4 py-3 uppercase" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.security"></td>
+                                            <td class="px-4 py-3">
+                                                <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold"
+                                                      :class="inbound.is_active
+                                                        ? (darkMode ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
+                                                        : (darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-700 border border-slate-300')"
+                                                      x-text="inbound.is_active ? 'active' : 'inactive'">
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <div class="flex flex-wrap justify-end gap-2">
+                                                    <button type="button"
+                                                            @click="editInbound(inbound.id)"
+                                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                                            :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
+                                                        Edit
+                                                    </button>
+                                                    <button type="button"
+                                                            @click="deleteInbound(inbound.id)"
+                                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                                            :class="darkMode ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'">
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mt-8 sticky bottom-0 pt-4 flex justify-end border-t backdrop-blur-sm"
@@ -1981,6 +2062,188 @@
         </div>
     </div>
 
+    <div x-cloak x-show="vlessModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div class="w-full max-w-4xl rounded-2xl border shadow-2xl"
+             :class="darkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'">
+            <div class="flex items-center justify-between px-5 py-4 border-b" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                <h3 class="text-sm font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="vlessEditingId ? 'Edit VLESS Inbound' : 'Add VLESS Inbound'"></h3>
+                <button type="button" @click="closeVlessInboundModal()" class="text-xs px-3 py-1.5 rounded-lg border transition"
+                        :class="darkMode ? 'border-slate-600 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'">
+                    Close
+                </button>
+            </div>
+            <div class="px-5 py-5 grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto">
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Remark</span>
+                    <input type="text" x-model="vlessModal.remark" placeholder="WS-CDN-Config"
+                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Port</span>
+                    <input type="number" min="1" max="65535" x-model.number="vlessModal.port"
+                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
+                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Network</span>
+                    <select x-model="vlessModal.network"
+                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <option value="tcp">tcp</option>
+                        <option value="ws">ws</option>
+                        <option value="grpc">grpc</option>
+                        <option value="httpupgrade">httpupgrade</option>
+                        <option value="xhttp">xhttp</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Security</span>
+                    <select x-model="vlessModal.security"
+                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <option value="none">none</option>
+                        <option value="tls">tls</option>
+                        <option value="reality">reality</option>
+                    </select>
+                </label>
+
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Flow</span>
+                    <select x-model="vlessModal.flow"
+                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <option value="">none</option>
+                        <option value="xtls-rprx-vision">xtls-rprx-vision</option>
+                        <option value="xtls-rprx-vision-udp443">xtls-rprx-vision-udp443</option>
+                    </select>
+                </label>
+                <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
+                    <input type="checkbox" x-model="vlessModal.is_active" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Active Inbound</span>
+                </label>
+
+                <template x-if="vlessModal.security === 'tls' || vlessModal.security === 'reality'">
+                    <label class="block">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SNI / Server Name</span>
+                        <input type="text" x-model="vlessModal.sni" placeholder="www.microsoft.com"
+                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    </label>
+                </template>
+                <template x-if="vlessModal.security === 'tls' || vlessModal.security === 'reality'">
+                    <label class="block">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Fingerprint</span>
+                        <input type="text" x-model="vlessModal.fingerprint" placeholder="chrome"
+                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    </label>
+                </template>
+
+                <template x-if="vlessModal.security === 'reality'">
+                    <label class="block">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Spider X</span>
+                        <input type="text" x-model="vlessModal.spider_x" placeholder="/"
+                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    </label>
+                </template>
+                <template x-if="vlessModal.security === 'reality'">
+                    <div class="md:col-span-2 rounded-xl border p-3 space-y-3" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
+                        <div class="flex items-center justify-between">
+                            <p class="text-xs font-semibold uppercase tracking-wide" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">REALITY Settings</p>
+                            <button type="button" @click="generateInboundRealityKeypair()" :disabled="vlessRealityKeygenLoading"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition disabled:opacity-50"
+                                    :class="darkMode ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'">
+                                <span x-text="vlessRealityKeygenLoading ? 'Generating...' : 'Generate Keys'"></span>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Public Key</span>
+                                <input type="text" x-model="vlessModal.tls_settings.public_key"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Short ID</span>
+                                <input type="text" x-model="vlessModal.tls_settings.short_id"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="vlessModal.network === 'ws' || vlessModal.network === 'httpupgrade' || vlessModal.network === 'xhttp'">
+                    <label class="block">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Path</span>
+                        <input type="text" x-model="vlessModal.transport_settings.path"
+                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    </label>
+                </template>
+                <template x-if="vlessModal.network === 'ws' || vlessModal.network === 'httpupgrade' || vlessModal.network === 'xhttp'">
+                    <label class="block">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Host</span>
+                        <input type="text" x-model="vlessModal.transport_settings.host"
+                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    </label>
+                </template>
+
+                <template x-if="vlessModal.network === 'grpc'">
+                    <label class="block">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Service Name</span>
+                        <input type="text" x-model="vlessModal.transport_settings.service_name"
+                               class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    </label>
+                </template>
+                <template x-if="vlessModal.network === 'grpc'">
+                    <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
+                        <input type="checkbox" x-model="vlessModal.transport_settings.multi_mode" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Multi Mode</span>
+                    </label>
+                </template>
+
+                <template x-if="vlessModal.network === 'xhttp'">
+                    <label class="block">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Mode</span>
+                        <select x-model="vlessModal.transport_settings.mode"
+                                class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            <option value="auto">auto</option>
+                            <option value="packet-up">packet-up</option>
+                            <option value="stream-up">stream-up</option>
+                        </select>
+                    </label>
+                </template>
+                <template x-if="vlessModal.network === 'xhttp'">
+                    <label class="block md:col-span-2">
+                        <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Extra (Raw JSON)</span>
+                        <textarea x-model="vlessModal.transport_settings.extra" rows="4"
+                                  class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                  :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                    </label>
+                </template>
+            </div>
+            <div class="px-5 py-4 border-t flex justify-end gap-2" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                <button type="button" @click="closeVlessInboundModal()"
+                        class="px-4 py-2 rounded-lg text-sm font-semibold transition"
+                        :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+                    Cancel
+                </button>
+                <button type="button" @click="saveInbound()" :disabled="vlessModalSubmitting"
+                        class="px-4 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50"
+                        :class="darkMode ? 'bg-cyan-500 hover:bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-700'">
+                    <span x-text="vlessModalSubmitting ? 'Saving...' : (vlessEditingId ? 'Update Inbound' : 'Create Inbound')"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div x-cloak x-show="terminalModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
         <div class="w-full max-w-4xl rounded-2xl border border-slate-700 bg-gray-900 shadow-2xl">
             <div class="flex items-center justify-between px-5 py-4 border-b border-slate-700">
@@ -2160,6 +2423,36 @@
                 wireguardDiagnostics: null,
                 wireguardDiagnosticsGeneratedAt: '',
                 singboxKeygenLoading: false,
+                vlessInboundsLoading: false,
+                vlessModalSubmitting: false,
+                vlessModalOpen: false,
+                vlessEditingId: null,
+                vlessRealityKeygenLoading: false,
+                vlessInbounds: [],
+                vlessModal: {
+                    remark: '',
+                    port: 443,
+                    network: 'tcp',
+                    security: 'reality',
+                    flow: 'xtls-rprx-vision',
+                    sni: 'www.microsoft.com',
+                    fingerprint: 'chrome',
+                    spider_x: '/',
+                    transport_settings: {
+                        path: '/',
+                        host: '',
+                        service_name: '',
+                        multi_mode: false,
+                        mode: 'auto',
+                        extra: '',
+                    },
+                    tls_settings: {
+                        public_key: '',
+                        short_id: '',
+                        server_name: '',
+                    },
+                    is_active: true,
+                },
                 routingRulesLoading: false,
                 routingRulesSyncing: false,
                 routingRuleSubmitting: false,
@@ -2728,6 +3021,10 @@
                     });
 
                     this.$watch('activeProtocolTab', async (tab) => {
+                        if (tab === 'singbox' && this.vlessInbounds.length === 0) {
+                            await this.loadInbounds({ silent: true });
+                        }
+
                         if (tab !== 'routing') {
                             return;
                         }
@@ -2745,6 +3042,7 @@
 
                     await this.loadSettings();
                     await this.loadServerIps();
+                    await this.loadInbounds({ silent: true });
                     await this.loadRoutingInterfaces({ silent: true });
                     await this.loadRoutingProxyPorts({ silent: true });
                     await this.loadRoutingRules({ silent: true });
@@ -3320,6 +3618,314 @@
                         this.showToast(error.message || 'Failed to generate REALITY keypair', 'error');
                     } finally {
                         this.singboxKeygenLoading = false;
+                    }
+                },
+
+                createDefaultVlessModal() {
+                    return {
+                        remark: '',
+                        port: 443,
+                        network: 'tcp',
+                        security: 'reality',
+                        flow: 'xtls-rprx-vision',
+                        sni: 'www.microsoft.com',
+                        fingerprint: 'chrome',
+                        spider_x: '/',
+                        transport_settings: {
+                            path: '/',
+                            host: '',
+                            service_name: '',
+                            multi_mode: false,
+                            mode: 'auto',
+                            extra: '',
+                        },
+                        tls_settings: {
+                            public_key: '',
+                            short_id: '',
+                            server_name: '',
+                        },
+                        is_active: true,
+                    };
+                },
+
+                normalizeInbound(rawInbound) {
+                    return {
+                        id: Number(rawInbound?.id) || 0,
+                        remark: String(rawInbound?.remark || ''),
+                        port: Number(rawInbound?.port) || 443,
+                        network: String(rawInbound?.network || 'tcp').toLowerCase(),
+                        security: String(rawInbound?.security || 'none').toLowerCase(),
+                        flow: String(rawInbound?.flow || ''),
+                        sni: String(rawInbound?.sni || ''),
+                        fingerprint: String(rawInbound?.fingerprint || 'chrome'),
+                        spider_x: String(rawInbound?.spider_x || '/'),
+                        transport_settings: rawInbound?.transport_settings && typeof rawInbound.transport_settings === 'object' ? rawInbound.transport_settings : {},
+                        tls_settings: rawInbound?.tls_settings && typeof rawInbound.tls_settings === 'object' ? rawInbound.tls_settings : {},
+                        is_active: rawInbound?.is_active !== false,
+                    };
+                },
+
+                async loadInbounds({ silent = false } = {}) {
+                    this.vlessInboundsLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/vless-inbounds/', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = 'Failed to load VLESS inbounds';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            throw new Error(message);
+                        }
+                        const payload = await response.json();
+                        this.vlessInbounds = Array.isArray(payload) ? payload.map((item) => this.normalizeInbound(item)) : [];
+                    } catch (error) {
+                        this.vlessInbounds = [];
+                        if (!silent) {
+                            this.showToast(error.message || 'Failed to load VLESS inbounds', 'error');
+                        }
+                    } finally {
+                        this.vlessInboundsLoading = false;
+                    }
+                },
+
+                openVlessInboundModal() {
+                    this.vlessEditingId = null;
+                    this.vlessModal = this.createDefaultVlessModal();
+                    this.vlessModal.sni = String(this.generalForm.singbox_reality_sni || 'www.microsoft.com');
+                    this.vlessModal.tls_settings.server_name = this.vlessModal.sni;
+                    this.vlessModalOpen = true;
+                },
+
+                closeVlessInboundModal() {
+                    this.vlessModalOpen = false;
+                    this.vlessModalSubmitting = false;
+                    this.vlessRealityKeygenLoading = false;
+                    this.vlessEditingId = null;
+                    this.vlessModal = this.createDefaultVlessModal();
+                },
+
+                async generateInboundRealityKeypair() {
+                    this.vlessRealityKeygenLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/settings/singbox/reality-keypair', {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok) {
+                            throw new Error(this.getApiErrorMessage(payload, 'Failed to generate REALITY keypair'));
+                        }
+                        this.vlessModal.tls_settings.public_key = String(payload.public_key || '');
+                        this.vlessModal.tls_settings.server_name = String(this.vlessModal.sni || '');
+                        this.showToast(payload.message || 'REALITY keypair generated', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to generate REALITY keypair', 'error');
+                    } finally {
+                        this.vlessRealityKeygenLoading = false;
+                    }
+                },
+
+                async editInbound(id) {
+                    const numericId = Number(id);
+                    const current = this.vlessInbounds.find((item) => Number(item.id) === numericId);
+                    if (!current) {
+                        this.showToast('VLESS inbound not found', 'error');
+                        return;
+                    }
+                    const draft = this.createDefaultVlessModal();
+                    draft.remark = String(current.remark || '');
+                    draft.port = Number(current.port) || 443;
+                    draft.network = String(current.network || 'tcp').toLowerCase();
+                    draft.security = String(current.security || 'none').toLowerCase();
+                    draft.flow = String(current.flow || '');
+                    draft.sni = String(current.sni || '');
+                    draft.fingerprint = String(current.fingerprint || 'chrome');
+                    draft.spider_x = String(current.spider_x || '/');
+                    draft.is_active = current.is_active !== false;
+                    draft.transport_settings = {
+                        ...draft.transport_settings,
+                        ...(current.transport_settings && typeof current.transport_settings === 'object' ? current.transport_settings : {}),
+                    };
+                    if (draft.network === 'xhttp' && draft.transport_settings.extra && typeof draft.transport_settings.extra !== 'string') {
+                        try {
+                            draft.transport_settings.extra = JSON.stringify(draft.transport_settings.extra, null, 2);
+                        } catch (_) {
+                            draft.transport_settings.extra = '';
+                        }
+                    }
+                    draft.tls_settings = {
+                        ...draft.tls_settings,
+                        ...(current.tls_settings && typeof current.tls_settings === 'object' ? current.tls_settings : {}),
+                    };
+                    if (!draft.tls_settings.server_name) {
+                        draft.tls_settings.server_name = draft.sni || '';
+                    }
+                    this.vlessEditingId = numericId;
+                    this.vlessModal = draft;
+                    this.vlessModalOpen = true;
+                },
+
+                buildInboundPayload() {
+                    const network = String(this.vlessModal.network || 'tcp').trim().toLowerCase();
+                    const security = String(this.vlessModal.security || 'none').trim().toLowerCase();
+                    const normalizedFlow = String(this.vlessModal.flow || '').trim();
+                    const normalizedSni = String(this.vlessModal.sni || '').trim();
+
+                    const payload = {
+                        remark: String(this.vlessModal.remark || '').trim(),
+                        port: Number(this.vlessModal.port) || 0,
+                        network,
+                        security,
+                        flow: normalizedFlow || null,
+                        sni: normalizedSni || null,
+                        fingerprint: String(this.vlessModal.fingerprint || 'chrome').trim() || 'chrome',
+                        spider_x: String(this.vlessModal.spider_x || '/').trim() || '/',
+                        is_active: this.vlessModal.is_active !== false,
+                        transport_settings: null,
+                        tls_settings: null,
+                    };
+
+                    const transport = {};
+                    if (network === 'ws' || network === 'httpupgrade' || network === 'xhttp') {
+                        transport.path = String(this.vlessModal.transport_settings.path || '/').trim() || '/';
+                        transport.host = String(this.vlessModal.transport_settings.host || '').trim();
+                    }
+                    if (network === 'grpc') {
+                        transport.service_name = String(this.vlessModal.transport_settings.service_name || '').trim();
+                        transport.multi_mode = !!this.vlessModal.transport_settings.multi_mode;
+                    }
+                    if (network === 'xhttp') {
+                        transport.mode = String(this.vlessModal.transport_settings.mode || 'auto').trim() || 'auto';
+                        const rawExtra = String(this.vlessModal.transport_settings.extra || '').trim();
+                        if (rawExtra) {
+                            try {
+                                transport.extra = JSON.parse(rawExtra);
+                            } catch (_) {
+                                throw new Error('XHTTP Extra must be valid JSON');
+                            }
+                        }
+                    }
+                    if (Object.keys(transport).length > 0) {
+                        payload.transport_settings = transport;
+                    }
+
+                    if (security === 'tls') {
+                        payload.tls_settings = {
+                            server_name: normalizedSni || null,
+                        };
+                    }
+                    if (security === 'reality') {
+                        payload.tls_settings = {
+                            public_key: String(this.vlessModal.tls_settings.public_key || '').trim(),
+                            short_id: String(this.vlessModal.tls_settings.short_id || '').trim(),
+                            server_name: String(this.vlessModal.tls_settings.server_name || normalizedSni || '').trim(),
+                        };
+                    }
+
+                    return payload;
+                },
+
+                async saveInbound() {
+                    this.vlessModalSubmitting = true;
+                    try {
+                        const payload = this.buildInboundPayload();
+                        if (!payload.remark) {
+                            throw new Error('Remark is required');
+                        }
+                        if (!Number.isInteger(payload.port) || payload.port < 1 || payload.port > 65535) {
+                            throw new Error('Port must be between 1 and 65535');
+                        }
+
+                        const token = localStorage.getItem('access_token');
+                        const isEdit = Number.isInteger(this.vlessEditingId) && this.vlessEditingId > 0;
+                        const endpoint = isEdit ? `/api/vless-inbounds/${this.vlessEditingId}` : '/api/vless-inbounds/';
+                        const method = isEdit ? 'PATCH' : 'POST';
+
+                        const response = await fetch(endpoint, {
+                            method,
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(payload),
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = isEdit ? 'Failed to update VLESS inbound' : 'Failed to create VLESS inbound';
+                            try {
+                                const errorPayload = await response.json();
+                                message = this.getApiErrorMessage(errorPayload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            throw new Error(message);
+                        }
+
+                        this.closeVlessInboundModal();
+                        await this.loadInbounds({ silent: true });
+                        this.showToast(isEdit ? 'VLESS inbound updated successfully' : 'VLESS inbound created successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to save VLESS inbound', 'error');
+                    } finally {
+                        this.vlessModalSubmitting = false;
+                    }
+                },
+
+                async deleteInbound(id) {
+                    const numericId = Number(id);
+                    if (!Number.isInteger(numericId) || numericId <= 0) {
+                        this.showToast('Invalid VLESS inbound id', 'error');
+                        return;
+                    }
+                    if (!window.confirm('Delete this VLESS inbound?')) {
+                        return;
+                    }
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch(`/api/vless-inbounds/${numericId}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = 'Failed to delete VLESS inbound';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback
+                            }
+                            throw new Error(message);
+                        }
+                        await this.loadInbounds({ silent: true });
+                        this.showToast('VLESS inbound deleted successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to delete VLESS inbound', 'error');
                     }
                 },
 
