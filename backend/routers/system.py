@@ -835,6 +835,21 @@ def read_openconnect_status(
     }
 
 
+@router.get("/singbox/status")
+def read_singbox_status(
+    current_user: Admin = Depends(get_current_user),
+):
+    _ = current_user
+    status = singbox_service.get_status()
+    return {
+        "success": bool(status.get("success", True)),
+        "protocol": "singbox",
+        "is_active": bool(status.get("is_active", False)),
+        "service_name": status.get("service_name", "sing-box"),
+        "status_raw": status,
+    }
+
+
 @router.get("/logs/{service_name}")
 def read_service_logs(
     service_name: str,

@@ -224,6 +224,10 @@
                               :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                             OpenConnect: <span :class="serviceStatus.openconnect_is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.openconnect_is_active ? 'Online' : 'Offline'"></span>
                         </span>
+                        <span class="text-xs sm:text-sm font-medium theme-transition"
+                              :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                            Sing-box: <span id="singbox-status" :class="serviceStatus.singbox_is_active ? 'text-green-500' : 'text-red-500'" x-text="serviceStatus.singbox_is_active ? 'Online' : 'Offline'"></span>
+                        </span>
                         <span x-show="serviceStatus.is_mock" class="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">
                             DEV
                         </span>
@@ -961,6 +965,13 @@
                                    x-model="newClient.enable_openconnect"
                                    class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
                         </label>
+                        <label class="flex items-center justify-between px-4 py-3 rounded-xl border theme-transition"
+                               :class="darkMode ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'">
+                            <span class="text-sm font-medium" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable VLESS / REALITY</span>
+                            <input type="checkbox"
+                                   x-model="newClient.enable_vless"
+                                   class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                        </label>
                         <div x-show="newClient.enable_l2tp">
                             <label class="block text-sm font-medium mb-2 theme-transition"
                                    :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
@@ -1360,6 +1371,13 @@
                                    x-model="editForm.enable_openconnect"
                                    class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
                         </label>
+                        <label class="flex items-center justify-between px-4 py-3 rounded-xl border theme-transition"
+                               :class="darkMode ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'">
+                            <span class="text-sm font-medium" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable VLESS / REALITY</span>
+                            <input type="checkbox"
+                                   x-model="editForm.enable_vless"
+                                   class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                        </label>
                         <p class="text-xs theme-transition" :class="darkMode ? 'text-slate-500' : 'text-slate-500'">
                             If enabling OpenConnect for an existing user, provide a new password in this form.
                         </p>
@@ -1597,6 +1615,7 @@
                     wireguard_is_active: false,
                     l2tp_is_active: false,
                     openconnect_is_active: false,
+                    singbox_is_active: false,
                 },
                 autoRefreshTimerId: null,
                 autoRefreshMs: 3000,
@@ -1625,6 +1644,7 @@
                     enable_wireguard: true,
                     enable_l2tp: false,
                     enable_openconnect: true,
+                    enable_vless: true,
                 },
                 
                 // QR Code Modal
@@ -1674,6 +1694,7 @@
                     expiry_date: '',
                     notes: '',
                     enable_openconnect: true,
+                    enable_vless: true,
                 },
                 
                 async init() {
@@ -1904,7 +1925,7 @@
                 async loadServiceStatus() {
                     try {
                         const token = localStorage.getItem('access_token');
-                        const [openvpnResponse, wireguardDiagnosticsResponse, l2tpStatusResponse, openconnectStatusResponse] = await Promise.all([
+                        const [openvpnResponse, wireguardDiagnosticsResponse, l2tpStatusResponse, openconnectStatusResponse, singboxStatusResponse] = await Promise.all([
                             fetch('/api/openvpn/service/status', {
                                 headers: {
                                     'Authorization': `Bearer ${token}`
@@ -1921,6 +1942,11 @@
                                 }
                             }),
                             fetch('/api/system/openconnect/status', {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            }),
+                            fetch('/api/system/singbox/status', {
                                 headers: {
                                     'Authorization': `Bearer ${token}`
                                 }
@@ -1954,9 +1980,16 @@
                             nextStatus.openconnect_is_active = false;
                         }
 
+                        if (singboxStatusResponse.ok) {
+                            const singboxStatus = await singboxStatusResponse.json();
+                            nextStatus.singbox_is_active = !!singboxStatus?.is_active;
+                        } else {
+                            nextStatus.singbox_is_active = false;
+                        }
+
                         this.serviceStatus = nextStatus;
                     } catch (_) {
-                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false, wireguard_is_active: false, l2tp_is_active: false, openconnect_is_active: false };
+                        this.serviceStatus = { is_active: false, is_enabled: false, is_mock: false, wireguard_is_active: false, l2tp_is_active: false, openconnect_is_active: false, singbox_is_active: false };
                     }
                 },
 
@@ -1983,7 +2016,7 @@
                     this.createError = '';
                     this.successMessage = '';
 
-                    if (!this.newClient.enable_openvpn && !this.newClient.enable_wireguard && !this.newClient.enable_l2tp && !this.newClient.enable_openconnect) {
+                    if (!this.newClient.enable_openvpn && !this.newClient.enable_wireguard && !this.newClient.enable_l2tp && !this.newClient.enable_openconnect && !this.newClient.enable_vless) {
                         this.createError = 'Select at least one protocol before creating the user.';
                         this.creating = false;
                         return;
@@ -2004,6 +2037,7 @@
                             enable_wireguard: !!this.newClient.enable_wireguard,
                             enable_l2tp: !!this.newClient.enable_l2tp,
                             enable_openconnect: !!this.newClient.enable_openconnect,
+                            enable_vless: !!this.newClient.enable_vless,
                             ppp_password: this.newClient.ppp_password ? this.newClient.ppp_password : null,
                         };
                         
@@ -2065,6 +2099,7 @@
                             enable_wireguard: true,
                             enable_l2tp: false,
                             enable_openconnect: true,
+                            enable_vless: true,
                         };
                         this.successMessage = `User ${credentials.username} created successfully`;
                         await this.loadClients();
@@ -2090,6 +2125,7 @@
                         expiry_date: expiryDate ? expiryDate.split('T')[0] : '',
                         notes: client.notes || client.description || '',
                         enable_openconnect: !!(client.enable_openconnect ?? client.has_openconnect),
+                        enable_vless: !!client.vless_uuid,
                     };
                     this.showEditModal = true;
                 },
@@ -2117,6 +2153,7 @@
                             expiry_date: this.editForm.expiry_date ? new Date(this.editForm.expiry_date).toISOString() : null,
                             new_password: this.editForm.new_password || null,
                             enable_openconnect: !!this.editForm.enable_openconnect,
+                            enable_vless: !!this.editForm.enable_vless,
                         };
 
                         const response = await fetch(`/api/users/${this.editClientId}`, {
