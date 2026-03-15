@@ -190,9 +190,9 @@ class VPNUserResponse(BaseModel):
     has_openvpn: bool
     has_wireguard: bool
     has_singbox: bool
-    enable_l2tp: bool = False
-    has_l2tp: bool = False
-    enable_openconnect: bool = True
+    enable_l2tp: bool
+    enable_openconnect: bool
+    vless_uuid: Optional[str] = None
     has_openconnect: bool = False
     ppp_password: Optional[str] = None
     wg_public_key: Optional[str] = None

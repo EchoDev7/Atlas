@@ -1164,6 +1164,96 @@
                                 <option value="fatal">fatal</option>
                             </select>
                         </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">VLESS Port</span>
+                            <input type="number"
+                                   min="1"
+                                   max="65535"
+                                   x-model.number="generalForm.vless_port"
+                                   placeholder="443"
+                                   class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
+                                   :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        </label>
+                    </div>
+
+                    <div class="rounded-xl border p-4 space-y-4 theme-transition"
+                         :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50'">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="text-base font-semibold theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">VLESS - REALITY</h3>
+                                <p class="text-xs mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    Sing-box 1.12+ inbound over TCP with REALITY handshake and route sniff action.
+                                </p>
+                            </div>
+                            <label class="inline-flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" x-model="generalForm.enable_vless" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-200' : 'text-slate-700'">Enable VLESS</span>
+                            </label>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY SNI</span>
+                                <input type="text"
+                                       x-model="generalForm.singbox_reality_sni"
+                                       placeholder="yahoo.com"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Short IDs (comma separated)</span>
+                                <input type="text"
+                                       x-model="generalForm.singbox_reality_short_ids"
+                                       placeholder="0123456789abcdef"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Public Key</span>
+                                <div class="mt-1 flex items-center gap-2">
+                                    <input type="text"
+                                           x-model="generalForm.singbox_reality_public_key"
+                                           readonly
+                                           class="w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition cursor-not-allowed"
+                                           :class="darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-500'">
+                                    <button type="button"
+                                            @click="copyToClipboard(generalForm.singbox_reality_public_key || '', 'REALITY Public Key')"
+                                            class="px-3 py-2 rounded-lg text-xs font-semibold transition"
+                                            :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
+                                        Copy
+                                    </button>
+                                </div>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">REALITY Private Key</span>
+                                <div class="mt-1 flex items-center gap-2">
+                                    <input type="text"
+                                           x-model="generalForm.singbox_reality_private_key"
+                                           readonly
+                                           class="w-full rounded-xl border px-3 py-2.5 font-mono text-xs theme-transition cursor-not-allowed"
+                                           :class="darkMode ? 'bg-slate-900/20 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-500'">
+                                    <button type="button"
+                                            @click="copyToClipboard(generalForm.singbox_reality_private_key || '', 'REALITY Private Key')"
+                                            class="px-3 py-2 rounded-lg text-xs font-semibold transition"
+                                            :class="darkMode ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30' : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'">
+                                        Copy
+                                    </button>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div class="flex justify-end">
+                            <button type="button"
+                                    @click="generateSingboxRealityKeypair()"
+                                    :disabled="singboxKeygenLoading || saving || loading"
+                                    class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :class="darkMode ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'">
+                                <span x-text="singboxKeygenLoading ? 'Generating...' : 'Generate New Keys'"></span>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="rounded-xl border p-4 text-sm theme-transition"
@@ -2006,6 +2096,12 @@
                     ocserv_port: 4433,
                     ocserv_client_subnet: '10.10.12.0/24',
                     singbox_log_level: 'info',
+                    enable_vless: true,
+                    vless_port: 443,
+                    singbox_reality_sni: 'yahoo.com',
+                    singbox_reality_public_key: '',
+                    singbox_reality_private_key: '',
+                    singbox_reality_short_ids: '0123456789abcdef',
                     admin_allowed_ips: '0.0.0.0/0',
                     login_max_failed_attempts: 5,
                     login_block_duration_minutes: 15,
@@ -2063,6 +2159,7 @@
                 wireguardDiagnosticsLoading: false,
                 wireguardDiagnostics: null,
                 wireguardDiagnosticsGeneratedAt: '',
+                singboxKeygenLoading: false,
                 routingRulesLoading: false,
                 routingRulesSyncing: false,
                 routingRuleSubmitting: false,
@@ -3194,6 +3291,38 @@
                     }
                 },
 
+                async generateSingboxRealityKeypair() {
+                    this.singboxKeygenLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/settings/singbox/reality-keypair', {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                            },
+                        });
+
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok) {
+                            throw new Error(this.getApiErrorMessage(payload, 'Failed to generate REALITY keypair'));
+                        }
+
+                        this.generalForm.singbox_reality_public_key = payload.public_key || '';
+                        this.generalForm.singbox_reality_private_key = payload.private_key || '';
+                        this.showToast(payload.message || 'REALITY keypair generated successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to generate REALITY keypair', 'error');
+                    } finally {
+                        this.singboxKeygenLoading = false;
+                    }
+                },
+
                 toggleCipher(cipher) {
                     if (this.form.data_ciphers.includes(cipher)) {
                         if (this.form.data_ciphers.length === 1) {
@@ -3271,6 +3400,12 @@
                             ocserv_port: Number(generalData.ocserv_port) || 4433,
                             ocserv_client_subnet: generalData.ocserv_client_subnet || '10.10.12.0/24',
                             singbox_log_level: (generalData.singbox_log_level || 'info').toLowerCase(),
+                            enable_vless: generalData.enable_vless !== false,
+                            vless_port: Number(generalData.vless_port) || 443,
+                            singbox_reality_sni: generalData.singbox_reality_sni || 'yahoo.com',
+                            singbox_reality_public_key: generalData.singbox_reality_public_key || '',
+                            singbox_reality_private_key: generalData.singbox_reality_private_key || '',
+                            singbox_reality_short_ids: generalData.singbox_reality_short_ids || '0123456789abcdef',
                             panel_domain: generalData.panel_domain || '',
                             panel_https_port: Number(generalData.panel_https_port) || 2053,
                             subscription_domain: generalData.subscription_domain || '',
@@ -3899,6 +4034,12 @@
                             ocserv_port: Number(this.generalForm.ocserv_port),
                             ocserv_client_subnet: (this.generalForm.ocserv_client_subnet || '').trim(),
                             singbox_log_level: (this.generalForm.singbox_log_level || 'info').trim().toLowerCase(),
+                            enable_vless: !!this.generalForm.enable_vless,
+                            vless_port: Number(this.generalForm.vless_port),
+                            singbox_reality_sni: (this.generalForm.singbox_reality_sni || '').trim(),
+                            singbox_reality_public_key: (this.generalForm.singbox_reality_public_key || '').trim(),
+                            singbox_reality_private_key: (this.generalForm.singbox_reality_private_key || '').trim(),
+                            singbox_reality_short_ids: (this.generalForm.singbox_reality_short_ids || '').trim(),
                             admin_allowed_ips: (this.generalForm.admin_allowed_ips || '').trim(),
                             login_max_failed_attempts: loginMaxFailedAttempts,
                             login_block_duration_minutes: loginBlockDurationMinutes,
@@ -3958,6 +4099,12 @@
                             ocserv_port: Number(updated.ocserv_port) || 4433,
                             ocserv_client_subnet: updated.ocserv_client_subnet || '10.10.12.0/24',
                             singbox_log_level: (updated.singbox_log_level || 'info').toLowerCase(),
+                            enable_vless: updated.enable_vless !== false,
+                            vless_port: Number(updated.vless_port) || 443,
+                            singbox_reality_sni: updated.singbox_reality_sni || 'yahoo.com',
+                            singbox_reality_public_key: updated.singbox_reality_public_key || '',
+                            singbox_reality_private_key: updated.singbox_reality_private_key || '',
+                            singbox_reality_short_ids: updated.singbox_reality_short_ids || '0123456789abcdef',
                             panel_domain: updated.panel_domain || '',
                             panel_https_port: Number(updated.panel_https_port) || 2053,
                             subscription_domain: updated.subscription_domain || '',

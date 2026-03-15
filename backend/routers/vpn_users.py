@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import logging
 import io
+import uuid
 
 from backend.database import get_db
 from backend.dependencies import get_current_user
@@ -761,6 +762,7 @@ async def create_user(
     new_user = VPNUser(
         username=username,
         password=hashed_password,
+        vless_uuid=str(uuid.uuid4()),
         description=user_data.description,
         data_limit_gb=user_data.data_limit_gb,
         traffic_limit_bytes=user_data.traffic_limit_bytes,

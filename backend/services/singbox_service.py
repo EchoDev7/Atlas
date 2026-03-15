@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from backend.models.general_settings import GeneralSettings
+from backend.models.vpn_user import VPNUser
 from backend.services.protocols.base import BaseProtocolService
 
 
@@ -81,14 +82,74 @@ class SingBoxService(BaseProtocolService):
 
     def apply_settings(self, db: Any) -> Dict[str, Any]:
         settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+        if settings is None:
+            return {
+                "success": False,
+                "protocol": self.protocol_name,
+                "message": "General settings not found",
+            }
         raw_level = str(getattr(settings, "singbox_log_level", "info") or "info").strip().lower()
         log_level = raw_level if raw_level in self._allowed_log_levels else "info"
+        vless_port = int(getattr(settings, "vless_port", 443) or 443)
+        if vless_port < 1 or vless_port > 65535:
+            vless_port = 443
+
+        reality_sni = str(getattr(settings, "singbox_reality_sni", "yahoo.com") or "yahoo.com").strip() or "yahoo.com"
+        reality_private_key = str(getattr(settings, "singbox_reality_private_key", "") or "").strip()
+        reality_short_ids_raw = str(getattr(settings, "singbox_reality_short_ids", "0123456789abcdef") or "0123456789abcdef")
+        reality_short_ids = [value.strip().lower() for value in reality_short_ids_raw.split(",") if value.strip()]
+        if not reality_short_ids:
+            reality_short_ids = ["0123456789abcdef"]
+
+        active_users = (
+            db.query(VPNUser)
+            .filter(VPNUser.is_enabled.is_(True))
+            .order_by(VPNUser.id.asc())
+            .all()
+        )
+        vless_users = []
+        for user in active_users:
+            if not bool(getattr(user, "is_active", False)):
+                continue
+            user_uuid = str(getattr(user, "vless_uuid", "") or "").strip()
+            if not user_uuid:
+                continue
+            vless_users.append(
+                {
+                    "name": str(user.username),
+                    "uuid": user_uuid,
+                    "flow": "xtls-rprx-vision",
+                }
+            )
 
         config_payload = {
             "log": {"level": log_level},
             "inbounds": [],
             "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {"rules": []},
         }
+
+        if bool(getattr(settings, "enable_vless", True)):
+            config_payload["inbounds"].append(
+                {
+                    "type": "vless",
+                    "tag": "vless-in",
+                    "listen": "::",
+                    "listen_port": vless_port,
+                    "users": vless_users,
+                    "tls": {
+                        "enabled": True,
+                        "server_name": reality_sni,
+                        "reality": {
+                            "enabled": True,
+                            "handshake": {"server": reality_sni, "server_port": 443},
+                            "private_key": reality_private_key,
+                            "short_id": reality_short_ids,
+                        },
+                    },
+                }
+            )
+            config_payload["route"]["rules"].append({"inbound": "vless-in", "action": "sniff"})
 
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)

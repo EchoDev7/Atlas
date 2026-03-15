@@ -7,6 +7,7 @@ from datetime import datetime
 from backend.database import Base
 import secrets
 import string
+import uuid
 
 
 class VPNUser(Base):
@@ -26,6 +27,7 @@ class VPNUser(Base):
     enable_openvpn = Column(Boolean, nullable=True, default=True)
     enable_l2tp = Column(Boolean, nullable=True, default=False)
     enable_openconnect = Column(Boolean, nullable=True, default=True)
+    vless_uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     ppp_password = Column(String(255), nullable=True)
     
     # Limits and restrictions

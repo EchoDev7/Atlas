@@ -18,6 +18,12 @@ class GeneralSettingsBase(BaseModel):
     ocserv_port: int = Field(4433, ge=1, le=65535)
     ocserv_client_subnet: str = Field("10.10.12.0/24", min_length=9, max_length=32)
     singbox_log_level: Literal["trace", "debug", "info", "warn", "error", "fatal"] = Field("info")
+    enable_vless: bool = Field(True)
+    vless_port: int = Field(443, ge=1, le=65535)
+    singbox_reality_sni: str = Field("yahoo.com", min_length=1, max_length=255)
+    singbox_reality_public_key: str = Field("")
+    singbox_reality_private_key: str = Field("")
+    singbox_reality_short_ids: str = Field("0123456789abcdef", min_length=1, max_length=255)
     is_tunnel_enabled: bool = Field(False)
     foreign_server_ip: Optional[str] = Field(default=None, max_length=64)
     foreign_server_port: int = Field(22, ge=1, le=65535)
@@ -70,13 +76,18 @@ class GeneralSettingsBase(BaseModel):
             raise ValueError("Public IPv6 address must be a valid IPv6 address") from exc
         return normalized
 
-    @field_validator("wan_interface", "admin_allowed_ips", "system_timezone", "ntp_server", "foreign_ssh_user")
+    @field_validator("wan_interface", "admin_allowed_ips", "system_timezone", "ntp_server", "foreign_ssh_user", "singbox_reality_sni", "singbox_reality_short_ids")
     @classmethod
     def normalize_required_text(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             raise ValueError("Value cannot be empty")
         return normalized
+
+    @field_validator("singbox_reality_public_key", "singbox_reality_private_key")
+    @classmethod
+    def normalize_key_text(cls, value: str) -> str:
+        return (value or "").strip()
 
     @field_validator("server_system_dns_primary", "server_system_dns_secondary")
     @classmethod
@@ -179,6 +190,7 @@ class GeneralSettingsBase(BaseModel):
             "Panel HTTPS": int(self.panel_https_port),
             "Subscription HTTPS": int(self.subscription_https_port),
             "OpenConnect": int(self.ocserv_port),
+            "VLESS": int(self.vless_port),
         }
         seen_ports: dict[int, str] = {}
         for owner, port in local_protocol_ports.items():

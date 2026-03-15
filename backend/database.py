@@ -75,6 +75,7 @@ def init_db():
             "enable_l2tp": "ALTER TABLE vpn_users ADD COLUMN enable_l2tp BOOLEAN NOT NULL DEFAULT 0",
             "enable_openconnect": "ALTER TABLE vpn_users ADD COLUMN enable_openconnect BOOLEAN NOT NULL DEFAULT 1",
             "ppp_password": "ALTER TABLE vpn_users ADD COLUMN ppp_password VARCHAR(255)",
+            "vless_uuid": "ALTER TABLE vpn_users ADD COLUMN vless_uuid VARCHAR(36)",
         }
         for column_name, migration_sql in vpn_user_column_migrations.items():
             if column_name not in column_names:
@@ -82,6 +83,25 @@ def init_db():
 
         columns = connection.execute(text("PRAGMA table_info(vpn_users)")).fetchall()
         column_names = {col[1] for col in columns}
+        if "vless_uuid" in column_names:
+            connection.execute(
+                text(
+                    """
+                    UPDATE vpn_users
+                    SET vless_uuid = (
+                        LOWER(HEX(RANDOMBLOB(4))) || '-' ||
+                        LOWER(HEX(RANDOMBLOB(2))) || '-' ||
+                        '4' || SUBSTR(LOWER(HEX(RANDOMBLOB(2))), 2) || '-' ||
+                        SUBSTR('89ab', ABS(RANDOM()) % 4 + 1, 1) || SUBSTR(LOWER(HEX(RANDOMBLOB(2))), 2) || '-' ||
+                        LOWER(HEX(RANDOMBLOB(6)))
+                    )
+                    WHERE vless_uuid IS NULL OR TRIM(vless_uuid) = ''
+                    """
+                )
+            )
+            connection.execute(
+                text("CREATE UNIQUE INDEX IF NOT EXISTS idx_vpn_users_vless_uuid ON vpn_users(vless_uuid)")
+            )
 
         if {"traffic_limit_bytes", "data_limit_gb"}.issubset(column_names):
             connection.execute(
@@ -474,6 +494,12 @@ def init_db():
                 "ocserv_port": "ALTER TABLE general_settings ADD COLUMN ocserv_port INTEGER NOT NULL DEFAULT 4433",
                 "ocserv_client_subnet": "ALTER TABLE general_settings ADD COLUMN ocserv_client_subnet VARCHAR(32) NOT NULL DEFAULT '10.10.12.0/24'",
                 "singbox_log_level": "ALTER TABLE general_settings ADD COLUMN singbox_log_level VARCHAR(16) NOT NULL DEFAULT 'info'",
+                "enable_vless": "ALTER TABLE general_settings ADD COLUMN enable_vless BOOLEAN NOT NULL DEFAULT 1",
+                "vless_port": "ALTER TABLE general_settings ADD COLUMN vless_port INTEGER NOT NULL DEFAULT 443",
+                "singbox_reality_sni": "ALTER TABLE general_settings ADD COLUMN singbox_reality_sni VARCHAR(255) NOT NULL DEFAULT 'yahoo.com'",
+                "singbox_reality_public_key": "ALTER TABLE general_settings ADD COLUMN singbox_reality_public_key TEXT NOT NULL DEFAULT ''",
+                "singbox_reality_private_key": "ALTER TABLE general_settings ADD COLUMN singbox_reality_private_key TEXT NOT NULL DEFAULT ''",
+                "singbox_reality_short_ids": "ALTER TABLE general_settings ADD COLUMN singbox_reality_short_ids VARCHAR(255) NOT NULL DEFAULT '0123456789abcdef'",
                 "is_tunnel_enabled": "ALTER TABLE general_settings ADD COLUMN is_tunnel_enabled BOOLEAN NOT NULL DEFAULT 0",
                 "foreign_server_ip": "ALTER TABLE general_settings ADD COLUMN foreign_server_ip VARCHAR(64)",
                 "foreign_server_port": "ALTER TABLE general_settings ADD COLUMN foreign_server_port INTEGER NOT NULL DEFAULT 22",
@@ -620,6 +646,30 @@ def init_db():
                     )
                 )
 
+            if {"enable_vless", "vless_port", "singbox_reality_sni", "singbox_reality_public_key", "singbox_reality_private_key", "singbox_reality_short_ids"}.issubset(general_column_names):
+                connection.execute(
+                    text(
+                        """
+                        UPDATE general_settings
+                        SET enable_vless = COALESCE(enable_vless, 1),
+                            vless_port = CASE
+                                WHEN vless_port BETWEEN 1 AND 65535 THEN vless_port
+                                ELSE 443
+                            END,
+                            singbox_reality_sni = CASE
+                                WHEN singbox_reality_sni IS NULL OR TRIM(singbox_reality_sni) = '' THEN 'yahoo.com'
+                                ELSE TRIM(singbox_reality_sni)
+                            END,
+                            singbox_reality_public_key = COALESCE(TRIM(singbox_reality_public_key), ''),
+                            singbox_reality_private_key = COALESCE(TRIM(singbox_reality_private_key), ''),
+                            singbox_reality_short_ids = CASE
+                                WHEN singbox_reality_short_ids IS NULL OR TRIM(singbox_reality_short_ids) = '' THEN '0123456789abcdef'
+                                ELSE TRIM(singbox_reality_short_ids)
+                            END
+                        """
+                    )
+                )
+
             general_settings_row_count = connection.execute(
                 text("SELECT COUNT(*) FROM general_settings")
             ).scalar_one()
@@ -641,6 +691,12 @@ def init_db():
                             ocserv_port,
                             ocserv_client_subnet,
                             singbox_log_level,
+                            enable_vless,
+                            vless_port,
+                            singbox_reality_sni,
+                            singbox_reality_public_key,
+                            singbox_reality_private_key,
+                            singbox_reality_short_ids,
                             is_tunnel_enabled,
                             foreign_server_ip,
                             foreign_server_port,
@@ -677,6 +733,12 @@ def init_db():
                             4433,
                             '10.10.12.0/24',
                             'info',
+                            1,
+                            443,
+                            'yahoo.com',
+                            '',
+                            '',
+                            '0123456789abcdef',
                             0,
                             NULL,
                             22,

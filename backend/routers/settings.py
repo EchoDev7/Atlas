@@ -2,12 +2,14 @@ from datetime import datetime
 import ipaddress
 import logging
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.core.ppp_manager import PPPManager
@@ -38,6 +40,14 @@ singbox_service = protocol_registry.get("singbox")
 logger = logging.getLogger(__name__)
 RESOLVED_DROPIN_DIR = Path("/etc/systemd/resolved.conf.d")
 ATLAS_DNS_DROPIN_FILE = RESOLVED_DROPIN_DIR / "atlas-dns.conf"
+SINGBOX_BINARY_PATH = "/usr/local/bin/sing-box"
+
+
+class SingBoxRealityKeypairResponse(BaseModel):
+    success: bool
+    public_key: str
+    private_key: str
+    message: str
 
 
 def _command_exists(command: str) -> bool:
@@ -388,6 +398,45 @@ def _get_or_create_general_settings(db: Session) -> GeneralSettings:
     return settings
 
 
+def _parse_reality_keypair_output(stdout: str) -> tuple[str, str]:
+    output = str(stdout or "")
+    private_match = re.search(r"PrivateKey:\s*(\S+)", output)
+    public_match = re.search(r"PublicKey:\s*(\S+)", output)
+    if not private_match or not public_match:
+        raise ValueError("Could not parse sing-box reality keypair output")
+    private_key = private_match.group(1).strip()
+    public_key = public_match.group(1).strip()
+    if not private_key or not public_key:
+        raise ValueError("Generated sing-box reality keypair is empty")
+    return private_key, public_key
+
+
+def _generate_singbox_reality_keypair() -> tuple[str, str]:
+    process = subprocess.run(
+        [SINGBOX_BINARY_PATH, "generate", "reality-keypair"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(process.stderr.strip() or process.stdout.strip() or "Failed to generate sing-box reality keypair")
+    return _parse_reality_keypair_output(process.stdout)
+
+
+def _ensure_singbox_reality_keypair(db: Session, settings: GeneralSettings) -> bool:
+    private_key = (getattr(settings, "singbox_reality_private_key", "") or "").strip()
+    if private_key:
+        return False
+    generated_private_key, generated_public_key = _generate_singbox_reality_keypair()
+    settings.singbox_reality_private_key = generated_private_key
+    settings.singbox_reality_public_key = generated_public_key
+    settings.updated_at = datetime.utcnow()
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return True
+
+
 def _to_response(settings: OpenVPNSettings) -> OpenVPNSettingsResponse:
     allowed_ciphers = ["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"]
     raw_ciphers = (settings.data_ciphers or "").strip()
@@ -507,6 +556,12 @@ def _to_general_response(settings: GeneralSettings) -> GeneralSettingsResponse:
         ocserv_port=settings.ocserv_port,
         ocserv_client_subnet=settings.ocserv_client_subnet,
         singbox_log_level=settings.singbox_log_level,
+        enable_vless=settings.enable_vless,
+        vless_port=settings.vless_port,
+        singbox_reality_sni=settings.singbox_reality_sni,
+        singbox_reality_public_key=settings.singbox_reality_public_key,
+        singbox_reality_private_key=settings.singbox_reality_private_key,
+        singbox_reality_short_ids=settings.singbox_reality_short_ids,
         is_tunnel_enabled=settings.is_tunnel_enabled,
         foreign_server_ip=settings.foreign_server_ip,
         foreign_server_port=settings.foreign_server_port,
@@ -537,6 +592,7 @@ def _validate_global_port_anti_collision(
     openvpn_port: int,
     wireguard_port: int,
     ocserv_port: int,
+    vless_port: int,
     panel_https_port: int,
     subscription_https_port: int,
 ) -> None:
@@ -544,6 +600,7 @@ def _validate_global_port_anti_collision(
         "OpenVPN": int(openvpn_port),
         "WireGuard": int(wireguard_port),
         "OpenConnect": int(ocserv_port),
+        "VLESS": int(vless_port),
         "Panel HTTPS": int(panel_https_port),
         "Subscription HTTPS": int(subscription_https_port),
     }
@@ -564,6 +621,7 @@ def get_general_settings(
 ):
     _ = current_user
     settings = _get_or_create_general_settings(db)
+    _ensure_singbox_reality_keypair(db, settings)
 
     detected_wan = _detect_wan_interface()
     detected_ipv4 = _detect_public_ipv4(detected_wan)
@@ -597,6 +655,44 @@ def get_general_settings(
         db.refresh(settings)
 
     return _to_general_response(settings)
+
+
+@router.post("/singbox/reality-keypair", response_model=SingBoxRealityKeypairResponse)
+def regenerate_singbox_reality_keypair(
+    request: Request,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    settings = _get_or_create_general_settings(db)
+    try:
+        private_key, public_key = _generate_singbox_reality_keypair()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to generate sing-box reality keypair: {exc}") from exc
+
+    settings.singbox_reality_private_key = private_key
+    settings.singbox_reality_public_key = public_key
+    settings.updated_at = datetime.utcnow()
+    db.commit()
+    _sync_openvpn_auth_db_snapshot()
+    db.refresh(settings)
+
+    record_audit_event(
+        action="singbox_reality_keypair_regenerated",
+        success=True,
+        admin_username=current_user.username,
+        resource_type="general_settings",
+        resource_id=str(settings.id),
+        ip_address=extract_client_ip(request),
+        details={"updated_fields": ["singbox_reality_private_key", "singbox_reality_public_key"]},
+    )
+
+    return SingBoxRealityKeypairResponse(
+        success=True,
+        public_key=public_key,
+        private_key=private_key,
+        message="Sing-box REALITY keypair generated successfully",
+    )
 
 
 @router.get("/server-ips")
@@ -634,6 +730,12 @@ def update_general_settings(
     previous_ocserv_port = settings.ocserv_port
     previous_ocserv_client_subnet = settings.ocserv_client_subnet
     previous_singbox_log_level = settings.singbox_log_level
+    previous_enable_vless = settings.enable_vless
+    previous_vless_port = settings.vless_port
+    previous_singbox_reality_sni = settings.singbox_reality_sni
+    previous_singbox_reality_public_key = settings.singbox_reality_public_key
+    previous_singbox_reality_private_key = settings.singbox_reality_private_key
+    previous_singbox_reality_short_ids = settings.singbox_reality_short_ids
 
     openvpn_settings = _get_or_create_openvpn_settings(db)
     wireguard_settings = _get_or_create_wireguard_settings(db)
@@ -641,6 +743,7 @@ def update_general_settings(
         openvpn_port=int(openvpn_settings.port),
         wireguard_port=int(wireguard_settings.listen_port),
         ocserv_port=int(payload.ocserv_port),
+        vless_port=int(payload.vless_port),
         panel_https_port=int(payload.panel_https_port),
         subscription_https_port=int(payload.subscription_https_port),
     )
@@ -660,6 +763,16 @@ def update_general_settings(
     settings.ocserv_port = payload.ocserv_port
     settings.ocserv_client_subnet = payload.ocserv_client_subnet
     settings.singbox_log_level = payload.singbox_log_level
+    settings.enable_vless = payload.enable_vless
+    settings.vless_port = payload.vless_port
+    settings.singbox_reality_sni = payload.singbox_reality_sni
+    settings.singbox_reality_public_key = payload.singbox_reality_public_key
+    settings.singbox_reality_private_key = payload.singbox_reality_private_key
+    settings.singbox_reality_short_ids = payload.singbox_reality_short_ids
+    if not (settings.singbox_reality_private_key or "").strip():
+        generated_private_key, generated_public_key = _generate_singbox_reality_keypair()
+        settings.singbox_reality_private_key = generated_private_key
+        settings.singbox_reality_public_key = generated_public_key
     settings.is_tunnel_enabled = payload.is_tunnel_enabled
     settings.foreign_server_ip = payload.foreign_server_ip
     settings.foreign_server_port = payload.foreign_server_port
@@ -792,6 +905,18 @@ def update_general_settings(
         changed_fields.append("ocserv_client_subnet")
     if previous_singbox_log_level != settings.singbox_log_level:
         changed_fields.append("singbox_log_level")
+    if previous_enable_vless != settings.enable_vless:
+        changed_fields.append("enable_vless")
+    if previous_vless_port != settings.vless_port:
+        changed_fields.append("vless_port")
+    if previous_singbox_reality_sni != settings.singbox_reality_sni:
+        changed_fields.append("singbox_reality_sni")
+    if previous_singbox_reality_public_key != settings.singbox_reality_public_key:
+        changed_fields.append("singbox_reality_public_key")
+    if previous_singbox_reality_private_key != settings.singbox_reality_private_key:
+        changed_fields.append("singbox_reality_private_key")
+    if previous_singbox_reality_short_ids != settings.singbox_reality_short_ids:
+        changed_fields.append("singbox_reality_short_ids")
 
     record_audit_event(
         action="general_settings_updated",
@@ -896,6 +1021,7 @@ def update_wireguard_settings(
         openvpn_port=int(openvpn_settings.port),
         wireguard_port=int(payload.listen_port),
         ocserv_port=int(general_settings.ocserv_port),
+        vless_port=int(general_settings.vless_port),
         panel_https_port=int(general_settings.panel_https_port),
         subscription_https_port=int(general_settings.subscription_https_port),
     )
@@ -967,6 +1093,7 @@ def update_openvpn_settings(
         openvpn_port=int(payload.port),
         wireguard_port=int(wireguard_settings.listen_port),
         ocserv_port=int(general_settings.ocserv_port),
+        vless_port=int(general_settings.vless_port),
         panel_https_port=int(general_settings.panel_https_port),
         subscription_https_port=int(general_settings.subscription_https_port),
     )
