@@ -7,6 +7,7 @@ from backend.models.wireguard_settings import WireGuardSettings
 from backend.models.audit_log import AuditLog
 from backend.models.routing_rule import RoutingRule
 from backend.models.vless_inbound import VlessInbound
+from backend.models.hysteria_inbound import HysteriaInbound
 
 __all__ = [
     "Admin",
@@ -21,4 +22,5 @@ __all__ = [
     "AuditLog",
     "RoutingRule",
     "VlessInbound",
+    "HysteriaInbound",
 ]

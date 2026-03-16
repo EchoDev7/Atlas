@@ -12,3 +12,4 @@ pillow==10.2.0
 apscheduler==3.10.4
 paramiko==3.4.0
 dnspython==2.6.1
+cryptography==42.0.8
