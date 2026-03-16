@@ -1239,7 +1239,9 @@
                                     </template>
                                     <template x-for="inbound in vlessInbounds" :key="`vless-inbound-${inbound.id}`">
                                         <tr class="border-t" :class="darkMode ? 'border-slate-700/70' : 'border-slate-200'">
-                                            <td class="px-4 py-3 font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="inbound.remark"></td>
+                                            <td class="px-4 py-3 font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                                <div class="max-w-[16rem] truncate" :title="inbound.remark || ''" x-text="inbound.remark || '—'"></div>
+                                            </td>
                                             <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.port"></td>
                                             <td class="px-4 py-3 uppercase" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.network"></td>
                                             <td class="px-4 py-3 uppercase" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.security"></td>
@@ -1321,13 +1323,23 @@
                                     </template>
                                     <template x-for="inbound in hysteriaInbounds" :key="`hysteria-inbound-${inbound.id}`">
                                         <tr class="border-t" :class="darkMode ? 'border-slate-700/70' : 'border-slate-200'">
-                                            <td class="px-4 py-3 font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="inbound.remark"></td>
-                                            <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.port"></td>
+                                            <td class="px-4 py-3 font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                                <div class="max-w-[14rem] truncate" :title="inbound.remark || ''" x-text="inbound.remark || '—'"></div>
+                                            </td>
+                                            <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                <div class="max-w-[11rem] truncate" :title="inbound.port || ''" x-text="inbound.port || '—'"></div>
+                                            </td>
                                             <td class="px-4 py-3" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="`${inbound.up_mbps || 0}↑ / ${inbound.down_mbps || 0}↓ Mbps`"></td>
                                             <td class="px-4 py-3" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
                                                 <div class="text-xs space-y-1">
-                                                    <div><span class="font-semibold">Obfs:</span> <span x-text="inbound.obfs_password || '—'"></span></div>
-                                                    <div><span class="font-semibold">Masq:</span> <span x-text="inbound.masquerade || '—'"></span></div>
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="font-semibold shrink-0">Obfs:</span>
+                                                        <span class="truncate max-w-[14rem]" :title="inbound.obfs_password || ''" x-text="inbound.obfs_password || '—'"></span>
+                                                    </div>
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="font-semibold shrink-0">Masq:</span>
+                                                        <span class="truncate max-w-[14rem]" :title="inbound.masquerade || ''" x-text="inbound.masquerade || '—'"></span>
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td class="px-4 py-3 uppercase" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.cert_mode"></td>
