@@ -1190,6 +1190,14 @@
                                         : (darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200')">
                                 🚀 Hysteria2 Nodes
                             </button>
+                            <button type="button"
+                                    @click="activeInboundTab = 'trojan'"
+                                    class="px-4 py-2 rounded-xl text-sm font-semibold transition"
+                                    :class="activeInboundTab === 'trojan'
+                                        ? (darkMode ? 'bg-amber-500 text-white' : 'bg-amber-600 text-white')
+                                        : (darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200')">
+                                🐴 Trojan Nodes
+                            </button>
                         </div>
                     </div>
 
@@ -1361,6 +1369,91 @@
                                                     </button>
                                                     <button type="button"
                                                             @click="deleteHysteriaInbound(inbound.id)"
+                                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                                            :class="darkMode ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'">
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div x-show="activeInboundTab === 'trojan'" x-cloak class="rounded-2xl border p-4 sm:p-5 space-y-4 theme-transition"
+                         :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50/70'">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h3 class="text-base sm:text-lg font-semibold theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                    Trojan Inbounds (Nodes)
+                                </h3>
+                                <p class="text-xs sm:text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    Manage TLS-based Trojan nodes with dynamic transport network options.
+                                </p>
+                            </div>
+                            <button type="button"
+                                    @click="openTrojanInboundModal()"
+                                    class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition"
+                                    :class="darkMode ? 'bg-amber-500 hover:bg-amber-400' : 'bg-amber-600 hover:bg-amber-700'">
+                                + Add Trojan Inbound
+                            </button>
+                        </div>
+
+                        <div x-show="trojanInboundsLoading" class="py-8 flex justify-center">
+                            <div class="animate-spin rounded-full h-9 w-9 border-b-2" :class="darkMode ? 'border-amber-400' : 'border-amber-600'"></div>
+                        </div>
+
+                        <div x-show="!trojanInboundsLoading" class="overflow-x-auto rounded-xl border"
+                             :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                            <table class="min-w-full text-sm">
+                                <thead :class="darkMode ? 'bg-slate-900/40 text-slate-300' : 'bg-slate-50 text-slate-600'">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left font-semibold">Remark</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Port</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Network</th>
+                                        <th class="px-4 py-3 text-left font-semibold">SNI</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Status</th>
+                                        <th class="px-4 py-3 text-right font-semibold">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-if="trojanInbounds.length === 0">
+                                        <tr>
+                                            <td colspan="6" class="px-4 py-8 text-center" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                                No Trojan inbounds yet. Add your first inbound node.
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-for="inbound in trojanInbounds" :key="`trojan-inbound-${inbound.id}`">
+                                        <tr class="border-t" :class="darkMode ? 'border-slate-700/70' : 'border-slate-200'">
+                                            <td class="px-4 py-3 font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                                <div class="max-w-[14rem] truncate" :title="inbound.remark || ''" x-text="inbound.remark || '—'"></div>
+                                            </td>
+                                            <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.port"></td>
+                                            <td class="px-4 py-3 uppercase" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.network"></td>
+                                            <td class="px-4 py-3" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                <div class="max-w-[16rem] truncate" :title="inbound.sni || ''" x-text="inbound.sni || '—'"></div>
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold"
+                                                      :class="inbound.is_active
+                                                        ? (darkMode ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
+                                                        : (darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-700 border border-slate-300')"
+                                                      x-text="inbound.is_active ? 'active' : 'inactive'">
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <div class="flex flex-wrap justify-end gap-2">
+                                                    <button type="button"
+                                                            @click="editTrojanInbound(inbound.id)"
+                                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                                            :class="darkMode ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'">
+                                                        Edit
+                                                    </button>
+                                                    <button type="button"
+                                                            @click="deleteTrojanInbound(inbound.id)"
                                                             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
                                                             :class="darkMode ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'">
                                                         Delete
@@ -2409,6 +2502,180 @@
         </div>
     </div>
 
+    <div x-cloak x-show="trojanModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div class="w-full max-w-4xl rounded-2xl border shadow-2xl"
+             :class="darkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'">
+            <div class="flex items-center justify-between px-5 py-4 border-b" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                <h3 class="text-sm font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="trojanEditingId ? 'Edit Trojan Inbound' : 'Add Trojan Inbound'"></h3>
+                <button type="button" @click="closeTrojanInboundModal()" class="text-xs px-3 py-1.5 rounded-lg border transition"
+                        :class="darkMode ? 'border-slate-600 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'">
+                    Close
+                </button>
+            </div>
+            <div class="px-5 py-5 grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto">
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Remark</span>
+                    <input type="text" x-model="trojanModal.remark" placeholder="Trojan-Main"
+                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Port</span>
+                    <input type="number" min="1" max="65535" x-model.number="trojanModal.port"
+                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
+                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+
+                <label class="block md:col-span-2">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Password</span>
+                    <div class="mt-1 flex gap-2">
+                        <input type="text" x-model="trojanModal.password" placeholder="uuid-or-strong-password"
+                               class="w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <button type="button"
+                                @click="trojanModal.password = (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : generateRandomString(36))"
+                                class="px-3 py-2 rounded-xl text-xs font-semibold text-white transition whitespace-nowrap"
+                                :class="darkMode ? 'bg-amber-500 hover:bg-amber-400' : 'bg-amber-600 hover:bg-amber-700'">
+                            Generate
+                        </button>
+                    </div>
+                </label>
+
+                <div class="md:col-span-2 rounded-2xl border p-4 space-y-4"
+                     :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'">
+                    <h4 class="text-sm font-semibold tracking-wide"
+                        :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🌐 Network Settings</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Network</span>
+                            <select x-model="trojanModal.network"
+                                    class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="tcp">tcp</option>
+                                <option value="ws">ws</option>
+                                <option value="grpc">grpc</option>
+                                <option value="httpupgrade">httpupgrade</option>
+                                <option value="xhttp">xhttp</option>
+                            </select>
+                        </label>
+                        <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
+                            <input type="checkbox" x-model="trojanModal.is_active" class="rounded border-slate-300 text-amber-600 focus:ring-amber-500">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Active Inbound</span>
+                        </label>
+                    </div>
+                    <div x-show="trojanModal.network === 'ws' || trojanModal.network === 'httpupgrade' || trojanModal.network === 'xhttp' || trojanModal.network === 'grpc'"
+                         x-transition.opacity.duration.200ms
+                         class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <template x-if="trojanModal.network === 'ws' || trojanModal.network === 'httpupgrade' || trojanModal.network === 'xhttp'">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Path</span>
+                                <input type="text" x-model="trojanModal.transport_settings.path"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </template>
+                        <template x-if="trojanModal.network === 'ws' || trojanModal.network === 'httpupgrade' || trojanModal.network === 'xhttp'">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Host</span>
+                                <input type="text" x-model="trojanModal.transport_settings.host"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </template>
+                        <template x-if="trojanModal.network === 'httpupgrade'">
+                            <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
+                                <input type="checkbox" x-model="trojanModal.transport_settings.accept_proxy" class="rounded border-slate-300 text-amber-600 focus:ring-amber-500">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Accept Proxy</span>
+                            </label>
+                        </template>
+                        <template x-if="trojanModal.network === 'grpc'">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Service Name</span>
+                                <input type="text" x-model="trojanModal.transport_settings.service_name"
+                                       class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                       :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            </label>
+                        </template>
+                        <template x-if="trojanModal.network === 'grpc'">
+                            <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
+                                <input type="checkbox" x-model="trojanModal.transport_settings.multi_mode" class="rounded border-slate-300 text-amber-600 focus:ring-amber-500">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Multi Mode</span>
+                            </label>
+                        </template>
+                        <template x-if="trojanModal.network === 'xhttp'">
+                            <label class="block">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Mode</span>
+                                <select x-model="trojanModal.transport_settings.mode"
+                                        class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                        :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                    <option value="auto">auto</option>
+                                    <option value="packet-up">packet-up</option>
+                                    <option value="stream-up">stream-up</option>
+                                </select>
+                            </label>
+                        </template>
+                        <template x-if="trojanModal.network === 'xhttp'">
+                            <label class="block md:col-span-2">
+                                <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Extra (Raw JSON)</span>
+                                <textarea x-model="trojanModal.transport_settings.extra" rows="4"
+                                          class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                                          :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></textarea>
+                            </label>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="md:col-span-2 rounded-2xl border p-4 space-y-4"
+                     :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'">
+                    <h4 class="text-sm font-semibold tracking-wide"
+                        :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🔒 TLS Security Settings</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SNI / Server Name</span>
+                            <input type="text" x-model="trojanModal.sni" placeholder="www.cloudflare.com"
+                                   class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                   :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">ALPN</span>
+                            <select x-model="trojanModal.alpn"
+                                    class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="h3,h2,http/1.1">h3,h2,http/1.1</option>
+                                <option value="h2,http/1.1">h2,http/1.1</option>
+                                <option value="h2">h2</option>
+                                <option value="http/1.1">http/1.1</option>
+                            </select>
+                        </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Fingerprint</span>
+                            <select x-model="trojanModal.fingerprint"
+                                    class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="chrome">chrome</option>
+                                <option value="firefox">firefox</option>
+                                <option value="safari">safari</option>
+                                <option value="randomized">randomized</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 py-4 border-t flex justify-end gap-2" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                <button type="button" @click="closeTrojanInboundModal()"
+                        class="px-4 py-2 rounded-lg text-sm font-semibold transition"
+                        :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+                    Cancel
+                </button>
+                <button type="button" @click="saveTrojanInbound()" :disabled="trojanModalSubmitting"
+                        class="px-4 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50"
+                        :class="darkMode ? 'bg-amber-500 hover:bg-amber-400' : 'bg-amber-600 hover:bg-amber-700'">
+                    <span x-text="trojanModalSubmitting ? 'Saving...' : (trojanEditingId ? 'Update Inbound' : 'Create Inbound')"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div x-cloak x-show="terminalModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
         <div class="w-full max-w-4xl rounded-2xl border border-slate-700 bg-gray-900 shadow-2xl">
             <div class="flex items-center justify-between px-5 py-4 border-b border-slate-700">
@@ -2600,6 +2867,11 @@
                 hysteriaModalOpen: false,
                 hysteriaEditingId: null,
                 hysteriaInbounds: [],
+                trojanInboundsLoading: false,
+                trojanModalSubmitting: false,
+                trojanModalOpen: false,
+                trojanEditingId: null,
+                trojanInbounds: [],
                 vlessModal: {
                     remark: '',
                     port: 443,
@@ -2635,6 +2907,25 @@
                     masquerade: 'https://www.cloudflare.com',
                     cert_mode: 'self_signed',
                     sni: '',
+                    is_active: true,
+                },
+                trojanModal: {
+                    remark: '',
+                    port: 443,
+                    password: '',
+                    network: 'tcp',
+                    sni: '',
+                    alpn: 'h2,http/1.1',
+                    fingerprint: 'chrome',
+                    transport_settings: {
+                        path: '/',
+                        host: '',
+                        service_name: '',
+                        multi_mode: false,
+                        mode: 'auto',
+                        accept_proxy: false,
+                        extra: '',
+                    },
                     is_active: true,
                 },
                 routingRulesLoading: false,
@@ -3211,6 +3502,9 @@
                         if (tab === 'singbox' && this.hysteriaInbounds.length === 0) {
                             await this.loadHysteriaInbounds({ silent: true });
                         }
+                        if (tab === 'singbox' && this.trojanInbounds.length === 0) {
+                            await this.loadTrojanInbounds({ silent: true });
+                        }
 
                         if (tab !== 'routing') {
                             return;
@@ -3231,6 +3525,7 @@
                     await this.loadServerIps();
                     await this.loadInbounds({ silent: true });
                     await this.loadHysteriaInbounds({ silent: true });
+                    await this.loadTrojanInbounds({ silent: true });
                     await this.loadRoutingInterfaces({ silent: true });
                     await this.loadRoutingProxyPorts({ silent: true });
                     await this.loadRoutingRules({ silent: true });
@@ -3852,6 +4147,28 @@
                     };
                 },
 
+                createDefaultTrojanModal() {
+                    return {
+                        remark: '',
+                        port: 443,
+                        password: '',
+                        network: 'tcp',
+                        sni: '',
+                        alpn: 'h2,http/1.1',
+                        fingerprint: 'chrome',
+                        transport_settings: {
+                            path: '/',
+                            host: '',
+                            service_name: '',
+                            multi_mode: false,
+                            mode: 'auto',
+                            accept_proxy: false,
+                            extra: '',
+                        },
+                        is_active: true,
+                    };
+                },
+
                 normalizeInbound(rawInbound) {
                     return {
                         id: Number(rawInbound?.id) || 0,
@@ -3880,6 +4197,20 @@
                         masquerade: String(rawInbound?.masquerade || ''),
                         cert_mode: String(rawInbound?.cert_mode || 'self_signed').toLowerCase(),
                         sni: String(rawInbound?.sni || ''),
+                        is_active: rawInbound?.is_active !== false,
+                    };
+                },
+
+                normalizeTrojanInbound(rawInbound) {
+                    return {
+                        id: Number(rawInbound?.id) || 0,
+                        remark: String(rawInbound?.remark || ''),
+                        port: Number(rawInbound?.port) || 443,
+                        network: String(rawInbound?.network || 'tcp').toLowerCase(),
+                        sni: String(rawInbound?.sni || ''),
+                        alpn: String(rawInbound?.alpn || 'h2,http/1.1'),
+                        fingerprint: String(rawInbound?.fingerprint || 'chrome'),
+                        transport_settings: rawInbound?.transport_settings && typeof rawInbound.transport_settings === 'object' ? rawInbound.transport_settings : {},
                         is_active: rawInbound?.is_active !== false,
                     };
                 },
@@ -3952,6 +4283,40 @@
                     }
                 },
 
+                async loadTrojanInbounds({ silent = false } = {}) {
+                    this.trojanInboundsLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/trojan-inbounds/', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = 'Failed to load Trojan inbounds';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            throw new Error(message);
+                        }
+                        const payload = await response.json();
+                        this.trojanInbounds = Array.isArray(payload) ? payload.map((item) => this.normalizeTrojanInbound(item)) : [];
+                    } catch (error) {
+                        this.trojanInbounds = [];
+                        if (!silent) {
+                            this.showToast(error.message || 'Failed to load Trojan inbounds', 'error');
+                        }
+                    } finally {
+                        this.trojanInboundsLoading = false;
+                    }
+                },
+
                 openVlessInboundModal() {
                     this.vlessEditingId = null;
                     this.vlessModal = this.createDefaultVlessModal();
@@ -3964,6 +4329,13 @@
                     this.hysteriaModal = this.createDefaultHysteriaModal();
                     this.hysteriaModal.obfs_password = this.generateRandomString(24);
                     this.hysteriaModalOpen = true;
+                },
+
+                openTrojanInboundModal() {
+                    this.trojanEditingId = null;
+                    this.trojanModal = this.createDefaultTrojanModal();
+                    this.trojanModal.password = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : this.generateRandomString(36);
+                    this.trojanModalOpen = true;
                 },
 
                 closeVlessInboundModal() {
@@ -3979,6 +4351,13 @@
                     this.hysteriaModalSubmitting = false;
                     this.hysteriaEditingId = null;
                     this.hysteriaModal = this.createDefaultHysteriaModal();
+                },
+
+                closeTrojanInboundModal() {
+                    this.trojanModalOpen = false;
+                    this.trojanModalSubmitting = false;
+                    this.trojanEditingId = null;
+                    this.trojanModal = this.createDefaultTrojanModal();
                 },
 
                 async generateInboundRealityKeypair() {
@@ -4361,6 +4740,170 @@
                         this.showToast('Hysteria2 inbound deleted successfully', 'success');
                     } catch (error) {
                         this.showToast(error.message || 'Failed to delete Hysteria2 inbound', 'error');
+                    }
+                },
+
+                buildTrojanInboundPayload() {
+                    const network = String(this.trojanModal.network || 'tcp').trim().toLowerCase();
+                    const payload = {
+                        remark: String(this.trojanModal.remark || '').trim(),
+                        port: Number(this.trojanModal.port) || 0,
+                        network,
+                        sni: String(this.trojanModal.sni || '').trim(),
+                        alpn: String(this.trojanModal.alpn || 'h2,http/1.1').trim() || 'h2,http/1.1',
+                        fingerprint: String(this.trojanModal.fingerprint || 'chrome').trim() || 'chrome',
+                        transport_settings: null,
+                        is_active: this.trojanModal.is_active !== false,
+                    };
+
+                    const transport = {};
+                    if (network === 'ws' || network === 'httpupgrade' || network === 'xhttp') {
+                        transport.path = String(this.trojanModal.transport_settings.path || '/').trim() || '/';
+                        transport.host = String(this.trojanModal.transport_settings.host || '').trim();
+                    }
+                    if (network === 'httpupgrade') {
+                        transport.accept_proxy = !!this.trojanModal.transport_settings.accept_proxy;
+                    }
+                    if (network === 'grpc') {
+                        transport.service_name = String(this.trojanModal.transport_settings.service_name || '').trim();
+                        transport.multi_mode = !!this.trojanModal.transport_settings.multi_mode;
+                    }
+                    if (network === 'xhttp') {
+                        transport.mode = String(this.trojanModal.transport_settings.mode || 'auto').trim() || 'auto';
+                        const rawExtra = String(this.trojanModal.transport_settings.extra || '').trim();
+                        if (rawExtra) {
+                            try {
+                                transport.extra = JSON.parse(rawExtra);
+                            } catch (_) {
+                                throw new Error('XHTTP Extra must be valid JSON');
+                            }
+                        }
+                    }
+                    if (Object.keys(transport).length > 0) {
+                        payload.transport_settings = transport;
+                    }
+
+                    return payload;
+                },
+
+                async editTrojanInbound(id) {
+                    const numericId = Number(id);
+                    const current = this.trojanInbounds.find((item) => Number(item.id) === numericId);
+                    if (!current) {
+                        this.showToast('Trojan inbound not found', 'error');
+                        return;
+                    }
+                    const draft = this.createDefaultTrojanModal();
+                    draft.remark = String(current.remark || '');
+                    draft.port = Number(current.port) || 443;
+                    draft.network = String(current.network || 'tcp').toLowerCase();
+                    draft.sni = String(current.sni || '');
+                    draft.alpn = String(current.alpn || 'h2,http/1.1');
+                    draft.fingerprint = String(current.fingerprint || 'chrome');
+                    draft.is_active = current.is_active !== false;
+                    draft.transport_settings = {
+                        ...draft.transport_settings,
+                        ...(current.transport_settings && typeof current.transport_settings === 'object' ? current.transport_settings : {}),
+                    };
+                    if (draft.network === 'xhttp' && draft.transport_settings.extra && typeof draft.transport_settings.extra !== 'string') {
+                        try {
+                            draft.transport_settings.extra = JSON.stringify(draft.transport_settings.extra, null, 2);
+                        } catch (_) {
+                            draft.transport_settings.extra = '';
+                        }
+                    }
+                    this.trojanEditingId = numericId;
+                    this.trojanModal = draft;
+                    this.trojanModalOpen = true;
+                },
+
+                async saveTrojanInbound() {
+                    this.trojanModalSubmitting = true;
+                    try {
+                        const payload = this.buildTrojanInboundPayload();
+                        if (!payload.remark) {
+                            throw new Error('Remark is required');
+                        }
+                        if (!Number.isInteger(payload.port) || payload.port < 1 || payload.port > 65535) {
+                            throw new Error('Port must be between 1 and 65535');
+                        }
+                        if (!payload.sni) {
+                            throw new Error('SNI is required for Trojan');
+                        }
+
+                        const token = localStorage.getItem('access_token');
+                        const isEdit = Number.isInteger(this.trojanEditingId) && this.trojanEditingId > 0;
+                        const endpoint = isEdit ? `/api/trojan-inbounds/${this.trojanEditingId}` : '/api/trojan-inbounds/';
+                        const method = isEdit ? 'PATCH' : 'POST';
+
+                        const response = await fetch(endpoint, {
+                            method,
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(payload),
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = isEdit ? 'Failed to update Trojan inbound' : 'Failed to create Trojan inbound';
+                            try {
+                                const errorPayload = await response.json();
+                                message = this.getApiErrorMessage(errorPayload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            throw new Error(message);
+                        }
+
+                        this.closeTrojanInboundModal();
+                        await this.loadTrojanInbounds({ silent: true });
+                        this.showToast(isEdit ? 'Trojan inbound updated successfully' : 'Trojan inbound created successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to save Trojan inbound', 'error');
+                    } finally {
+                        this.trojanModalSubmitting = false;
+                    }
+                },
+
+                async deleteTrojanInbound(id) {
+                    const numericId = Number(id);
+                    if (!Number.isInteger(numericId) || numericId <= 0) {
+                        this.showToast('Invalid Trojan inbound id', 'error');
+                        return;
+                    }
+                    if (!window.confirm('Delete this Trojan inbound?')) {
+                        return;
+                    }
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch(`/api/trojan-inbounds/${numericId}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = 'Failed to delete Trojan inbound';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback
+                            }
+                            throw new Error(message);
+                        }
+                        await this.loadTrojanInbounds({ silent: true });
+                        this.showToast('Trojan inbound deleted successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to delete Trojan inbound', 'error');
                     }
                 },
 
