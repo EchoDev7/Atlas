@@ -8,6 +8,7 @@ from backend.models.audit_log import AuditLog
 from backend.models.routing_rule import RoutingRule
 from backend.models.vless_inbound import VlessInbound
 from backend.models.hysteria_inbound import HysteriaInbound
+from backend.models.trojan_inbound import TrojanInbound
 
 __all__ = [
     "Admin",
@@ -23,4 +24,5 @@ __all__ = [
     "RoutingRule",
     "VlessInbound",
     "HysteriaInbound",
+    "TrojanInbound",
 ]
