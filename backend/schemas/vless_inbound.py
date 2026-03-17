@@ -9,12 +9,32 @@ class VlessInboundBase(BaseModel):
     port: int = Field(..., ge=1, le=65535)
     network: str = Field("tcp", min_length=1, max_length=32)
     security: str = Field("reality", min_length=1, max_length=32)
-    flow: Optional[str] = Field(default=None, max_length=64)
-    sni: Optional[str] = Field(default=None, max_length=255)
+    flow: Optional[str] = Field(default="xtls-rprx-vision", max_length=64)
+    sni: Optional[str] = Field(default="www.microsoft.com", max_length=255)
     fingerprint: str = Field("chrome", min_length=1, max_length=32)
     spider_x: str = Field("/", min_length=1, max_length=255)
-    transport_settings: Optional[dict[str, Any]] = None
-    tls_settings: Optional[dict[str, Any]] = None
+    transport_settings: Optional[dict[str, Any]] = Field(
+        default_factory=lambda: {
+            "path": "/",
+            "host": "",
+            "service_name": "",
+            "multi_mode": False,
+            "accept_proxy": False,
+            "mode": "auto",
+            "headers": {},
+            "extra": None,
+        }
+    )
+    tls_settings: Optional[dict[str, Any]] = Field(
+        default_factory=lambda: {
+            "alpn": "h2,http/1.1",
+            "private_key": "",
+            "public_key": "",
+            "short_id": "",
+            "dest": "www.microsoft.com:443",
+            "server_port": 443,
+        }
+    )
     is_active: bool = Field(True)
 
     @field_validator("remark", "network", "security", "fingerprint", "spider_x")

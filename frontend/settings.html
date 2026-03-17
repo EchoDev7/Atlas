@@ -2405,6 +2405,9 @@
                         <option value="httpupgrade">httpupgrade</option>
                         <option value="xhttp">xhttp</option>
                     </select>
+                    <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                        TCP is fastest. Use WS/HTTPUpgrade for CDN routing. Use XHTTP for modern obfuscation.
+                    </p>
                 </label>
                 <label class="block">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Security</span>
@@ -2426,6 +2429,9 @@
                         <option value="xtls-rprx-vision">xtls-rprx-vision</option>
                         <option value="xtls-rprx-vision-udp443">xtls-rprx-vision-udp443</option>
                     </select>
+                    <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                        Use 'xtls-rprx-vision' for maximum DPI bypass. Requires TCP + TLS/Reality.
+                    </p>
                 </label>
                 <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
                     <input type="checkbox" x-model="vlessModal.is_active" class="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500">
@@ -2455,6 +2461,9 @@
                                 <option value="http/1.1">http/1.1 (Required for WS)</option>
                                 <option value="h3">h3 (QUIC/XHTTP)</option>
                             </select>
+                            <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                Dictates the application protocol. 'h2' is required for gRPC.
+                            </p>
                         </label>
                         <label class="block">
                             <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Fingerprint</span>
@@ -2466,6 +2475,9 @@
                                 <option value="safari">Safari</option>
                                 <option value="randomized">Randomized (Best for Anti-DPI)</option>
                             </select>
+                            <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                Spoofs your server's TLS hello. 'chrome' or 'randomized' are best for anti-censorship.
+                            </p>
                         </label>
                         <template x-if="vlessModal.security === 'reality'">
                             <label class="block">
@@ -4423,6 +4435,7 @@
                             multi_mode: false,
                             accept_proxy: false,
                             mode: 'auto',
+                            headers: {},
                             extra: '',
                         },
                         tls_settings: {
@@ -4430,6 +4443,8 @@
                             public_key: '',
                             short_id: '',
                             alpn: 'h2,http/1.1',
+                            dest: 'www.microsoft.com:443',
+                            server_port: 443,
                         },
                         is_active: true,
                     };
