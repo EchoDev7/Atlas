@@ -2915,14 +2915,82 @@
                 <button type="button" @click="closeTuicInboundModal()" class="text-xs px-3 py-1.5 rounded-lg border transition" :class="darkMode ? 'border-slate-600 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'">Close</button>
             </div>
             <div class="px-5 py-5 grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto">
-                <label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Remark</span><input type="text" x-model="tuicModal.remark" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
-                <label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Port</span><input type="number" min="1" max="65535" x-model.number="tuicModal.port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
-                <div class="md:col-span-2 rounded-2xl border p-4 space-y-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'"><h4 class="text-sm font-semibold tracking-wide" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🌐 Performance &amp; Network</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Congestion Control</span><select x-model="tuicModal.congestion_control" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="bbr">bbr (Best for Speed)</option><option value="cubic">cubic</option><option value="new_reno">new_reno</option></select></label><label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">UDP Relay Mode</span><select x-model="tuicModal.udp_relay_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="native">native</option><option value="quic">quic</option></select></label><label class="inline-flex items-end pb-2 gap-2 cursor-pointer md:col-span-2"><input type="checkbox" x-model="tuicModal.zero_rtt_handshake" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Enable Zero-RTT for instant reconnections</span></label></div></div>
-                <div class="md:col-span-2 rounded-2xl border p-4 space-y-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'"><h4 class="text-sm font-semibold tracking-wide" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🔒 Security &amp; Encryption</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">ALPN</span><select x-model="tuicModal.alpn" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="h3">h3 - TUIC requires HTTP/3</option></select></label><label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Certificate Mode</span><select x-model="tuicModal.cert_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="self_signed">Auto Self-Signed</option><option value="custom_domain">Custom Domain</option></select></label><label x-show="tuicModal.cert_mode === 'custom_domain'" class="block md:col-span-2"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SNI</span><input type="text" x-model="tuicModal.sni" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label><label class="inline-flex items-end pb-2 gap-2 cursor-pointer md:col-span-2"><input type="checkbox" x-model="tuicModal.is_active" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Active Inbound</span></label></div></div>
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Remark</span>
+                    <input type="text" x-model="tuicModal.remark" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Port</span>
+                    <input type="number" min="1" max="65535" x-model.number="tuicModal.port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+
+                <div class="md:col-span-2 rounded-2xl border p-4 space-y-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'">
+                    <h4 class="text-sm font-semibold tracking-wide" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🌐 Performance &amp; Network</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Congestion Control</span>
+                            <select x-model="tuicModal.congestion_control" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="bbr">bbr (Best for Speed)</option>
+                                <option value="cubic">cubic</option>
+                                <option value="new_reno">new_reno</option>
+                            </select>
+                            <p class="text-[11px] text-slate-500 mt-1">BBR is highly aggressive and maximizes bandwidth on lossy mobile networks. Cubic is standard.</p>
+                        </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">UDP Relay Mode</span>
+                            <select x-model="tuicModal.udp_relay_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="native">native</option>
+                                <option value="quic">quic</option>
+                            </select>
+                            <p class="text-[11px] text-slate-500 mt-1">Native provides better performance. QUIC provides stronger obfuscation.</p>
+                        </label>
+                        <label class="inline-flex items-end pb-2 gap-2 cursor-pointer md:col-span-2">
+                            <input type="checkbox" x-model="tuicModal.zero_rtt_handshake" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Enable Zero-RTT for instant reconnections</span>
+                        </label>
+                        <p class="text-[11px] text-slate-500 mt-1 md:col-span-2">Zero Round Trip Time. Enables instant reconnections for returning clients without handshake delays. Highly recommended.</p>
+                    </div>
+                </div>
+
+                <div class="md:col-span-2 rounded-2xl border p-4 space-y-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'">
+                    <h4 class="text-sm font-semibold tracking-wide" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🔒 Security &amp; Encryption</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">ALPN</span>
+                            <select x-model="tuicModal.alpn" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="h3">h3 - TUIC requires HTTP/3</option>
+                            </select>
+                            <p class="text-[11px] text-slate-500 mt-1">TUIC strictly operates over HTTP/3 (h3).</p>
+                        </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Certificate Mode</span>
+                            <select x-model="tuicModal.cert_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="self_signed">Auto Self-Signed</option>
+                                <option value="custom_domain">Custom Domain</option>
+                            </select>
+                        </label>
+                        <label x-show="tuicModal.cert_mode === 'custom_domain'" class="block md:col-span-2">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SNI</span>
+                            <input type="text" x-model="tuicModal.sni" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        </label>
+                        <label class="inline-flex items-end pb-2 gap-2 cursor-pointer md:col-span-2">
+                            <input type="checkbox" x-model="tuicModal.is_active" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Active Inbound</span>
+                        </label>
+                    </div>
+                </div>
             </div>
-            <div class="px-5 py-4 border-t flex justify-end gap-2" :class="darkMode ? 'border-slate-700' : 'border-slate-200'"><button type="button" @click="closeTuicInboundModal()" class="px-4 py-2 rounded-lg text-sm font-semibold transition" :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">Cancel</button><button type="button" @click="saveTuicInbound()" :disabled="tuicModalSubmitting" class="px-4 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50" :class="darkMode ? 'bg-sky-500 hover:bg-sky-400' : 'bg-sky-600 hover:bg-sky-700'"><span x-text="tuicModalSubmitting ? 'Saving...' : (tuicEditingId ? 'Update Inbound' : 'Create Inbound')"></span></button></div>
+            <div class="px-5 py-4 border-t flex justify-end gap-2" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                <button type="button" @click="closeTuicInboundModal()" class="px-4 py-2 rounded-lg text-sm font-semibold transition" :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+                    Cancel
+                </button>
+                <button type="button" @click="saveTuicInbound()" :disabled="tuicModalSubmitting" class="px-4 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50" :class="darkMode ? 'bg-sky-500 hover:bg-sky-400' : 'bg-sky-600 hover:bg-sky-700'">
+                    <span x-text="tuicModalSubmitting ? 'Saving...' : (tuicEditingId ? 'Update Inbound' : 'Create Inbound')"></span>
+                </button>
+            </div>
         </div>
     </div>
+
 
     <div x-cloak x-show="ssModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
         <div class="w-full max-w-3xl rounded-2xl border shadow-2xl"
@@ -4532,7 +4600,7 @@
                         port: 8443,
                         congestion_control: 'bbr',
                         udp_relay_mode: 'native',
-                        zero_rtt_handshake: false,
+                        zero_rtt_handshake: true,
                         alpn: 'h3',
                         cert_mode: 'self_signed',
                         sni: '',

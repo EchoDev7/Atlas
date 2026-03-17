@@ -13,7 +13,7 @@ class TuicInbound(Base):
     port = Column(Integer, nullable=False, unique=True, index=True)
     congestion_control = Column(String(32), nullable=False, default="bbr")
     udp_relay_mode = Column(String(32), nullable=False, default="native")
-    zero_rtt_handshake = Column(Boolean, nullable=False, default=False)
+    zero_rtt_handshake = Column(Boolean, nullable=False, default=True)
     alpn = Column(String(64), nullable=False, default="h3")
     cert_mode = Column(String(32), nullable=False, default="self_signed")
     sni = Column(String(255), nullable=True)

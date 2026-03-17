@@ -37,6 +37,7 @@ async def create_tuic_inbound(
         raise HTTPException(status_code=409, detail="TUIC inbound port already exists")
 
     payload_data = payload.model_dump()
+    payload_data["alpn"] = "h3"
     if payload.cert_mode == "self_signed":
         cert_pem, key_pem = generate_self_signed_cert()
         payload_data["cert_pem"] = cert_pem
@@ -77,6 +78,21 @@ async def update_tuic_inbound(
         duplicate_port = db.query(TuicInbound).filter(TuicInbound.port == next_port, TuicInbound.id != inbound_id).first()
         if duplicate_port:
             raise HTTPException(status_code=409, detail="TUIC inbound port already exists")
+
+    updates["alpn"] = "h3"
+
+    next_cert_mode = updates.get("cert_mode", item.cert_mode)
+    cert_mode_changed = "cert_mode" in updates and updates["cert_mode"] != item.cert_mode
+    should_issue_self_signed = next_cert_mode == "self_signed" and (
+        cert_mode_changed or not item.cert_pem or not item.key_pem
+    )
+    if should_issue_self_signed:
+        cert_pem, key_pem = generate_self_signed_cert()
+        updates["cert_pem"] = cert_pem
+        updates["key_pem"] = key_pem
+    elif next_cert_mode == "self_signed":
+        updates.pop("cert_pem", None)
+        updates.pop("key_pem", None)
 
     for field, value in updates.items():
         setattr(item, field, value)
