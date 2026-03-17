@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import logging
 import shutil
@@ -125,6 +126,34 @@ class SingBoxService(BaseProtocolService):
         allowed = {"h2", "http/1.1"}
         sanitized = [item for item in parsed if item in allowed]
         return sanitized or fallback
+
+    def _build_dns_config(self, settings: Optional[GeneralSettings]) -> Optional[dict[str, Any]]:
+        if settings is None:
+            return None
+        dns_candidates = [
+            str(getattr(settings, "server_system_dns_primary", "") or "").strip(),
+            str(getattr(settings, "server_system_dns_secondary", "") or "").strip(),
+        ]
+        servers: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for value in dns_candidates:
+            if not value or value in seen:
+                continue
+            try:
+                ipaddress.ip_address(value)
+            except ValueError:
+                logger.warning("Ignoring invalid DNS server in settings: %s", value)
+                continue
+            seen.add(value)
+            servers.append({"tag": f"dns-{len(servers) + 1}", "address": value})
+        if not servers:
+            return None
+        prefer_ipv6 = bool(getattr(settings, "global_ipv6_support", True))
+        return {
+            "servers": servers,
+            "final": servers[0]["tag"],
+            "strategy": "prefer_ipv6" if prefer_ipv6 else "prefer_ipv4",
+        }
 
     def _build_tls_block(
         self,
@@ -520,12 +549,16 @@ class SingBoxService(BaseProtocolService):
             inbounds.append(item)
 
         route_rules = [{"inbound": item.get("tag"), "action": "sniff"} for item in inbounds if item.get("tag")]
-        return {
+        config_payload: dict[str, Any] = {
             "log": {"level": log_level},
             "inbounds": inbounds,
             "outbounds": [{"type": "direct", "tag": "direct"}],
             "route": {"rules": route_rules},
         }
+        dns_config = self._build_dns_config(settings)
+        if dns_config:
+            config_payload["dns"] = dns_config
+        return config_payload
 
     def generate_all_user_uris(self, db: Any, user: VPNUser, server_ip: str) -> list[dict[str, str]]:
         server_host = str(server_ip or "").strip()
@@ -556,6 +589,10 @@ class SingBoxService(BaseProtocolService):
             fp = str(getattr(inbound, "fingerprint", "") or "").strip()
             if fp:
                 params["fp"] = fp
+            if security == "tls":
+                alpn_values = self._sanitize_vless_tls_alpn(network=network, raw_alpn=tls_settings.get("alpn", "h2,http/1.1"))
+                if alpn_values:
+                    params["alpn"] = ",".join(alpn_values)
             if security == "reality":
                 pbk = str(tls_settings.get("public_key", "") or "").strip()
                 sid = str(tls_settings.get("short_id", "") or "").strip()
@@ -585,10 +622,11 @@ class SingBoxService(BaseProtocolService):
         for inbound in active_hysteria_inbounds:
             if not user_uuid:
                 continue
-            params = {
-                "obfs": "salamander",
-                "obfs-password": str(getattr(inbound, "obfs_password", "") or ""),
-            }
+            params: dict[str, str] = {}
+            obfs_password = str(getattr(inbound, "obfs_password", "") or "").strip()
+            if obfs_password:
+                params["obfs"] = "salamander"
+                params["obfs-password"] = obfs_password
             sni = str(getattr(inbound, "sni", "") or "").strip()
             if sni:
                 params["sni"] = sni
@@ -620,6 +658,9 @@ class SingBoxService(BaseProtocolService):
             fingerprint = str(getattr(inbound, "fingerprint", "") or "").strip()
             if fingerprint:
                 params["fp"] = fingerprint
+            alpn_values = self._split_alpn(getattr(inbound, "alpn", "h2,http/1.1"), ["h2", "http/1.1"])
+            if alpn_values:
+                params["alpn"] = ",".join(alpn_values)
             if network in {"ws", "httpupgrade", "xhttp"}:
                 params["path"] = str(transport.get("path", "/") or "/").strip() or "/"
                 host = str(transport.get("host", "") or "").strip()
@@ -641,10 +682,11 @@ class SingBoxService(BaseProtocolService):
         for inbound in active_tuic_inbounds:
             if not user_uuid:
                 continue
+            alpn_value = str(getattr(inbound, "alpn", "h3") or "h3").strip() or "h3"
             params = {
                 "congestion_control": str(getattr(inbound, "congestion_control", "bbr") or "bbr"),
                 "udp_relay_mode": str(getattr(inbound, "udp_relay_mode", "native") or "native"),
-                "alpn": "h3",
+                "alpn": alpn_value,
             }
             sni = str(getattr(inbound, "sni", "") or "").strip()
             if sni:
