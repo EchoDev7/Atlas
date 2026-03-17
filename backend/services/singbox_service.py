@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
 import json
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import quote, urlencode
 
 from backend.models.general_settings import GeneralSettings
 from backend.models.hysteria_inbound import HysteriaInbound
@@ -360,6 +362,152 @@ class SingBoxService(BaseProtocolService):
             "outbounds": [{"type": "direct", "tag": "direct"}],
             "route": {"rules": route_rules},
         }
+
+    def generate_all_user_uris(self, db: Any, user: VPNUser, server_ip: str) -> list[dict[str, str]]:
+        server_host = str(server_ip or "").strip()
+        if not server_host:
+            return []
+
+        user_uuid = str(getattr(user, "uuid", None) or getattr(user, "vless_uuid", "") or "").strip()
+        username = str(getattr(user, "username", "") or "").strip() or "user"
+        user_password = str(getattr(user, "password", "") or "")
+
+        links: list[dict[str, str]] = []
+
+        active_vless_inbounds = db.query(VlessInbound).filter(VlessInbound.is_active.is_(True)).order_by(VlessInbound.id.asc()).all()
+        for inbound in active_vless_inbounds:
+            if not user_uuid:
+                continue
+            network = str(getattr(inbound, "network", "tcp") or "tcp").strip().lower()
+            security = str(getattr(inbound, "security", "reality") or "reality").strip().lower()
+            tls_settings = getattr(inbound, "tls_settings", None) if isinstance(getattr(inbound, "tls_settings", None), dict) else {}
+            transport = getattr(inbound, "transport_settings", None) if isinstance(getattr(inbound, "transport_settings", None), dict) else {}
+            params: dict[str, str] = {"type": network, "security": security}
+            sni = str(getattr(inbound, "sni", "") or tls_settings.get("server_name", "") or "").strip()
+            if sni:
+                params["sni"] = sni
+            flow = str(getattr(inbound, "flow", "") or "").strip()
+            if flow:
+                params["flow"] = flow
+            fp = str(getattr(inbound, "fingerprint", "") or "").strip()
+            if fp:
+                params["fp"] = fp
+            if security == "reality":
+                pbk = str(tls_settings.get("public_key", "") or "").strip()
+                sid = str(tls_settings.get("short_id", "") or "").strip()
+                if pbk:
+                    params["pbk"] = pbk
+                if sid:
+                    params["sid"] = sid
+                spider_x = str(getattr(inbound, "spider_x", "/") or "/").strip() or "/"
+                params["spx"] = spider_x
+            if network in {"ws", "httpupgrade", "xhttp"}:
+                params["path"] = str(transport.get("path", "/") or "/").strip() or "/"
+                host = str(transport.get("host", "") or "").strip()
+                if host:
+                    params["host"] = host
+            elif network == "grpc":
+                service_name = str(transport.get("service_name", "") or "").strip()
+                if service_name:
+                    params["serviceName"] = service_name
+            query = urlencode(params, quote_via=quote, safe=",")
+            fragment = quote(str(getattr(inbound, "remark", "vless") or "vless"), safe="-_.")
+            link = f"vless://{quote(user_uuid, safe='')}@{server_host}:{self._parse_port(getattr(inbound, 'port', 443), 443)}?{query}#{fragment}"
+            links.append({"protocol": "vless", "remark": str(getattr(inbound, "remark", "")), "link": link, "user": username})
+
+        active_hysteria_inbounds = (
+            db.query(HysteriaInbound).filter(HysteriaInbound.is_active.is_(True)).order_by(HysteriaInbound.id.asc()).all()
+        )
+        for inbound in active_hysteria_inbounds:
+            if not user_uuid:
+                continue
+            params = {
+                "obfs": "salamander",
+                "obfs-password": str(getattr(inbound, "obfs_password", "") or ""),
+            }
+            sni = str(getattr(inbound, "sni", "") or "").strip()
+            if sni:
+                params["sni"] = sni
+            if str(getattr(inbound, "cert_mode", "self_signed") or "self_signed").strip().lower() == "self_signed":
+                params["insecure"] = "1"
+            query = urlencode(params, quote_via=quote, safe=",")
+            fragment = quote(str(getattr(inbound, "remark", "hysteria2") or "hysteria2"), safe="-_.")
+            link = (
+                f"hysteria2://{quote(user_uuid, safe='')}@{server_host}:"
+                f"{self._parse_port(getattr(inbound, 'port', 443), 443)}/?{query}#{fragment}"
+            )
+            links.append({"protocol": "hysteria2", "remark": str(getattr(inbound, "remark", "")), "link": link, "user": username})
+
+        active_trojan_inbounds = (
+            db.query(TrojanInbound).filter(TrojanInbound.is_active.is_(True)).order_by(TrojanInbound.id.asc()).all()
+        )
+        for inbound in active_trojan_inbounds:
+            if not user_uuid:
+                continue
+            network = str(getattr(inbound, "network", "tcp") or "tcp").strip().lower()
+            transport = getattr(inbound, "transport_settings", None) if isinstance(getattr(inbound, "transport_settings", None), dict) else {}
+            params = {
+                "security": "tls",
+                "type": network,
+            }
+            sni = str(getattr(inbound, "sni", "") or "").strip()
+            if sni:
+                params["sni"] = sni
+            fingerprint = str(getattr(inbound, "fingerprint", "") or "").strip()
+            if fingerprint:
+                params["fp"] = fingerprint
+            if network in {"ws", "httpupgrade", "xhttp"}:
+                params["path"] = str(transport.get("path", "/") or "/").strip() or "/"
+                host = str(transport.get("host", "") or "").strip()
+                if host:
+                    params["host"] = host
+            elif network == "grpc":
+                service_name = str(transport.get("service_name", "") or "").strip()
+                if service_name:
+                    params["serviceName"] = service_name
+            query = urlencode(params, quote_via=quote, safe=",")
+            fragment = quote(str(getattr(inbound, "remark", "trojan") or "trojan"), safe="-_.")
+            link = (
+                f"trojan://{quote(user_uuid, safe='')}@{server_host}:"
+                f"{self._parse_port(getattr(inbound, 'port', 443), 443)}?{query}#{fragment}"
+            )
+            links.append({"protocol": "trojan", "remark": str(getattr(inbound, "remark", "")), "link": link, "user": username})
+
+        active_tuic_inbounds = db.query(TuicInbound).filter(TuicInbound.is_active.is_(True)).order_by(TuicInbound.id.asc()).all()
+        for inbound in active_tuic_inbounds:
+            if not user_uuid:
+                continue
+            params = {
+                "congestion_control": str(getattr(inbound, "congestion_control", "bbr") or "bbr"),
+                "udp_relay_mode": str(getattr(inbound, "udp_relay_mode", "native") or "native"),
+                "alpn": "h3",
+            }
+            sni = str(getattr(inbound, "sni", "") or "").strip()
+            if sni:
+                params["sni"] = sni
+            if str(getattr(inbound, "cert_mode", "self_signed") or "self_signed").strip().lower() == "self_signed":
+                params["allow_insecure"] = "1"
+            query = urlencode(params, quote_via=quote, safe=",")
+            fragment = quote(str(getattr(inbound, "remark", "tuic") or "tuic"), safe="-_.")
+            link = (
+                f"tuic://{quote(user_uuid, safe='')}:{quote(user_password, safe='')}@{server_host}:"
+                f"{self._parse_port(getattr(inbound, 'port', 8443), 8443)}/?{query}#{fragment}"
+            )
+            links.append({"protocol": "tuic", "remark": str(getattr(inbound, "remark", "")), "link": link, "user": username})
+
+        active_shadowsocks_inbounds = (
+            db.query(ShadowsocksInbound).filter(ShadowsocksInbound.is_active.is_(True)).order_by(ShadowsocksInbound.id.asc()).all()
+        )
+        for inbound in active_shadowsocks_inbounds:
+            method = str(getattr(inbound, "method", "2022-blake3-aes-128-gcm") or "2022-blake3-aes-128-gcm")
+            password = str(getattr(inbound, "password", "") or "")
+            userinfo_raw = f"{method}:{password}".encode("utf-8")
+            userinfo = base64.urlsafe_b64encode(userinfo_raw).decode("utf-8").rstrip("=")
+            fragment = quote(str(getattr(inbound, "remark", "ss-2022") or "ss-2022"), safe="-_.")
+            link = f"ss://{userinfo}@{server_host}:{self._parse_port(getattr(inbound, 'port', 8388), 8388)}#{fragment}"
+            links.append({"protocol": "shadowsocks", "remark": str(getattr(inbound, "remark", "")), "link": link, "user": username})
+
+        return links
 
     def apply_settings(self, db: Any) -> Dict[str, Any]:
         config_payload = self.generate_config(db)

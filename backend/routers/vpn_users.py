@@ -48,6 +48,7 @@ openvpn_service = protocol_registry.get("openvpn")
 wireguard_service = protocol_registry.get("wireguard")
 l2tp_service = protocol_registry.get("l2tp")
 openconnect_service = protocol_registry.get("openconnect")
+singbox_service = protocol_registry.get("singbox")
 
 # Fallback runtime accounting cache keyed by username.
 # It captures the latest active-session counters to preserve traffic totals
@@ -1295,6 +1296,35 @@ async def get_vless_link(
     link = f"vless://{vless_uuid}@{server_host}:{vless_port}?{query}#{quote(fragment, safe='-_.')}"
 
     return {"link": link}
+
+
+@router.get("/{user_id}/links")
+async def get_user_protocol_links(
+    user_id: int,
+    request: Request,
+    current_user: Admin = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+    user = db.query(VPNUser).filter(VPNUser.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    settings = _get_or_create_general_settings(db)
+    request_host = str(request.url.hostname or "").strip()
+    server_ip = str(
+        settings.public_ipv4_address or settings.server_address or settings.panel_domain or request_host or ""
+    ).strip()
+    if not server_ip:
+        raise HTTPException(status_code=400, detail="Server address is not configured")
+
+    links = singbox_service.generate_all_user_uris(db=db, user=user, server_ip=server_ip)
+    return {
+        "user_id": user.id,
+        "username": user.username,
+        "server_ip": server_ip,
+        "links": links,
+    }
 
 
 @router.get("/{user_id}/configs/{protocol}", response_model=VPNConfigFileResponse)
