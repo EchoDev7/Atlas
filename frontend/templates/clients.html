@@ -646,6 +646,16 @@
                                             </svg>
                                         </button>
 
+                                        <!-- All Protocol Links -->
+                                        <button @click="openUserLinksModal(client.id, client.username)"
+                                                class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
+                                                :class="darkMode ? 'text-sky-300 hover:bg-slate-700/50' : 'text-sky-600 hover:bg-sky-50'"
+                                                title="Connection Links">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656l-2 2a4 4 0 01-5.656-5.656l1-1m7-7a4 4 0 015.656 5.656l-1 1m-5.656-1.656l-2 2"/>
+                                            </svg>
+                                        </button>
+
                                         <!-- QR Code Dropdown -->
                                         <div class="relative" @click.away="qrOpen = false">
                                             <button @click="qrOpen = !qrOpen"
@@ -1408,6 +1418,87 @@
         </div>
     </div>
 
+    <!-- User Connection Links Modal -->
+    <div x-show="userLinksModalOpen"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 overflow-y-auto"
+         style="display: none;">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity modal-backdrop"
+                 :class="darkMode ? 'bg-slate-900/80' : 'bg-slate-900/50'"
+                 @click="closeUserLinksModal()"></div>
+
+            <div class="inline-block align-bottom glass-effect rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full animate-slide-down"
+                 :class="darkMode ? 'bg-slate-800/90 border border-slate-700/50' : 'bg-white/90 border border-slate-200/50'">
+                <div class="px-6 py-5 border-b theme-transition"
+                     :class="darkMode ? 'border-slate-700/50' : 'border-slate-200/50'">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xl font-semibold theme-transition"
+                            :class="darkMode ? 'text-white' : 'text-slate-900'">
+                            Connection Links for <span class="font-bold" x-text="currentLinkUsername || '-'"></span>
+                        </h3>
+                        <button @click="closeUserLinksModal()"
+                                class="rounded-lg p-1 theme-transition hover:scale-110 active:scale-95"
+                                :class="darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-700/50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                    <div x-show="linksLoading" class="flex items-center justify-center py-10">
+                        <div class="flex items-center gap-3 text-sm font-medium"
+                             :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                            <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            <span>Loading links...</span>
+                        </div>
+                    </div>
+
+                    <div x-show="!linksLoading && currentUserLinks.length === 0"
+                         class="rounded-xl p-4 border text-sm"
+                         :class="darkMode ? 'border-slate-700 text-slate-300 bg-slate-900/30' : 'border-slate-200 text-slate-600 bg-slate-50'">
+                        No generated links found for this user.
+                    </div>
+
+                    <template x-for="(linkObj, index) in currentUserLinks" :key="`${linkObj.protocol}-${index}`">
+                        <div class="rounded-xl p-4 border space-y-3"
+                             :class="darkMode ? 'border-slate-700/60 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="text-sm font-semibold"
+                                     :class="darkMode ? 'text-slate-100' : 'text-slate-800'">
+                                    <span x-text="(linkObj.protocol || 'link').toUpperCase()"></span>
+                                    <span class="opacity-70">•</span>
+                                    <span x-text="linkObj.remark || 'no-remark'"></span>
+                                </div>
+                                <button type="button"
+                                        @click="copyToClipboard(linkObj.link, index)"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                        :class="copiedLinkIndex === index ? (darkMode ? 'bg-emerald-600 text-white' : 'bg-emerald-600 text-white') : (darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-700 hover:bg-slate-300')">
+                                    <span x-text="copiedLinkIndex === index ? 'Copied!' : '📋 Copy'"></span>
+                                </button>
+                            </div>
+                            <input type="text"
+                                   :value="linkObj.link || ''"
+                                   readonly
+                                   class="block w-full px-3 py-2 rounded-lg font-mono text-xs border"
+                                   :class="darkMode ? 'bg-slate-950/60 border-slate-700 text-slate-200' : 'bg-white border-slate-300 text-slate-800'">
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- VLESS Link Modal -->
     <div x-show="showVlessModal"
          x-transition:enter="transition ease-out duration-300"
@@ -1659,6 +1750,13 @@
                 vlessLink: '',
                 vlessQrLoading: false,
                 vlessQrData: null,
+
+                // All Protocol Links Modal
+                userLinksModalOpen: false,
+                currentUserLinks: [],
+                currentLinkUsername: '',
+                linksLoading: false,
+                copiedLinkIndex: null,
 
                 // OpenConnect Info / Share Modal
                 showOpenConnectInfoModal: false,
@@ -2247,6 +2345,92 @@
                         this.showVlessModal = false;
                     } finally {
                         this.vlessLinkLoading = false;
+                    }
+                },
+
+                async openUserLinksModal(userId, username) {
+                    const numericId = Number(userId);
+                    if (!Number.isInteger(numericId) || numericId <= 0) {
+                        this.error = 'Invalid user id for links';
+                        return;
+                    }
+                    this.userLinksModalOpen = true;
+                    this.linksLoading = true;
+                    this.currentUserLinks = [];
+                    this.currentLinkUsername = String(username || '').trim();
+                    this.copiedLinkIndex = null;
+                    this.error = '';
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch(`/api/users/${numericId}/links`, {
+                            method: 'GET',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        if (!response.ok) {
+                            let errorMessage = 'Failed to fetch connection links';
+                            try {
+                                const payload = await response.json();
+                                errorMessage = payload?.detail || errorMessage;
+                            } catch (_) {
+                                // keep fallback
+                            }
+                            throw new Error(errorMessage);
+                        }
+                        const payload = await response.json();
+                        const links = Array.isArray(payload?.links) ? payload.links : [];
+                        this.currentUserLinks = links.map((item) => ({
+                            protocol: String(item?.protocol || ''),
+                            remark: String(item?.remark || ''),
+                            link: String(item?.link || ''),
+                        })).filter((item) => item.link);
+                    } catch (err) {
+                        this.error = err.message || 'Failed to fetch connection links';
+                        this.userLinksModalOpen = false;
+                    } finally {
+                        this.linksLoading = false;
+                    }
+                },
+
+                closeUserLinksModal() {
+                    this.userLinksModalOpen = false;
+                    this.linksLoading = false;
+                    this.currentUserLinks = [];
+                    this.currentLinkUsername = '';
+                    this.copiedLinkIndex = null;
+                },
+
+                async copyToClipboard(text, index = null) {
+                    const normalized = String(text || '').trim();
+                    if (!normalized) {
+                        return;
+                    }
+                    try {
+                        if (navigator?.clipboard?.writeText) {
+                            await navigator.clipboard.writeText(normalized);
+                        } else {
+                            const textarea = document.createElement('textarea');
+                            textarea.value = normalized;
+                            textarea.setAttribute('readonly', '');
+                            textarea.style.position = 'absolute';
+                            textarea.style.left = '-9999px';
+                            document.body.appendChild(textarea);
+                            textarea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textarea);
+                        }
+                        this.successMessage = 'Connection link copied to clipboard';
+                        if (index !== null) {
+                            this.copiedLinkIndex = index;
+                            window.setTimeout(() => {
+                                if (this.copiedLinkIndex === index) {
+                                    this.copiedLinkIndex = null;
+                                }
+                            }, 1400);
+                        }
+                    } catch (_) {
+                        this.error = 'Failed to copy connection link';
                     }
                 },
 
