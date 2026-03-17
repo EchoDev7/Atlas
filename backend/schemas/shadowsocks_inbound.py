@@ -12,7 +12,7 @@ ShadowsocksMethod = Literal[
 
 class ShadowsocksInboundBase(BaseModel):
     remark: str = Field(..., min_length=1, max_length=255)
-    port: int = Field(..., ge=1, le=65535)
+    port: int = Field(default=8388, ge=1, le=65535)
     method: ShadowsocksMethod = Field(default="2022-blake3-aes-128-gcm")
     password: str = Field(..., min_length=1, max_length=255)
     is_active: bool = Field(True)

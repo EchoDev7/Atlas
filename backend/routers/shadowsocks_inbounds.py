@@ -7,6 +7,7 @@ from backend.models.shadowsocks_inbound import ShadowsocksInbound
 from backend.models.user import Admin
 from backend.schemas.shadowsocks_inbound import (
     ShadowsocksInboundCreate,
+    ShadowsocksMethod,
     ShadowsocksInboundResponse,
     ShadowsocksInboundUpdate,
 )
@@ -26,7 +27,7 @@ async def list_shadowsocks_inbounds(
 
 @router.get("/generate-psk")
 async def generate_shadowsocks_psk(
-    method: str = Query(..., description="Shadowsocks-2022 method"),
+    method: ShadowsocksMethod = Query(..., description="Shadowsocks-2022 method"),
     current_user: Admin = Depends(get_current_user),
 ):
     _ = current_user
@@ -50,7 +51,7 @@ async def create_shadowsocks_inbound(
 
     duplicate_port = db.query(ShadowsocksInbound).filter(ShadowsocksInbound.port == payload.port).first()
     if duplicate_port:
-        raise HTTPException(status_code=409, detail="Shadowsocks inbound port already exists")
+        raise HTTPException(status_code=409, detail="Shadowsocks inbound port already exists. Please choose another port.")
 
     item = ShadowsocksInbound(**payload.model_dump())
     db.add(item)
@@ -92,7 +93,7 @@ async def update_shadowsocks_inbound(
             .first()
         )
         if duplicate_port:
-            raise HTTPException(status_code=409, detail="Shadowsocks inbound port already exists")
+            raise HTTPException(status_code=409, detail="Shadowsocks inbound port already exists. Please choose another port.")
 
     for field, value in updates.items():
         setattr(item, field, value)

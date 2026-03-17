@@ -3017,13 +3017,14 @@
                 </label>
                 <label class="block md:col-span-2">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Method</span>
-                    <select x-model="ssModal.method"
+                    <select x-model="ssModal.method" @change="generateSsPsk()"
                             class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
                             :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
                         <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
                         <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
                         <option value="2022-blake3-chacha20-poly1305">2022-blake3-chacha20-poly1305</option>
                     </select>
+                    <p class="text-[11px] text-slate-500 mt-1">SS-2022 uses Blake3. 'aes-128-gcm' is the fastest and highly recommended for most devices. Use 'chacha20-poly1305' for older phones without hardware AES acceleration.</p>
                 </label>
                 <label class="block md:col-span-2">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Password (PSK)</span>
@@ -3037,6 +3038,7 @@
                             🎲 Generate PSK
                         </button>
                     </div>
+                    <p class="text-[11px] text-slate-500 mt-1">CRITICAL: SS-2022 requires a strictly formatted Base64 Pre-Shared Key. Do NOT type a custom password. Use the Generate button.</p>
                 </label>
                 <label class="inline-flex items-end pb-2 gap-2 cursor-pointer md:col-span-2">
                     <input type="checkbox" x-model="ssModal.is_active" class="rounded border-slate-300 text-fuchsia-600 focus:ring-fuchsia-500">
