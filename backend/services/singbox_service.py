@@ -369,7 +369,7 @@ class SingBoxService(BaseProtocolService):
             return []
 
         user_uuid = str(getattr(user, "uuid", None) or getattr(user, "vless_uuid", "") or "").strip()
-        username = str(getattr(user, "username", "") or "").strip() or "user"
+        username = str(getattr(user, "username", "") or "").strip()
         user_password = str(getattr(user, "password", "") or "")
 
         links: list[dict[str, str]] = []
@@ -378,8 +378,8 @@ class SingBoxService(BaseProtocolService):
         for inbound in active_vless_inbounds:
             if not user_uuid:
                 continue
-            network = str(getattr(inbound, "network", "tcp") or "tcp").strip().lower()
-            security = str(getattr(inbound, "security", "reality") or "reality").strip().lower()
+            network = str(getattr(inbound, "network", "") or "").strip().lower() or "tcp"
+            security = str(getattr(inbound, "security", "") or "").strip().lower() or "reality"
             tls_settings = getattr(inbound, "tls_settings", None) if isinstance(getattr(inbound, "tls_settings", None), dict) else {}
             transport = getattr(inbound, "transport_settings", None) if isinstance(getattr(inbound, "transport_settings", None), dict) else {}
             params: dict[str, str] = {"type": network, "security": security}
@@ -399,7 +399,7 @@ class SingBoxService(BaseProtocolService):
                     params["pbk"] = pbk
                 if sid:
                     params["sid"] = sid
-                spider_x = str(getattr(inbound, "spider_x", "/") or "/").strip() or "/"
+                spider_x = str(getattr(inbound, "spider_x", "") or "").strip() or "/"
                 params["spx"] = spider_x
             if network in {"ws", "httpupgrade", "xhttp"}:
                 params["path"] = str(transport.get("path", "/") or "/").strip() or "/"
@@ -411,7 +411,7 @@ class SingBoxService(BaseProtocolService):
                 if service_name:
                     params["serviceName"] = service_name
             query = urlencode(params, quote_via=quote, safe=",")
-            fragment = quote(str(getattr(inbound, "remark", "vless") or "vless"), safe="-_.")
+            fragment = quote(str(getattr(inbound, "remark", "") or ""), safe="-_.")
             link = f"vless://{quote(user_uuid, safe='')}@{server_host}:{self._parse_port(getattr(inbound, 'port', 443), 443)}?{query}#{fragment}"
             links.append({"protocol": "vless", "remark": str(getattr(inbound, "remark", "")), "link": link, "user": username})
 
@@ -431,7 +431,7 @@ class SingBoxService(BaseProtocolService):
             if str(getattr(inbound, "cert_mode", "self_signed") or "self_signed").strip().lower() == "self_signed":
                 params["insecure"] = "1"
             query = urlencode(params, quote_via=quote, safe=",")
-            fragment = quote(str(getattr(inbound, "remark", "hysteria2") or "hysteria2"), safe="-_.")
+            fragment = quote(str(getattr(inbound, "remark", "") or ""), safe="-_.")
             link = (
                 f"hysteria2://{quote(user_uuid, safe='')}@{server_host}:"
                 f"{self._parse_port(getattr(inbound, 'port', 443), 443)}/?{query}#{fragment}"
@@ -444,7 +444,7 @@ class SingBoxService(BaseProtocolService):
         for inbound in active_trojan_inbounds:
             if not user_uuid:
                 continue
-            network = str(getattr(inbound, "network", "tcp") or "tcp").strip().lower()
+            network = str(getattr(inbound, "network", "") or "").strip().lower() or "tcp"
             transport = getattr(inbound, "transport_settings", None) if isinstance(getattr(inbound, "transport_settings", None), dict) else {}
             params = {
                 "security": "tls",
@@ -466,7 +466,7 @@ class SingBoxService(BaseProtocolService):
                 if service_name:
                     params["serviceName"] = service_name
             query = urlencode(params, quote_via=quote, safe=",")
-            fragment = quote(str(getattr(inbound, "remark", "trojan") or "trojan"), safe="-_.")
+            fragment = quote(str(getattr(inbound, "remark", "") or ""), safe="-_.")
             link = (
                 f"trojan://{quote(user_uuid, safe='')}@{server_host}:"
                 f"{self._parse_port(getattr(inbound, 'port', 443), 443)}?{query}#{fragment}"
@@ -488,7 +488,7 @@ class SingBoxService(BaseProtocolService):
             if str(getattr(inbound, "cert_mode", "self_signed") or "self_signed").strip().lower() == "self_signed":
                 params["allow_insecure"] = "1"
             query = urlencode(params, quote_via=quote, safe=",")
-            fragment = quote(str(getattr(inbound, "remark", "tuic") or "tuic"), safe="-_.")
+            fragment = quote(str(getattr(inbound, "remark", "") or ""), safe="-_.")
             link = (
                 f"tuic://{quote(user_uuid, safe='')}:{quote(user_password, safe='')}@{server_host}:"
                 f"{self._parse_port(getattr(inbound, 'port', 8443), 8443)}/?{query}#{fragment}"
@@ -499,11 +499,13 @@ class SingBoxService(BaseProtocolService):
             db.query(ShadowsocksInbound).filter(ShadowsocksInbound.is_active.is_(True)).order_by(ShadowsocksInbound.id.asc()).all()
         )
         for inbound in active_shadowsocks_inbounds:
-            method = str(getattr(inbound, "method", "2022-blake3-aes-128-gcm") or "2022-blake3-aes-128-gcm")
+            method = str(getattr(inbound, "method", "") or "").strip()
             password = str(getattr(inbound, "password", "") or "")
+            if not method or not password:
+                continue
             userinfo_raw = f"{method}:{password}".encode("utf-8")
             userinfo = base64.urlsafe_b64encode(userinfo_raw).decode("utf-8").rstrip("=")
-            fragment = quote(str(getattr(inbound, "remark", "ss-2022") or "ss-2022"), safe="-_.")
+            fragment = quote(str(getattr(inbound, "remark", "") or ""), safe="-_.")
             link = f"ss://{userinfo}@{server_host}:{self._parse_port(getattr(inbound, 'port', 8388), 8388)}#{fragment}"
             links.append({"protocol": "shadowsocks", "remark": str(getattr(inbound, "remark", "")), "link": link, "user": username})
 
