@@ -1206,6 +1206,14 @@
                                         : (darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200')">
                                 🦅 TUIC Nodes
                             </button>
+                            <button type="button"
+                                    @click="activeInboundTab = 'ss2022'"
+                                    class="px-4 py-2 rounded-xl text-sm font-semibold transition"
+                                    :class="activeInboundTab === 'ss2022'
+                                        ? (darkMode ? 'bg-fuchsia-500 text-white' : 'bg-fuchsia-600 text-white')
+                                        : (darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200')">
+                                👻 SS-2022 Nodes
+                            </button>
                         </div>
                     </div>
 
@@ -1462,6 +1470,89 @@
                                                     </button>
                                                     <button type="button"
                                                             @click="deleteTrojanInbound(inbound.id)"
+                                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                                            :class="darkMode ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'">
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div x-show="activeInboundTab === 'ss2022'" x-cloak class="rounded-2xl border p-4 sm:p-5 space-y-4 theme-transition"
+                         :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50/70'">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h3 class="text-base sm:text-lg font-semibold theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                    Shadowsocks-2022 Inbounds (Nodes)
+                                </h3>
+                                <p class="text-xs sm:text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    Manage active-probing-resistant SS-2022 nodes with method-specific pre-shared keys.
+                                </p>
+                            </div>
+                            <button type="button"
+                                    @click="openSsInboundModal()"
+                                    class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition"
+                                    :class="darkMode ? 'bg-fuchsia-500 hover:bg-fuchsia-400' : 'bg-fuchsia-600 hover:bg-fuchsia-700'">
+                                + Add SS-2022 Inbound
+                            </button>
+                        </div>
+
+                        <div x-show="ssInboundsLoading" class="py-8 flex justify-center">
+                            <div class="animate-spin rounded-full h-9 w-9 border-b-2" :class="darkMode ? 'border-fuchsia-400' : 'border-fuchsia-600'"></div>
+                        </div>
+
+                        <div x-show="!ssInboundsLoading" class="overflow-x-auto rounded-xl border"
+                             :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                            <table class="min-w-full text-sm">
+                                <thead :class="darkMode ? 'bg-slate-900/40 text-slate-300' : 'bg-slate-50 text-slate-600'">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left font-semibold">Remark</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Port</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Method</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Status</th>
+                                        <th class="px-4 py-3 text-right font-semibold">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-if="ssInbounds.length === 0">
+                                        <tr>
+                                            <td colspan="5" class="px-4 py-8 text-center" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                                No SS-2022 inbounds yet. Add your first inbound node.
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-for="inbound in ssInbounds" :key="`ss-inbound-${inbound.id}`">
+                                        <tr class="border-t" :class="darkMode ? 'border-slate-700/70' : 'border-slate-200'">
+                                            <td class="px-4 py-3 font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                                <div class="max-w-[14rem] truncate" :title="inbound.remark || ''" x-text="inbound.remark || '—'"></div>
+                                            </td>
+                                            <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.port"></td>
+                                            <td class="px-4 py-3" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
+                                                <div class="max-w-[18rem] truncate font-mono text-xs" :title="inbound.method || ''" x-text="inbound.method || '—'"></div>
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold"
+                                                      :class="inbound.is_active
+                                                        ? (darkMode ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
+                                                        : (darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-700 border border-slate-300')"
+                                                      x-text="inbound.is_active ? 'active' : 'inactive'">
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <div class="flex flex-wrap justify-end gap-2">
+                                                    <button type="button"
+                                                            @click="editSsInbound(inbound.id)"
+                                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                                            :class="darkMode ? 'bg-fuchsia-500/20 text-fuchsia-300 hover:bg-fuchsia-500/30' : 'bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200'">
+                                                        Edit
+                                                    </button>
+                                                    <button type="button"
+                                                            @click="deleteSsInbound(inbound.id)"
                                                             class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
                                                             :class="darkMode ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'">
                                                         Delete
@@ -2700,6 +2791,72 @@
         </div>
     </div>
 
+    <div x-cloak x-show="ssModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div class="w-full max-w-3xl rounded-2xl border shadow-2xl"
+             :class="darkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'">
+            <div class="flex items-center justify-between px-5 py-4 border-b" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                <h3 class="text-sm font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="ssEditingId ? 'Edit SS-2022 Inbound' : 'Add SS-2022 Inbound'"></h3>
+                <button type="button" @click="closeSsInboundModal()" class="text-xs px-3 py-1.5 rounded-lg border transition"
+                        :class="darkMode ? 'border-slate-600 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'">
+                    Close
+                </button>
+            </div>
+            <div class="px-5 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Remark</span>
+                    <input type="text" x-model="ssModal.remark" placeholder="SS2022-Core"
+                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Port</span>
+                    <input type="number" min="1" max="65535" x-model.number="ssModal.port"
+                           class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
+                           :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                </label>
+                <label class="block md:col-span-2">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Method</span>
+                    <select x-model="ssModal.method"
+                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
+                        <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
+                        <option value="2022-blake3-chacha20-poly1305">2022-blake3-chacha20-poly1305</option>
+                    </select>
+                </label>
+                <label class="block md:col-span-2">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Password (PSK)</span>
+                    <div class="mt-1 flex gap-2">
+                        <input type="text" x-model="ssModal.password" placeholder="Base64 PSK"
+                               class="w-full rounded-xl border px-3 py-2.5 theme-transition font-mono text-xs"
+                               :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                        <button type="button" @click="generateSsPsk()"
+                                class="px-3 py-2 rounded-xl text-xs font-semibold text-white transition whitespace-nowrap"
+                                :class="darkMode ? 'bg-fuchsia-500 hover:bg-fuchsia-400' : 'bg-fuchsia-600 hover:bg-fuchsia-700'">
+                            🎲 Generate PSK
+                        </button>
+                    </div>
+                </label>
+                <label class="inline-flex items-end pb-2 gap-2 cursor-pointer md:col-span-2">
+                    <input type="checkbox" x-model="ssModal.is_active" class="rounded border-slate-300 text-fuchsia-600 focus:ring-fuchsia-500">
+                    <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Active Inbound</span>
+                </label>
+            </div>
+            <div class="px-5 py-4 border-t flex justify-end gap-2" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                <button type="button" @click="closeSsInboundModal()"
+                        class="px-4 py-2 rounded-lg text-sm font-semibold transition"
+                        :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+                    Cancel
+                </button>
+                <button type="button" @click="saveSsInbound()" :disabled="ssModalSubmitting"
+                        class="px-4 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50"
+                        :class="darkMode ? 'bg-fuchsia-500 hover:bg-fuchsia-400' : 'bg-fuchsia-600 hover:bg-fuchsia-700'">
+                    <span x-text="ssModalSubmitting ? 'Saving...' : (ssEditingId ? 'Update Inbound' : 'Create Inbound')"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div x-cloak x-show="terminalModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
         <div class="w-full max-w-4xl rounded-2xl border border-slate-700 bg-gray-900 shadow-2xl">
             <div class="flex items-center justify-between px-5 py-4 border-b border-slate-700">
@@ -2901,6 +3058,11 @@
                 tuicModalOpen: false,
                 tuicEditingId: null,
                 tuicInbounds: [],
+                ssInboundsLoading: false,
+                ssModalSubmitting: false,
+                ssModalOpen: false,
+                ssEditingId: null,
+                ssInbounds: [],
                 vlessModal: {
                     remark: '',
                     port: 443,
@@ -2966,6 +3128,13 @@
                     alpn: 'h3',
                     cert_mode: 'self_signed',
                     sni: '',
+                    is_active: true,
+                },
+                ssModal: {
+                    remark: '',
+                    port: 8388,
+                    method: '2022-blake3-aes-128-gcm',
+                    password: '',
                     is_active: true,
                 },
                 routingRulesLoading: false,
@@ -3548,6 +3717,9 @@
                         if (tab === 'singbox' && this.tuicInbounds.length === 0) {
                             await this.loadTuicInbounds({ silent: true });
                         }
+                        if (tab === 'singbox' && this.ssInbounds.length === 0) {
+                            await this.loadSsInbounds({ silent: true });
+                        }
 
                         if (tab !== 'routing') {
                             return;
@@ -3570,6 +3742,7 @@
                     await this.loadHysteriaInbounds({ silent: true });
                     await this.loadTrojanInbounds({ silent: true });
                     await this.loadTuicInbounds({ silent: true });
+                    await this.loadSsInbounds({ silent: true });
                     await this.loadRoutingInterfaces({ silent: true });
                     await this.loadRoutingProxyPorts({ silent: true });
                     await this.loadRoutingRules({ silent: true });
@@ -4213,6 +4386,22 @@
                     };
                 },
 
+                createDefaultSsModal() {
+                    const modal = {
+                        remark: '',
+                        port: 8388,
+                        method: '2022-blake3-aes-128-gcm',
+                        password: '',
+                        is_active: true,
+                    };
+                    setTimeout(() => {
+                        if (this.ssModal && !this.ssModal.password) {
+                            this.generateSsPsk();
+                        }
+                    }, 0);
+                    return modal;
+                },
+
                 normalizeInbound(rawInbound) {
                     return {
                         id: Number(rawInbound?.id) || 0,
@@ -4270,6 +4459,17 @@
                         alpn: String(rawInbound?.alpn || 'h3').toLowerCase(),
                         cert_mode: String(rawInbound?.cert_mode || 'self_signed').toLowerCase(),
                         sni: String(rawInbound?.sni || ''),
+                        is_active: rawInbound?.is_active !== false,
+                    };
+                },
+
+                normalizeSsInbound(rawInbound) {
+                    return {
+                        id: Number(rawInbound?.id) || 0,
+                        remark: String(rawInbound?.remark || ''),
+                        port: Number(rawInbound?.port) || 8388,
+                        method: String(rawInbound?.method || '2022-blake3-aes-128-gcm'),
+                        password: String(rawInbound?.password || ''),
                         is_active: rawInbound?.is_active !== false,
                     };
                 },
@@ -4410,6 +4610,40 @@
                     }
                 },
 
+                async loadSsInbounds({ silent = false } = {}) {
+                    this.ssInboundsLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/shadowsocks-inbounds/', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = 'Failed to load SS-2022 inbounds';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            throw new Error(message);
+                        }
+                        const payload = await response.json();
+                        this.ssInbounds = Array.isArray(payload) ? payload.map((item) => this.normalizeSsInbound(item)) : [];
+                    } catch (error) {
+                        this.ssInbounds = [];
+                        if (!silent) {
+                            this.showToast(error.message || 'Failed to load SS-2022 inbounds', 'error');
+                        }
+                    } finally {
+                        this.ssInboundsLoading = false;
+                    }
+                },
+
                 openVlessInboundModal() {
                     this.vlessEditingId = null;
                     this.vlessModal = this.createDefaultVlessModal();
@@ -4435,6 +4669,12 @@
                     this.tuicEditingId = null;
                     this.tuicModal = this.createDefaultTuicModal();
                     this.tuicModalOpen = true;
+                },
+
+                openSsInboundModal() {
+                    this.ssEditingId = null;
+                    this.ssModal = this.createDefaultSsModal();
+                    this.ssModalOpen = true;
                 },
 
                 closeVlessInboundModal() {
@@ -4464,6 +4704,35 @@
                     this.tuicModalSubmitting = false;
                     this.tuicEditingId = null;
                     this.tuicModal = this.createDefaultTuicModal();
+                },
+
+                closeSsInboundModal() {
+                    this.ssModalOpen = false;
+                    this.ssModalSubmitting = false;
+                    this.ssEditingId = null;
+                    this.ssModal = this.createDefaultSsModal();
+                },
+
+                async generateSsPsk() {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const method = encodeURIComponent(String(this.ssModal.method || '2022-blake3-aes-128-gcm'));
+                        const response = await fetch(`/api/shadowsocks-inbounds/generate-psk?method=${method}`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok) {
+                            throw new Error(this.getApiErrorMessage(payload, 'Failed to generate SS-2022 PSK'));
+                        }
+                        this.ssModal.password = String(payload.psk || '');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to generate SS-2022 PSK', 'error');
+                    }
                 },
 
                 async generateInboundRealityKeypair() {
@@ -5138,6 +5407,124 @@
                         this.showToast('TUIC inbound deleted successfully', 'success');
                     } catch (error) {
                         this.showToast(error.message || 'Failed to delete TUIC inbound', 'error');
+                    }
+                },
+
+                buildSsInboundPayload() {
+                    return {
+                        remark: String(this.ssModal.remark || '').trim(),
+                        port: Number(this.ssModal.port) || 0,
+                        method: String(this.ssModal.method || '2022-blake3-aes-128-gcm').trim(),
+                        password: String(this.ssModal.password || '').trim(),
+                        is_active: this.ssModal.is_active !== false,
+                    };
+                },
+
+                async editSsInbound(id) {
+                    const numericId = Number(id);
+                    const current = this.ssInbounds.find((item) => Number(item.id) === numericId);
+                    if (!current) {
+                        this.showToast('SS-2022 inbound not found', 'error');
+                        return;
+                    }
+                    const draft = this.createDefaultSsModal();
+                    draft.remark = String(current.remark || '');
+                    draft.port = Number(current.port) || 8388;
+                    draft.method = String(current.method || '2022-blake3-aes-128-gcm');
+                    draft.password = String(current.password || '');
+                    draft.is_active = current.is_active !== false;
+                    this.ssEditingId = numericId;
+                    this.ssModal = draft;
+                    this.ssModalOpen = true;
+                },
+
+                async saveSsInbound() {
+                    this.ssModalSubmitting = true;
+                    try {
+                        const payload = this.buildSsInboundPayload();
+                        if (!payload.remark) {
+                            throw new Error('Remark is required');
+                        }
+                        if (!Number.isInteger(payload.port) || payload.port < 1 || payload.port > 65535) {
+                            throw new Error('Port must be between 1 and 65535');
+                        }
+                        if (!payload.password) {
+                            throw new Error('Password (PSK) is required');
+                        }
+
+                        const token = localStorage.getItem('access_token');
+                        const isEdit = Number.isInteger(this.ssEditingId) && this.ssEditingId > 0;
+                        const endpoint = isEdit ? `/api/shadowsocks-inbounds/${this.ssEditingId}` : '/api/shadowsocks-inbounds/';
+                        const method = isEdit ? 'PATCH' : 'POST';
+
+                        const response = await fetch(endpoint, {
+                            method,
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(payload),
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = isEdit ? 'Failed to update SS-2022 inbound' : 'Failed to create SS-2022 inbound';
+                            try {
+                                const errorPayload = await response.json();
+                                message = this.getApiErrorMessage(errorPayload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            throw new Error(message);
+                        }
+
+                        this.closeSsInboundModal();
+                        await this.loadSsInbounds({ silent: true });
+                        this.showToast(isEdit ? 'SS-2022 inbound updated successfully' : 'SS-2022 inbound created successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to save SS-2022 inbound', 'error');
+                    } finally {
+                        this.ssModalSubmitting = false;
+                    }
+                },
+
+                async deleteSsInbound(id) {
+                    const numericId = Number(id);
+                    if (!Number.isInteger(numericId) || numericId <= 0) {
+                        this.showToast('Invalid SS-2022 inbound id', 'error');
+                        return;
+                    }
+                    if (!window.confirm('Delete this SS-2022 inbound?')) {
+                        return;
+                    }
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch(`/api/shadowsocks-inbounds/${numericId}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = 'Failed to delete SS-2022 inbound';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback
+                            }
+                            throw new Error(message);
+                        }
+                        await this.loadSsInbounds({ silent: true });
+                        this.showToast('SS-2022 inbound deleted successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to delete SS-2022 inbound', 'error');
                     }
                 },
 
