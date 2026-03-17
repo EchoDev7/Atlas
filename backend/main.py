@@ -16,7 +16,7 @@ from backend.core.routing.pbr_manager import PBRManager
 from backend.database import SessionLocal, init_db
 from backend.models.general_settings import GeneralSettings
 from backend.models.user import Admin
-from backend.routers import auth, openvpn, settings as server_settings, vpn_users, audit_logs, dashboard, system, terminal, routing, vless_inbounds, hysteria_inbounds, trojan_inbounds, tuic_inbounds
+from backend.routers import auth, openvpn, settings as server_settings, vpn_users, audit_logs, dashboard, system, terminal, routing, vless_inbounds, hysteria_inbounds, trojan_inbounds, tuic_inbounds, shadowsocks_inbounds
 from backend.services.scheduler_service import get_scheduler
 from backend.services.auth_service import is_default_admin_password_hash
 
@@ -288,6 +288,7 @@ app.include_router(vless_inbounds.router, prefix=settings.API_PREFIX)
 app.include_router(hysteria_inbounds.router, prefix=settings.API_PREFIX)
 app.include_router(trojan_inbounds.router, prefix=settings.API_PREFIX)
 app.include_router(tuic_inbounds.router, prefix=settings.API_PREFIX)
+app.include_router(shadowsocks_inbounds.router, prefix=settings.API_PREFIX)
 
 frontend_path = Path(__file__).parent.parent / "frontend"
 

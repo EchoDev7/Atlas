@@ -1,3 +1,5 @@
+import base64
+import secrets
 from datetime import datetime, timedelta
 
 from cryptography import x509
@@ -40,3 +42,16 @@ def generate_self_signed_cert() -> tuple[str, str]:
     ).decode("utf-8")
 
     return cert_pem, private_key_pem
+
+
+def generate_ss2022_psk(method: str) -> str:
+    key_lengths = {
+        "2022-blake3-aes-128-gcm": 16,
+        "2022-blake3-aes-256-gcm": 32,
+        "2022-blake3-chacha20-poly1305": 32,
+    }
+    key_length = key_lengths.get(method)
+    if key_length is None:
+        raise ValueError(f"Unsupported Shadowsocks-2022 method: {method}")
+    raw_key = secrets.token_bytes(key_length)
+    return base64.b64encode(raw_key).decode("utf-8")

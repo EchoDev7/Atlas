@@ -10,6 +10,7 @@ from backend.models.vless_inbound import VlessInbound
 from backend.models.hysteria_inbound import HysteriaInbound
 from backend.models.trojan_inbound import TrojanInbound
 from backend.models.tuic_inbound import TuicInbound
+from backend.models.shadowsocks_inbound import ShadowsocksInbound
 
 __all__ = [
     "Admin",
@@ -27,4 +28,5 @@ __all__ = [
     "HysteriaInbound",
     "TrojanInbound",
     "TuicInbound",
+    "ShadowsocksInbound",
 ]
