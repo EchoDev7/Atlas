@@ -1483,6 +1483,91 @@
                         </div>
                     </div>
 
+                    <div x-show="activeInboundTab === 'tuic'" x-cloak class="rounded-2xl border p-4 sm:p-5 space-y-4 theme-transition"
+                         :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50/70'">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h3 class="text-base sm:text-lg font-semibold theme-transition" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                    TUIC Inbounds (Nodes)
+                                </h3>
+                                <p class="text-xs sm:text-sm theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-600'">
+                                    Manage modern QUIC-native TUIC inbounds with low-latency transport controls.
+                                </p>
+                            </div>
+                            <button type="button"
+                                    @click="openTuicInboundModal()"
+                                    class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition"
+                                    :class="darkMode ? 'bg-sky-500 hover:bg-sky-400' : 'bg-sky-600 hover:bg-sky-700'">
+                                + Add TUIC Inbound
+                            </button>
+                        </div>
+
+                        <div x-show="tuicInboundsLoading" class="py-8 flex justify-center">
+                            <div class="animate-spin rounded-full h-9 w-9 border-b-2" :class="darkMode ? 'border-sky-400' : 'border-sky-600'"></div>
+                        </div>
+
+                        <div x-show="!tuicInboundsLoading" class="overflow-x-auto rounded-xl border"
+                             :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                            <table class="min-w-full text-sm">
+                                <thead :class="darkMode ? 'bg-slate-900/40 text-slate-300' : 'bg-slate-50 text-slate-600'">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left font-semibold">Remark</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Port</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Congestion</th>
+                                        <th class="px-4 py-3 text-left font-semibold">UDP Relay</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Cert Mode</th>
+                                        <th class="px-4 py-3 text-left font-semibold">Status</th>
+                                        <th class="px-4 py-3 text-right font-semibold">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-if="tuicInbounds.length === 0">
+                                        <tr>
+                                            <td colspan="7" class="px-4 py-8 text-center" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                                No TUIC inbounds yet. Add your first inbound node.
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-for="inbound in tuicInbounds" :key="`tuic-inbound-${inbound.id}`">
+                                        <tr class="border-t" :class="darkMode ? 'border-slate-700/70' : 'border-slate-200'">
+                                            <td class="px-4 py-3 font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'">
+                                                <div class="max-w-[14rem] truncate" :title="inbound.remark || ''" x-text="inbound.remark || '—'"></div>
+                                            </td>
+                                            <td class="px-4 py-3 font-mono" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.port"></td>
+                                            <td class="px-4 py-3 uppercase" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.congestion_control || 'bbr'"></td>
+                                            <td class="px-4 py-3 uppercase" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.udp_relay_mode || 'native'"></td>
+                                            <td class="px-4 py-3 uppercase" :class="darkMode ? 'text-slate-300' : 'text-slate-700'" x-text="inbound.cert_mode || 'self_signed'"></td>
+                                            <td class="px-4 py-3">
+                                                <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold"
+                                                      :class="inbound.is_active
+                                                        ? (darkMode ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
+                                                        : (darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-700 border border-slate-300')"
+                                                      x-text="inbound.is_active ? 'active' : 'inactive'">
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <div class="flex flex-wrap justify-end gap-2">
+                                                    <button type="button"
+                                                            @click="editTuicInbound(inbound.id)"
+                                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                                            :class="darkMode ? 'bg-sky-500/20 text-sky-300 hover:bg-sky-500/30' : 'bg-sky-100 text-sky-700 hover:bg-sky-200'">
+                                                        Edit
+                                                    </button>
+                                                    <button type="button"
+                                                            @click="deleteTuicInbound(inbound.id)"
+                                                            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                                            :class="darkMode ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'">
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <div x-show="activeInboundTab === 'ss2022'" x-cloak class="rounded-2xl border p-4 sm:p-5 space-y-4 theme-transition"
                          :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-300 bg-slate-50/70'">
                         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
