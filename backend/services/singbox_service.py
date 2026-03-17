@@ -172,6 +172,14 @@ class SingBoxService(BaseProtocolService):
             return transport
         return None
 
+    def _has_tls_material(self, cert_mode: str, cert_pem: Any, key_pem: Any) -> bool:
+        normalized_mode = str(cert_mode or "self_signed").strip().lower()
+        cert_value = str(cert_pem or "").strip()
+        key_value = str(key_pem or "").strip()
+        if normalized_mode == "self_signed":
+            return bool(cert_value and key_value)
+        return bool(cert_value and key_value)
+
     def generate_config(self, db: Any) -> Dict[str, Any]:
         settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
         raw_level = str(getattr(settings, "singbox_log_level", "info") or "info").strip().lower() if settings else "info"
@@ -247,11 +255,16 @@ class SingBoxService(BaseProtocolService):
             tls_settings = getattr(inbound, "tls_settings", None) if isinstance(getattr(inbound, "tls_settings", None), dict) else {}
             sni = str(getattr(inbound, "sni", "") or "").strip() or str(tls_settings.get("server_name", "") or "").strip()
             if security_mode == "tls":
+                cert_mode = "self_signed"
+                cert_pem = tls_settings.get("certificate", "")
+                key_pem = tls_settings.get("key", "")
+                if not self._has_tls_material(cert_mode, cert_pem, key_pem):
+                    continue
                 item["tls"] = self._build_tls_block(
-                    cert_mode="self_signed",
+                    cert_mode=cert_mode,
                     sni=sni or None,
-                    cert_pem=tls_settings.get("certificate", ""),
-                    key_pem=tls_settings.get("key", ""),
+                    cert_pem=cert_pem,
+                    key_pem=key_pem,
                     alpn=self._split_alpn(tls_settings.get("alpn", "h2,http/1.1"), ["h2", "http/1.1"]),
                 )
             elif security_mode == "reality":
@@ -277,6 +290,11 @@ class SingBoxService(BaseProtocolService):
             inbounds.append(item)
 
         for inbound in active_hysteria_inbounds:
+            cert_mode = str(getattr(inbound, "cert_mode", "self_signed") or "self_signed")
+            cert_pem = getattr(inbound, "cert_pem", None)
+            key_pem = getattr(inbound, "key_pem", None)
+            if not self._has_tls_material(cert_mode, cert_pem, key_pem):
+                continue
             item = {
                 "type": "hysteria2",
                 "tag": f"hysteria2-{inbound.id}",
@@ -284,10 +302,10 @@ class SingBoxService(BaseProtocolService):
                 "listen_port": self._parse_port(getattr(inbound, "port", 443), 443),
                 "users": hysteria_users,
                 "tls": self._build_tls_block(
-                    cert_mode=str(getattr(inbound, "cert_mode", "self_signed") or "self_signed"),
+                    cert_mode=cert_mode,
                     sni=getattr(inbound, "sni", None),
-                    cert_pem=getattr(inbound, "cert_pem", None),
-                    key_pem=getattr(inbound, "key_pem", None),
+                    cert_pem=cert_pem,
+                    key_pem=key_pem,
                 ),
             }
             obfs_password = str(getattr(inbound, "obfs_password", "") or "").strip()
@@ -305,6 +323,11 @@ class SingBoxService(BaseProtocolService):
             inbounds.append(item)
 
         for inbound in active_trojan_inbounds:
+            cert_mode = str(getattr(inbound, "cert_mode", "self_signed") or "self_signed")
+            cert_pem = getattr(inbound, "cert_pem", None)
+            key_pem = getattr(inbound, "key_pem", None)
+            if not self._has_tls_material(cert_mode, cert_pem, key_pem):
+                continue
             item = {
                 "type": "trojan",
                 "tag": f"trojan-{inbound.id}",
@@ -312,10 +335,10 @@ class SingBoxService(BaseProtocolService):
                 "listen_port": self._parse_port(getattr(inbound, "port", 443), 443),
                 "users": trojan_users,
                 "tls": self._build_tls_block(
-                    cert_mode=str(getattr(inbound, "cert_mode", "self_signed") or "self_signed"),
+                    cert_mode=cert_mode,
                     sni=getattr(inbound, "sni", None),
-                    cert_pem=getattr(inbound, "cert_pem", None),
-                    key_pem=getattr(inbound, "key_pem", None),
+                    cert_pem=cert_pem,
+                    key_pem=key_pem,
                     alpn=self._split_alpn(getattr(inbound, "alpn", "h2,http/1.1"), ["h2", "http/1.1"]),
                 ),
             }
@@ -325,6 +348,11 @@ class SingBoxService(BaseProtocolService):
             inbounds.append(item)
 
         for inbound in active_tuic_inbounds:
+            cert_mode = str(getattr(inbound, "cert_mode", "self_signed") or "self_signed")
+            cert_pem = getattr(inbound, "cert_pem", None)
+            key_pem = getattr(inbound, "key_pem", None)
+            if not self._has_tls_material(cert_mode, cert_pem, key_pem):
+                continue
             item = {
                 "type": "tuic",
                 "tag": f"tuic-{inbound.id}",
@@ -334,10 +362,10 @@ class SingBoxService(BaseProtocolService):
                 "congestion_control": str(getattr(inbound, "congestion_control", "bbr") or "bbr"),
                 "zero_rtt_handshake": bool(getattr(inbound, "zero_rtt_handshake", True)),
                 "tls": self._build_tls_block(
-                    cert_mode=str(getattr(inbound, "cert_mode", "self_signed") or "self_signed"),
+                    cert_mode=cert_mode,
                     sni=getattr(inbound, "sni", None),
-                    cert_pem=getattr(inbound, "cert_pem", None),
-                    key_pem=getattr(inbound, "key_pem", None),
+                    cert_pem=cert_pem,
+                    key_pem=key_pem,
                     alpn=["h3"],
                 ),
             }
