@@ -2625,6 +2625,9 @@
                     <input type="text" x-model="hysteriaModal.port" placeholder="8443 or 20000-30000"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono"
                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                        Enter a single port (e.g., 443) or a range (e.g., 40000-50000) to enable Port Hopping and bypass ISP UDP throttling.
+                    </p>
                 </label>
 
                 <label class="block">
@@ -2632,12 +2635,18 @@
                     <input type="number" min="0" x-model.number="hysteriaModal.up_mbps"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                        Optional. Leave blank to let the Brutal algorithm auto-calculate maximum speed.
+                    </p>
                 </label>
                 <label class="block">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Download Mbps (optional)</span>
                     <input type="number" min="0" x-model.number="hysteriaModal.down_mbps"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                        Optional. Leave blank to let the Brutal algorithm auto-calculate maximum speed.
+                    </p>
                 </label>
 
                 <label class="block md:col-span-2">
@@ -2653,13 +2662,19 @@
                             Generate
                         </button>
                     </div>
+                    <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                        Salamander obfuscation key. Keeps your traffic hidden from DPI active probing.
+                    </p>
                 </label>
 
                 <label class="block md:col-span-2">
                     <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Masquerade URL</span>
-                    <input type="text" x-model="hysteriaModal.masquerade" placeholder="https://www.cloudflare.com"
+                    <input type="text" x-model="hysteriaModal.masquerade" placeholder="https://www.bing.com"
                            class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                            :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                    <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                        If the censor probes the port, they will see this trusted website. Must be a valid HTTPS URL.
+                    </p>
                 </label>
 
                 <label class="block">
@@ -4453,11 +4468,11 @@
                 createDefaultHysteriaModal() {
                     return {
                         remark: '',
-                        port: '8443',
+                        port: '40000-50000',
                         up_mbps: null,
                         down_mbps: null,
                         obfs_password: '',
-                        masquerade: 'https://www.cloudflare.com',
+                        masquerade: 'https://www.bing.com',
                         cert_mode: 'self_signed',
                         sni: '',
                         is_active: true,
@@ -5123,15 +5138,17 @@
                 buildHysteriaInboundPayload() {
                     const certMode = String(this.hysteriaModal.cert_mode || 'self_signed').trim().toLowerCase();
                     const normalizedSni = String(this.hysteriaModal.sni || '').trim();
+                    const normalizedPort = String(this.hysteriaModal.port || '').trim();
                     const upMbpsRaw = Number(this.hysteriaModal.up_mbps);
                     const downMbpsRaw = Number(this.hysteriaModal.down_mbps);
+                    const obfsPassword = String(this.hysteriaModal.obfs_password || '').trim() || this.generateRandomString(24);
 
                     return {
                         remark: String(this.hysteriaModal.remark || '').trim(),
-                        port: String(this.hysteriaModal.port || '').trim(),
+                        port: normalizedPort,
                         up_mbps: Number.isFinite(upMbpsRaw) && upMbpsRaw >= 0 ? Math.round(upMbpsRaw) : null,
                         down_mbps: Number.isFinite(downMbpsRaw) && downMbpsRaw >= 0 ? Math.round(downMbpsRaw) : null,
-                        obfs_password: String(this.hysteriaModal.obfs_password || '').trim(),
+                        obfs_password: obfsPassword,
                         masquerade: String(this.hysteriaModal.masquerade || '').trim() || null,
                         cert_mode: certMode === 'custom_domain' ? 'custom_domain' : 'self_signed',
                         sni: certMode === 'custom_domain' ? (normalizedSni || null) : null,
@@ -5149,8 +5166,23 @@
                         if (!payload.port) {
                             throw new Error('Port is required');
                         }
-                        if (!payload.obfs_password) {
-                            throw new Error('Obfuscation password is required');
+                        const singlePortPattern = /^\d{1,5}$/;
+                        const rangePortPattern = /^(\d{1,5})-(\d{1,5})$/;
+                        if (singlePortPattern.test(payload.port)) {
+                            const numericPort = Number(payload.port);
+                            if (!Number.isInteger(numericPort) || numericPort < 1 || numericPort > 65535) {
+                                throw new Error('Port must be between 1 and 65535');
+                            }
+                        } else {
+                            const match = payload.port.match(rangePortPattern);
+                            if (!match) {
+                                throw new Error('Port must be a single port (443) or range (40000-50000)');
+                            }
+                            const start = Number(match[1]);
+                            const end = Number(match[2]);
+                            if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end > 65535 || start > end) {
+                                throw new Error('Port range must be between 1 and 65535 and start <= end');
+                            }
                         }
                         if (payload.cert_mode === 'custom_domain' && !payload.sni) {
                             throw new Error('SNI is required when certificate mode is custom_domain');
