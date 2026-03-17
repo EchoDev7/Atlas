@@ -1198,6 +1198,14 @@
                                         : (darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200')">
                                 🐴 Trojan Nodes
                             </button>
+                            <button type="button"
+                                    @click="activeInboundTab = 'tuic'"
+                                    class="px-4 py-2 rounded-xl text-sm font-semibold transition"
+                                    :class="activeInboundTab === 'tuic'
+                                        ? (darkMode ? 'bg-sky-500 text-white' : 'bg-sky-600 text-white')
+                                        : (darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200')">
+                                🦅 TUIC Nodes
+                            </button>
                         </div>
                     </div>
 
@@ -2676,6 +2684,22 @@
         </div>
     </div>
 
+    <div x-cloak x-show="tuicModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div class="w-full max-w-4xl rounded-2xl border shadow-2xl" :class="darkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'">
+            <div class="flex items-center justify-between px-5 py-4 border-b" :class="darkMode ? 'border-slate-700' : 'border-slate-200'">
+                <h3 class="text-sm font-semibold" :class="darkMode ? 'text-slate-100' : 'text-slate-900'" x-text="tuicEditingId ? 'Edit TUIC Inbound' : 'Add TUIC Inbound'"></h3>
+                <button type="button" @click="closeTuicInboundModal()" class="text-xs px-3 py-1.5 rounded-lg border transition" :class="darkMode ? 'border-slate-600 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'">Close</button>
+            </div>
+            <div class="px-5 py-5 grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto">
+                <label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Remark</span><input type="text" x-model="tuicModal.remark" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                <label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Port</span><input type="number" min="1" max="65535" x-model.number="tuicModal.port" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition font-mono" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label>
+                <div class="md:col-span-2 rounded-2xl border p-4 space-y-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'"><h4 class="text-sm font-semibold tracking-wide" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🌐 Performance &amp; Network</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Congestion Control</span><select x-model="tuicModal.congestion_control" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="bbr">bbr (Best for Speed)</option><option value="cubic">cubic</option><option value="new_reno">new_reno</option></select></label><label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">UDP Relay Mode</span><select x-model="tuicModal.udp_relay_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="native">native</option><option value="quic">quic</option></select></label><label class="inline-flex items-end pb-2 gap-2 cursor-pointer md:col-span-2"><input type="checkbox" x-model="tuicModal.zero_rtt_handshake" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Enable Zero-RTT for instant reconnections</span></label></div></div>
+                <div class="md:col-span-2 rounded-2xl border p-4 space-y-4" :class="darkMode ? 'border-slate-700 bg-slate-900/30' : 'border-slate-200 bg-slate-50/70'"><h4 class="text-sm font-semibold tracking-wide" :class="darkMode ? 'text-slate-200' : 'text-slate-800'">🔒 Security &amp; Encryption</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">ALPN</span><select x-model="tuicModal.alpn" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="h3">h3 - TUIC requires HTTP/3</option></select></label><label class="block"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Certificate Mode</span><select x-model="tuicModal.cert_mode" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"><option value="self_signed">Auto Self-Signed</option><option value="custom_domain">Custom Domain</option></select></label><label x-show="tuicModal.cert_mode === 'custom_domain'" class="block md:col-span-2"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SNI</span><input type="text" x-model="tuicModal.sni" class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition" :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'"></label><label class="inline-flex items-end pb-2 gap-2 cursor-pointer md:col-span-2"><input type="checkbox" x-model="tuicModal.is_active" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500"><span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Active Inbound</span></label></div></div>
+            </div>
+            <div class="px-5 py-4 border-t flex justify-end gap-2" :class="darkMode ? 'border-slate-700' : 'border-slate-200'"><button type="button" @click="closeTuicInboundModal()" class="px-4 py-2 rounded-lg text-sm font-semibold transition" :class="darkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">Cancel</button><button type="button" @click="saveTuicInbound()" :disabled="tuicModalSubmitting" class="px-4 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50" :class="darkMode ? 'bg-sky-500 hover:bg-sky-400' : 'bg-sky-600 hover:bg-sky-700'"><span x-text="tuicModalSubmitting ? 'Saving...' : (tuicEditingId ? 'Update Inbound' : 'Create Inbound')"></span></button></div>
+        </div>
+    </div>
+
     <div x-cloak x-show="terminalModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
         <div class="w-full max-w-4xl rounded-2xl border border-slate-700 bg-gray-900 shadow-2xl">
             <div class="flex items-center justify-between px-5 py-4 border-b border-slate-700">
@@ -2872,6 +2896,11 @@
                 trojanModalOpen: false,
                 trojanEditingId: null,
                 trojanInbounds: [],
+                tuicInboundsLoading: false,
+                tuicModalSubmitting: false,
+                tuicModalOpen: false,
+                tuicEditingId: null,
+                tuicInbounds: [],
                 vlessModal: {
                     remark: '',
                     port: 443,
@@ -2926,6 +2955,17 @@
                         accept_proxy: false,
                         extra: '',
                     },
+                    is_active: true,
+                },
+                tuicModal: {
+                    remark: '',
+                    port: 8443,
+                    congestion_control: 'bbr',
+                    udp_relay_mode: 'native',
+                    zero_rtt_handshake: false,
+                    alpn: 'h3',
+                    cert_mode: 'self_signed',
+                    sni: '',
                     is_active: true,
                 },
                 routingRulesLoading: false,
@@ -3505,6 +3545,9 @@
                         if (tab === 'singbox' && this.trojanInbounds.length === 0) {
                             await this.loadTrojanInbounds({ silent: true });
                         }
+                        if (tab === 'singbox' && this.tuicInbounds.length === 0) {
+                            await this.loadTuicInbounds({ silent: true });
+                        }
 
                         if (tab !== 'routing') {
                             return;
@@ -3526,6 +3569,7 @@
                     await this.loadInbounds({ silent: true });
                     await this.loadHysteriaInbounds({ silent: true });
                     await this.loadTrojanInbounds({ silent: true });
+                    await this.loadTuicInbounds({ silent: true });
                     await this.loadRoutingInterfaces({ silent: true });
                     await this.loadRoutingProxyPorts({ silent: true });
                     await this.loadRoutingRules({ silent: true });
@@ -4215,6 +4259,21 @@
                     };
                 },
 
+                normalizeTuicInbound(rawInbound) {
+                    return {
+                        id: Number(rawInbound?.id) || 0,
+                        remark: String(rawInbound?.remark || ''),
+                        port: Number(rawInbound?.port) || 8443,
+                        congestion_control: String(rawInbound?.congestion_control || 'bbr').toLowerCase(),
+                        udp_relay_mode: String(rawInbound?.udp_relay_mode || 'native').toLowerCase(),
+                        zero_rtt_handshake: !!rawInbound?.zero_rtt_handshake,
+                        alpn: String(rawInbound?.alpn || 'h3').toLowerCase(),
+                        cert_mode: String(rawInbound?.cert_mode || 'self_signed').toLowerCase(),
+                        sni: String(rawInbound?.sni || ''),
+                        is_active: rawInbound?.is_active !== false,
+                    };
+                },
+
                 async loadInbounds({ silent = false } = {}) {
                     this.vlessInboundsLoading = true;
                     try {
@@ -4317,6 +4376,40 @@
                     }
                 },
 
+                async loadTuicInbounds({ silent = false } = {}) {
+                    this.tuicInboundsLoading = true;
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch('/api/tuic-inbounds/', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = 'Failed to load TUIC inbounds';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            throw new Error(message);
+                        }
+                        const payload = await response.json();
+                        this.tuicInbounds = Array.isArray(payload) ? payload.map((item) => this.normalizeTuicInbound(item)) : [];
+                    } catch (error) {
+                        this.tuicInbounds = [];
+                        if (!silent) {
+                            this.showToast(error.message || 'Failed to load TUIC inbounds', 'error');
+                        }
+                    } finally {
+                        this.tuicInboundsLoading = false;
+                    }
+                },
+
                 openVlessInboundModal() {
                     this.vlessEditingId = null;
                     this.vlessModal = this.createDefaultVlessModal();
@@ -4336,6 +4429,12 @@
                     this.trojanModal = this.createDefaultTrojanModal();
                     this.trojanModal.password = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : this.generateRandomString(36);
                     this.trojanModalOpen = true;
+                },
+
+                openTuicInboundModal() {
+                    this.tuicEditingId = null;
+                    this.tuicModal = this.createDefaultTuicModal();
+                    this.tuicModalOpen = true;
                 },
 
                 closeVlessInboundModal() {
@@ -4358,6 +4457,13 @@
                     this.trojanModalSubmitting = false;
                     this.trojanEditingId = null;
                     this.trojanModal = this.createDefaultTrojanModal();
+                },
+
+                closeTuicInboundModal() {
+                    this.tuicModalOpen = false;
+                    this.tuicModalSubmitting = false;
+                    this.tuicEditingId = null;
+                    this.tuicModal = this.createDefaultTuicModal();
                 },
 
                 async generateInboundRealityKeypair() {
@@ -4904,6 +5010,134 @@
                         this.showToast('Trojan inbound deleted successfully', 'success');
                     } catch (error) {
                         this.showToast(error.message || 'Failed to delete Trojan inbound', 'error');
+                    }
+                },
+
+                buildTuicInboundPayload() {
+                    const certMode = String(this.tuicModal.cert_mode || 'self_signed').trim().toLowerCase();
+                    const normalizedSni = String(this.tuicModal.sni || '').trim();
+                    return {
+                        remark: String(this.tuicModal.remark || '').trim(),
+                        port: Number(this.tuicModal.port) || 0,
+                        congestion_control: String(this.tuicModal.congestion_control || 'bbr').trim().toLowerCase() || 'bbr',
+                        udp_relay_mode: String(this.tuicModal.udp_relay_mode || 'native').trim().toLowerCase() || 'native',
+                        zero_rtt_handshake: !!this.tuicModal.zero_rtt_handshake,
+                        alpn: 'h3',
+                        cert_mode: certMode === 'custom_domain' ? 'custom_domain' : 'self_signed',
+                        sni: certMode === 'custom_domain' ? (normalizedSni || null) : null,
+                        is_active: this.tuicModal.is_active !== false,
+                    };
+                },
+
+                async editTuicInbound(id) {
+                    const numericId = Number(id);
+                    const current = this.tuicInbounds.find((item) => Number(item.id) === numericId);
+                    if (!current) {
+                        this.showToast('TUIC inbound not found', 'error');
+                        return;
+                    }
+                    const draft = this.createDefaultTuicModal();
+                    draft.remark = String(current.remark || '');
+                    draft.port = Number(current.port) || 8443;
+                    draft.congestion_control = String(current.congestion_control || 'bbr').toLowerCase();
+                    draft.udp_relay_mode = String(current.udp_relay_mode || 'native').toLowerCase();
+                    draft.zero_rtt_handshake = !!current.zero_rtt_handshake;
+                    draft.alpn = 'h3';
+                    draft.cert_mode = String(current.cert_mode || 'self_signed').toLowerCase();
+                    draft.sni = String(current.sni || '');
+                    draft.is_active = current.is_active !== false;
+                    this.tuicEditingId = numericId;
+                    this.tuicModal = draft;
+                    this.tuicModalOpen = true;
+                },
+
+                async saveTuicInbound() {
+                    this.tuicModalSubmitting = true;
+                    try {
+                        const payload = this.buildTuicInboundPayload();
+                        if (!payload.remark) {
+                            throw new Error('Remark is required');
+                        }
+                        if (!Number.isInteger(payload.port) || payload.port < 1 || payload.port > 65535) {
+                            throw new Error('Port must be between 1 and 65535');
+                        }
+                        if (payload.cert_mode === 'custom_domain' && !payload.sni) {
+                            throw new Error('SNI is required when certificate mode is custom_domain');
+                        }
+
+                        const token = localStorage.getItem('access_token');
+                        const isEdit = Number.isInteger(this.tuicEditingId) && this.tuicEditingId > 0;
+                        const endpoint = isEdit ? `/api/tuic-inbounds/${this.tuicEditingId}` : '/api/tuic-inbounds/';
+                        const method = isEdit ? 'PATCH' : 'POST';
+
+                        const response = await fetch(endpoint, {
+                            method,
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(payload),
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = isEdit ? 'Failed to update TUIC inbound' : 'Failed to create TUIC inbound';
+                            try {
+                                const errorPayload = await response.json();
+                                message = this.getApiErrorMessage(errorPayload, message);
+                            } catch (_) {
+                                // Keep fallback message
+                            }
+                            throw new Error(message);
+                        }
+
+                        this.closeTuicInboundModal();
+                        await this.loadTuicInbounds({ silent: true });
+                        this.showToast(isEdit ? 'TUIC inbound updated successfully' : 'TUIC inbound created successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to save TUIC inbound', 'error');
+                    } finally {
+                        this.tuicModalSubmitting = false;
+                    }
+                },
+
+                async deleteTuicInbound(id) {
+                    const numericId = Number(id);
+                    if (!Number.isInteger(numericId) || numericId <= 0) {
+                        this.showToast('Invalid TUIC inbound id', 'error');
+                        return;
+                    }
+                    if (!window.confirm('Delete this TUIC inbound?')) {
+                        return;
+                    }
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        const response = await fetch(`/api/tuic-inbounds/${numericId}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (response.status === 401) {
+                            localStorage.removeItem('access_token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            let message = 'Failed to delete TUIC inbound';
+                            try {
+                                const payload = await response.json();
+                                message = this.getApiErrorMessage(payload, message);
+                            } catch (_) {
+                                // Keep fallback
+                            }
+                            throw new Error(message);
+                        }
+                        await this.loadTuicInbounds({ silent: true });
+                        this.showToast('TUIC inbound deleted successfully', 'success');
+                    } catch (error) {
+                        this.showToast(error.message || 'Failed to delete TUIC inbound', 'error');
                     }
                 },
 
