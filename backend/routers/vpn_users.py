@@ -1244,33 +1244,6 @@ async def download_openconnect_credentials(
     )
 
 
-@router.get("/{username}/vless/link")
-async def get_vless_link(
-    username: str,
-    current_user: Admin = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _ = current_user
-    normalized_username = str(username or "").strip()
-    if not normalized_username:
-        raise HTTPException(status_code=400, detail="Username is required")
-
-    user = db.query(VPNUser).filter(VPNUser.username == normalized_username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    settings = _get_or_create_general_settings(db)
-    server_host = str(settings.public_ipv4_address or settings.server_address or settings.panel_domain or "").strip()
-    if not server_host:
-        raise HTTPException(status_code=400, detail="Server address is not configured in general settings")
-
-    links = singbox_service.generate_all_user_uris(db=db, user=user, server_ip=server_host)
-    vless_link = next((item.get("link", "") for item in links if str(item.get("protocol", "")).lower() == "vless"), "")
-    if not vless_link:
-        raise HTTPException(status_code=404, detail="No active VLESS inbound link found for this user")
-    return {"link": vless_link}
-
-
 @router.get("/{user_id}/links")
 async def get_user_protocol_links(
     user_id: int,

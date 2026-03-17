@@ -332,7 +332,6 @@ class SingBoxService(BaseProtocolService):
                 "listen_port": self._parse_port(getattr(inbound, "port", 8443), 8443),
                 "users": tuic_users,
                 "congestion_control": str(getattr(inbound, "congestion_control", "bbr") or "bbr"),
-                "udp_relay_mode": str(getattr(inbound, "udp_relay_mode", "native") or "native"),
                 "zero_rtt_handshake": bool(getattr(inbound, "zero_rtt_handshake", True)),
                 "tls": self._build_tls_block(
                     cert_mode=str(getattr(inbound, "cert_mode", "self_signed") or "self_signed"),

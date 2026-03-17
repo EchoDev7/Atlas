@@ -635,17 +635,6 @@
                                             </svg>
                                         </button>
 
-                                        <!-- VLESS Link / QR -->
-                                        <button @click="openVlessLinkModal(client)"
-                                                x-show="client.vless_uuid"
-                                                class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
-                                                :class="darkMode ? 'text-emerald-400 hover:bg-slate-700/50' : 'text-emerald-600 hover:bg-emerald-50'"
-                                                title="VLESS Link & QR">
-                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656l-2 2a4 4 0 01-5.656-5.656l1-1m7-7a4 4 0 015.656 5.656l-1 1m-5.656-1.656l-2 2"/>
-                                            </svg>
-                                        </button>
-
                                         <!-- All Protocol Links -->
                                         <button @click="openUserLinksModal(client.id, client.username)"
                                                 class="p-2 rounded-lg theme-transition hover:scale-110 active:scale-95 transition-transform"
@@ -1499,80 +1488,6 @@
         </div>
     </div>
 
-    <!-- VLESS Link Modal -->
-    <div x-show="showVlessModal"
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-50 overflow-y-auto"
-         style="display: none;">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 transition-opacity modal-backdrop"
-                 :class="darkMode ? 'bg-slate-900/80' : 'bg-slate-900/50'"
-                 @click="closeVlessLinkModal()"></div>
-
-            <div class="inline-block align-bottom glass-effect rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full animate-slide-down"
-                 :class="darkMode ? 'bg-slate-800/90 border border-slate-700/50' : 'bg-white/90 border border-slate-200/50'">
-                <div class="px-6 py-5 border-b theme-transition"
-                     :class="darkMode ? 'border-slate-700/50' : 'border-slate-200/50'">
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-xl font-semibold theme-transition"
-                            :class="darkMode ? 'text-white' : 'text-slate-900'">
-                            VLESS Link & QR
-                        </h3>
-                        <button @click="closeVlessLinkModal()"
-                                class="rounded-lg p-1 theme-transition hover:scale-110 active:scale-95"
-                                :class="darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-700/50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="px-6 py-5 space-y-4">
-                    <p class="text-sm theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
-                        User: <span class="font-semibold" x-text="selectedClient?.username || '-'"></span>
-                    </p>
-
-                    <textarea x-model="vlessLink"
-                              readonly
-                              rows="4"
-                              class="block w-full px-4 py-3 rounded-xl font-mono text-xs theme-transition focus:outline-none"
-                              :class="darkMode ? 'bg-slate-900/30 border border-slate-700 text-slate-200' : 'bg-slate-50 border border-slate-300 text-slate-800'"></textarea>
-
-                    <div class="flex flex-wrap items-center gap-3">
-                        <button type="button"
-                                @click="copyVlessLink()"
-                                :disabled="!vlessLink"
-                                class="px-4 py-2.5 rounded-xl text-sm font-semibold theme-transition hover:scale-105 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-                                :class="darkMode ? 'bg-slate-700/50 text-slate-200 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
-                            Copy to Clipboard
-                        </button>
-                        <button type="button"
-                                @click="renderVlessQrCode()"
-                                :disabled="!vlessLink || vlessQrLoading"
-                                class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white theme-transition hover:scale-105 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                                :class="darkMode ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-emerald-600 hover:bg-emerald-700'">
-                            <span x-show="!vlessQrLoading">Show QR Code</span>
-                            <span x-show="vlessQrLoading">Generating...</span>
-                        </button>
-                    </div>
-
-                    <div x-show="vlessQrData" class="pt-2">
-                        <div class="rounded-xl p-4 inline-flex theme-transition"
-                             :class="darkMode ? 'bg-white' : 'bg-white'">
-                            <img :src="vlessQrData" alt="VLESS QR Code" class="w-64 h-64">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- OpenConnect Info / Share Modal -->
     <div x-show="showOpenConnectInfoModal"
          x-transition:enter="transition ease-out duration-300"
@@ -1743,13 +1658,6 @@
                 qrCodeLoading: false,
                 qrCodeData: null,
                 selectedClient: null,
-
-                // VLESS Link Modal
-                showVlessModal: false,
-                vlessLinkLoading: false,
-                vlessLink: '',
-                vlessQrLoading: false,
-                vlessQrData: null,
 
                 // All Protocol Links Modal
                 userLinksModalOpen: false,
@@ -2305,49 +2213,6 @@
                     }
                 },
 
-                async openVlessLinkModal(client) {
-                    const username = String(client?.username || '').trim();
-                    if (!username) {
-                        this.error = 'Missing username for VLESS link';
-                        return;
-                    }
-                    this.selectedClient = client;
-                    this.showVlessModal = true;
-                    this.vlessLinkLoading = true;
-                    this.vlessLink = '';
-                    this.vlessQrData = null;
-
-                    try {
-                        const token = localStorage.getItem('access_token');
-                        const response = await fetch(`/api/users/${encodeURIComponent(username)}/vless/link`, {
-                            method: 'GET',
-                            headers: {
-                                'Authorization': `Bearer ${token}`
-                            }
-                        });
-                        if (!response.ok) {
-                            let errorMessage = 'Failed to fetch VLESS link';
-                            try {
-                                const payload = await response.json();
-                                errorMessage = payload?.detail || errorMessage;
-                            } catch (_) {
-                                // keep fallback
-                            }
-                            throw new Error(errorMessage);
-                        }
-                        const payload = await response.json();
-                        this.vlessLink = String(payload?.link || '').trim();
-                        if (!this.vlessLink) {
-                            throw new Error('VLESS link response is empty');
-                        }
-                    } catch (err) {
-                        this.error = err.message || 'Failed to fetch VLESS link';
-                        this.showVlessModal = false;
-                    } finally {
-                        this.vlessLinkLoading = false;
-                    }
-                },
-
                 async openUserLinksModal(userId, username) {
                     const numericId = Number(userId);
                     if (!Number.isInteger(numericId) || numericId <= 0) {
@@ -2431,65 +2296,6 @@
                         }
                     } catch (_) {
                         this.error = 'Failed to copy connection link';
-                    }
-                },
-
-                closeVlessLinkModal() {
-                    this.showVlessModal = false;
-                    this.vlessLinkLoading = false;
-                    this.vlessQrLoading = false;
-                    this.vlessQrData = null;
-                },
-
-                async copyVlessLink() {
-                    const link = String(this.vlessLink || '').trim();
-                    if (!link) {
-                        return;
-                    }
-                    try {
-                        if (navigator?.clipboard?.writeText) {
-                            await navigator.clipboard.writeText(link);
-                        } else {
-                            const textarea = document.createElement('textarea');
-                            textarea.value = link;
-                            textarea.setAttribute('readonly', '');
-                            textarea.style.position = 'absolute';
-                            textarea.style.left = '-9999px';
-                            document.body.appendChild(textarea);
-                            textarea.select();
-                            document.execCommand('copy');
-                            document.body.removeChild(textarea);
-                        }
-                        this.successMessage = 'VLESS link copied to clipboard';
-                    } catch (_) {
-                        this.error = 'Failed to copy VLESS link';
-                    }
-                },
-
-                async renderVlessQrCode() {
-                    const link = String(this.vlessLink || '').trim();
-                    if (!link) {
-                        return;
-                    }
-                    this.vlessQrLoading = true;
-                    this.vlessQrData = null;
-                    try {
-                        if (!window.QRCode || typeof window.QRCode.toDataURL !== 'function') {
-                            throw new Error('QR generator is not available');
-                        }
-                        this.vlessQrData = await window.QRCode.toDataURL(link, {
-                            errorCorrectionLevel: 'M',
-                            margin: 2,
-                            width: 320,
-                            color: {
-                                dark: '#111827',
-                                light: '#ffffff',
-                            },
-                        });
-                    } catch (err) {
-                        this.error = err.message || 'Failed to render VLESS QR code';
-                    } finally {
-                        this.vlessQrLoading = false;
                     }
                 },
 
