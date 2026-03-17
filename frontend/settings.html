@@ -4471,6 +4471,20 @@
                     };
                 },
 
+                createDefaultTuicModal() {
+                    return {
+                        remark: '',
+                        port: 8443,
+                        congestion_control: 'bbr',
+                        udp_relay_mode: 'native',
+                        zero_rtt_handshake: false,
+                        alpn: 'h3',
+                        cert_mode: 'self_signed',
+                        sni: '',
+                        is_active: true,
+                    };
+                },
+
                 createDefaultSsModal() {
                     const modal = {
                         remark: '',
