@@ -332,20 +332,17 @@ class SingBoxService(BaseProtocolService):
 
         for inbound in active_vless_inbounds:
             inbound_tag = f"vless-{inbound.id}"
+            security_mode = str(getattr(inbound, "security", "reality") or "reality").strip().lower()
+            flow_value = str(getattr(inbound, "flow", "") or "").strip()
             item: dict[str, Any] = {
                 "type": "vless",
                 "tag": inbound_tag,
                 "listen": "::",
                 "listen_port": self._parse_port(inbound.port, 443),
-                "users": [
-                    {
-                        **user_item,
-                        "flow": str(getattr(inbound, "flow", "xtls-rprx-vision") or "xtls-rprx-vision").strip(),
-                    }
-                    for user_item in vless_users
-                ],
+                "users": [{**user_item} for user_item in vless_users],
             }
-            security_mode = str(getattr(inbound, "security", "reality") or "reality").strip().lower()
+            if security_mode == "reality" and flow_value:
+                item["users"] = [{**user_item, "flow": flow_value} for user_item in vless_users]
             tls_settings = getattr(inbound, "tls_settings", None) if isinstance(getattr(inbound, "tls_settings", None), dict) else {}
             sni = str(getattr(inbound, "sni", "") or "").strip() or str(tls_settings.get("server_name", "") or "").strip()
             if security_mode == "tls":
@@ -543,7 +540,7 @@ class SingBoxService(BaseProtocolService):
             if sni:
                 params["sni"] = sni
             flow = str(getattr(inbound, "flow", "") or "").strip()
-            if flow:
+            if security == "reality" and flow:
                 params["flow"] = flow
             fp = str(getattr(inbound, "fingerprint", "") or "").strip()
             if fp:
