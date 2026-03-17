@@ -1442,25 +1442,6 @@
                 </div>
 
                 <div class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
-                    <div class="rounded-xl p-4 border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                         :class="darkMode ? 'border-slate-700/60 bg-slate-900/30' : 'border-slate-200 bg-slate-50'">
-                        <div>
-                            <p class="text-xs uppercase tracking-wide"
-                               :class="darkMode ? 'text-slate-400' : 'text-slate-500'">Client App</p>
-                            <p class="text-sm font-medium"
-                               :class="darkMode ? 'text-slate-200' : 'text-slate-700'">
-                                Show only supported fields for selected app
-                            </p>
-                        </div>
-                        <select x-model="selectedLinkClientApp"
-                                class="px-3 py-2 rounded-lg text-sm border focus:outline-none focus:ring-2"
-                                :class="darkMode ? 'bg-slate-900 border-slate-700 text-slate-100 focus:ring-cyan-500/40' : 'bg-white border-slate-300 text-slate-800 focus:ring-cyan-200'">
-                            <option value="v2box">v2box</option>
-                            <option value="streisand">Streisand</option>
-                            <option value="npv_tunnel">npv tunnel</option>
-                        </select>
-                    </div>
-
                     <div x-show="linksLoading" class="flex items-center justify-center py-10">
                         <div class="flex items-center gap-3 text-sm font-medium"
                              :class="darkMode ? 'text-slate-300' : 'text-slate-700'">
@@ -1500,35 +1481,6 @@
                                    readonly
                                    class="block w-full px-3 py-2 rounded-lg font-mono text-xs border"
                                    :class="darkMode ? 'bg-slate-950/60 border-slate-700 text-slate-200' : 'bg-white border-slate-300 text-slate-800'">
-
-                            <div class="rounded-lg border p-3"
-                                 :class="darkMode ? 'border-slate-700 bg-slate-950/30' : 'border-slate-200 bg-white'">
-                                <div class="flex items-center justify-between gap-2 mb-2">
-                                    <p class="text-[11px] uppercase tracking-wide font-semibold"
-                                       :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
-                                        Visible Settings for <span x-text="linkClientAppLabel()"></span>
-                                    </p>
-                                </div>
-                                <template x-if="getVisibleSettingEntries(linkObj).length === 0">
-                                    <p class="text-xs"
-                                       :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
-                                        No compatible fields detected for this protocol/app combination.
-                                    </p>
-                                </template>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" x-show="getVisibleSettingEntries(linkObj).length > 0">
-                                    <template x-for="entry in getVisibleSettingEntries(linkObj)" :key="`${linkObj.protocol}-${entry.key}`">
-                                        <div class="rounded-md px-2.5 py-2 border"
-                                             :class="darkMode ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-slate-50'">
-                                            <p class="text-[10px] uppercase tracking-wide"
-                                               :class="darkMode ? 'text-slate-500' : 'text-slate-500'"
-                                               x-text="formatSettingKey(entry.key)"></p>
-                                            <p class="text-xs font-mono break-all"
-                                               :class="darkMode ? 'text-slate-200' : 'text-slate-700'"
-                                               x-text="entry.value"></p>
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
                         </div>
                     </template>
                 </div>
@@ -1713,7 +1665,6 @@
                 currentLinkUsername: '',
                 linksLoading: false,
                 copiedLinkIndex: null,
-                selectedLinkClientApp: 'v2box',
 
                 // OpenConnect Info / Share Modal
                 showOpenConnectInfoModal: false,
@@ -2313,120 +2264,6 @@
                     this.currentUserLinks = [];
                     this.currentLinkUsername = '';
                     this.copiedLinkIndex = null;
-                    this.selectedLinkClientApp = 'v2box';
-                },
-
-                linkClientAppLabel() {
-                    const labels = {
-                        v2box: 'v2box',
-                        streisand: 'Streisand',
-                        npv_tunnel: 'npv tunnel',
-                    };
-                    return labels[this.selectedLinkClientApp] || this.selectedLinkClientApp;
-                },
-
-                formatSettingKey(rawKey) {
-                    const key = String(rawKey || '').trim();
-                    if (!key) return '-';
-                    return key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase();
-                },
-
-                protocolSettingSupport() {
-                    return {
-                        vless: {
-                            v2box: ['address', 'port', 'uuid', 'type', 'security', 'sni', 'fp', 'flow', 'pbk', 'sid', 'spx', 'path', 'host', 'serviceName'],
-                            streisand: ['address', 'port', 'uuid', 'type', 'security', 'sni', 'fp', 'flow', 'pbk', 'sid', 'spx', 'path', 'host', 'serviceName'],
-                            npv_tunnel: ['address', 'port', 'uuid', 'type', 'security', 'sni', 'path', 'host', 'serviceName', 'pbk', 'sid', 'spx'],
-                        },
-                        trojan: {
-                            v2box: ['address', 'port', 'password', 'security', 'type', 'sni', 'fp', 'path', 'host', 'serviceName'],
-                            streisand: ['address', 'port', 'password', 'security', 'type', 'sni', 'fp', 'path', 'host', 'serviceName'],
-                            npv_tunnel: ['address', 'port', 'password', 'security', 'type', 'sni', 'path', 'host', 'serviceName'],
-                        },
-                        hysteria2: {
-                            v2box: ['address', 'port', 'password', 'sni', 'obfs', 'obfs-password', 'insecure'],
-                            streisand: ['address', 'port', 'password', 'sni', 'obfs', 'obfs-password', 'insecure'],
-                            npv_tunnel: ['address', 'port', 'password', 'sni', 'obfs-password', 'insecure'],
-                        },
-                        tuic: {
-                            v2box: ['address', 'port', 'uuid', 'password', 'congestion_control', 'udp_relay_mode', 'alpn', 'sni', 'allow_insecure'],
-                            streisand: ['address', 'port', 'uuid', 'password', 'congestion_control', 'udp_relay_mode', 'alpn', 'sni', 'allow_insecure'],
-                            npv_tunnel: ['address', 'port', 'uuid', 'password', 'congestion_control', 'sni', 'allow_insecure'],
-                        },
-                        shadowsocks: {
-                            v2box: ['address', 'port', 'method', 'password'],
-                            streisand: ['address', 'port', 'method', 'password'],
-                            npv_tunnel: ['address', 'port', 'method', 'password'],
-                        },
-                    };
-                },
-
-                parseLinkSettings(linkObj) {
-                    const rawLink = String(linkObj?.link || '').trim();
-                    const protocol = String(linkObj?.protocol || '').trim().toLowerCase();
-                    if (!rawLink || !protocol) {
-                        return {};
-                    }
-
-                    try {
-                        if (protocol === 'shadowsocks' && rawLink.startsWith('ss://')) {
-                            const withoutScheme = rawLink.slice(5);
-                            const withoutFragment = withoutScheme.split('#', 1)[0];
-                            const atIndex = withoutFragment.lastIndexOf('@');
-                            if (atIndex <= 0) return {};
-                            const encodedUserInfo = withoutFragment.slice(0, atIndex);
-                            const serverPart = withoutFragment.slice(atIndex + 1);
-                            const [hostPart, portPart] = serverPart.split(':');
-                            const padded = encodedUserInfo + '='.repeat((4 - (encodedUserInfo.length % 4 || 4)) % 4);
-                            const decoded = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
-                            const methodSep = decoded.indexOf(':');
-                            if (methodSep <= 0) return {};
-                            return {
-                                method: decoded.slice(0, methodSep),
-                                password: decoded.slice(methodSep + 1),
-                                address: hostPart || '',
-                                port: portPart || '',
-                            };
-                        }
-
-                        const parsed = new URL(rawLink);
-                        const settings = {};
-                        const query = parsed.searchParams;
-
-                        settings.address = parsed.hostname || '';
-                        settings.port = parsed.port || '';
-
-                        if (protocol === 'vless') {
-                            settings.uuid = decodeURIComponent(parsed.username || '');
-                        } else if (protocol === 'trojan' || protocol === 'hysteria2') {
-                            settings.password = decodeURIComponent(parsed.username || '');
-                        } else if (protocol === 'tuic') {
-                            settings.uuid = decodeURIComponent(parsed.username || '');
-                            settings.password = decodeURIComponent(parsed.password || '');
-                        }
-
-                        query.forEach((value, key) => {
-                            settings[key] = value;
-                        });
-                        return settings;
-                    } catch (_) {
-                        return {};
-                    }
-                },
-
-                getVisibleSettingEntries(linkObj) {
-                    const protocol = String(linkObj?.protocol || '').trim().toLowerCase();
-                    if (!protocol) return [];
-                    const appKey = this.selectedLinkClientApp;
-                    const support = this.protocolSettingSupport();
-                    const protocolSupport = support[protocol] || {};
-                    const visibleKeys = protocolSupport[appKey] || [];
-                    if (visibleKeys.length === 0) return [];
-
-                    const settings = this.parseLinkSettings(linkObj);
-                    return visibleKeys
-                        .map((key) => ({ key, value: String(settings[key] ?? '').trim() }))
-                        .filter((entry) => entry.value !== '');
                 },
 
                 async copyToClipboard(text, index = null) {
