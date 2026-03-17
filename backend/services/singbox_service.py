@@ -118,6 +118,14 @@ class SingBoxService(BaseProtocolService):
         parts = [item.strip() for item in value.split(",") if item.strip()]
         return parts or list(fallback)
 
+    def _sanitize_vless_tls_alpn(self, network: str, raw_alpn: Any) -> list[str]:
+        net = str(network or "tcp").strip().lower()
+        fallback = ["h2"] if net == "grpc" else ["h2", "http/1.1"]
+        parsed = self._split_alpn(raw_alpn, fallback)
+        allowed = {"h2", "http/1.1"}
+        sanitized = [item for item in parsed if item in allowed]
+        return sanitized or fallback
+
     def _build_tls_block(
         self,
         cert_mode: str,
@@ -364,7 +372,10 @@ class SingBoxService(BaseProtocolService):
                     sni=sni or None,
                     cert_pem=cert_pem,
                     key_pem=key_pem,
-                    alpn=self._split_alpn(tls_settings.get("alpn", "h2,http/1.1"), ["h2", "http/1.1"]),
+                    alpn=self._sanitize_vless_tls_alpn(
+                        network=getattr(inbound, "network", "tcp"),
+                        raw_alpn=tls_settings.get("alpn", "h2,http/1.1"),
+                    ),
                 )
             elif security_mode == "reality":
                 short_id_value = str(tls_settings.get("short_id", "") or "").strip()
