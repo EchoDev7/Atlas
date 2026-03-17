@@ -431,6 +431,61 @@ def init_db():
                     )
                 )
 
+        trojan_inbounds_table_exists = connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='trojan_inbounds'")
+        ).fetchone()
+        if trojan_inbounds_table_exists:
+            trojan_columns = connection.execute(text("PRAGMA table_info(trojan_inbounds)")).fetchall()
+            trojan_column_names = {col[1] for col in trojan_columns}
+            trojan_column_migrations = {
+                "password": "ALTER TABLE trojan_inbounds ADD COLUMN password VARCHAR(255) NOT NULL DEFAULT ''",
+                "cert_mode": "ALTER TABLE trojan_inbounds ADD COLUMN cert_mode VARCHAR(32) NOT NULL DEFAULT 'self_signed'",
+                "cert_pem": "ALTER TABLE trojan_inbounds ADD COLUMN cert_pem TEXT",
+                "key_pem": "ALTER TABLE trojan_inbounds ADD COLUMN key_pem TEXT",
+            }
+            for column_name, migration_sql in trojan_column_migrations.items():
+                if column_name not in trojan_column_names:
+                    connection.execute(text(migration_sql))
+
+            trojan_columns = connection.execute(text("PRAGMA table_info(trojan_inbounds)")).fetchall()
+            trojan_column_names = {col[1] for col in trojan_columns}
+            if "password" in trojan_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE trojan_inbounds
+                        SET password = (
+                            LOWER(HEX(RANDOMBLOB(4))) || '-' ||
+                            LOWER(HEX(RANDOMBLOB(2))) || '-' ||
+                            '4' || SUBSTR(LOWER(HEX(RANDOMBLOB(2))), 2) || '-' ||
+                            SUBSTR('89ab', ABS(RANDOM()) % 4 + 1, 1) || SUBSTR(LOWER(HEX(RANDOMBLOB(2))), 2) || '-' ||
+                            LOWER(HEX(RANDOMBLOB(6)))
+                        )
+                        WHERE password IS NULL OR TRIM(password) = ''
+                        """
+                    )
+                )
+            if "cert_mode" in trojan_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE trojan_inbounds
+                        SET cert_mode = 'self_signed'
+                        WHERE cert_mode IS NULL OR TRIM(cert_mode) = ''
+                        """
+                    )
+                )
+            if "sni" in trojan_column_names:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE trojan_inbounds
+                        SET sni = 'www.microsoft.com'
+                        WHERE sni IS NULL OR TRIM(sni) = ''
+                        """
+                    )
+                )
+
         wireguard_settings_table_exists = connection.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='wireguard_settings'")
         ).fetchone()

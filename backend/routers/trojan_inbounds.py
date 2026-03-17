@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
@@ -10,8 +12,32 @@ from backend.schemas.trojan_inbound import (
     TrojanInboundResponse,
     TrojanInboundUpdate,
 )
+from backend.utils.crypto_utils import generate_self_signed_cert
 
 router = APIRouter(prefix="/trojan-inbounds", tags=["Trojan Inbounds"])
+
+
+def _normalize_transport_settings(raw: Any, network: str) -> dict[str, Any]:
+    source = raw if isinstance(raw, dict) else {}
+    normalized: dict[str, Any] = {}
+
+    if network in {"ws", "httpupgrade", "xhttp"}:
+        normalized["path"] = str(source.get("path", "/") or "/").strip() or "/"
+        normalized["host"] = str(source.get("host", "") or "").strip()
+    if network == "httpupgrade":
+        normalized["accept_proxy"] = bool(source.get("accept_proxy", False))
+    if network == "grpc":
+        normalized["service_name"] = str(source.get("service_name", "") or "").strip()
+        normalized["multi_mode"] = bool(source.get("multi_mode", False))
+    if network == "xhttp":
+        normalized["mode"] = str(source.get("mode", "auto") or "auto").strip() or "auto"
+        headers = source.get("headers", {})
+        normalized["headers"] = headers if isinstance(headers, dict) else {}
+        extra = source.get("extra")
+        if isinstance(extra, (dict, list)):
+            normalized["extra"] = extra
+
+    return normalized
 
 
 @router.get("/", response_model=list[TrojanInboundResponse])
@@ -39,7 +65,15 @@ async def create_trojan_inbound(
     if duplicate_port:
         raise HTTPException(status_code=409, detail="Trojan inbound port already exists")
 
-    item = TrojanInbound(**payload.model_dump())
+    payload_data = payload.model_dump()
+    network = str(payload_data.get("network") or "tcp").strip().lower()
+    payload_data["transport_settings"] = _normalize_transport_settings(payload_data.get("transport_settings"), network)
+    if payload_data.get("cert_mode") == "self_signed":
+        cert_pem, key_pem = generate_self_signed_cert()
+        payload_data["cert_pem"] = cert_pem
+        payload_data["key_pem"] = key_pem
+
+    item = TrojanInbound(**payload_data)
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -80,6 +114,23 @@ async def update_trojan_inbound(
         )
         if duplicate_port:
             raise HTTPException(status_code=409, detail="Trojan inbound port already exists")
+
+    next_network = str(updates.get("network") or item.network or "tcp").strip().lower()
+    transport_source = updates["transport_settings"] if "transport_settings" in updates else item.transport_settings
+    updates["transport_settings"] = _normalize_transport_settings(transport_source, next_network)
+
+    next_cert_mode = updates.get("cert_mode", item.cert_mode)
+    cert_mode_changed = "cert_mode" in updates and updates["cert_mode"] != item.cert_mode
+    should_issue_self_signed = next_cert_mode == "self_signed" and (
+        cert_mode_changed or not item.cert_pem or not item.key_pem
+    )
+    if should_issue_self_signed:
+        cert_pem, key_pem = generate_self_signed_cert()
+        updates["cert_pem"] = cert_pem
+        updates["key_pem"] = key_pem
+    elif next_cert_mode == "self_signed":
+        updates.pop("cert_pem", None)
+        updates.pop("key_pem", None)
 
     for field, value in updates.items():
         setattr(item, field, value)

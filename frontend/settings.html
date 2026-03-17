@@ -2750,6 +2750,9 @@
                             Generate
                         </button>
                     </div>
+                    <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                        Trojan authentication password. A strong UUID is recommended.
+                    </p>
                 </label>
 
                 <div class="md:col-span-2 rounded-2xl border p-4 space-y-4"
@@ -2768,6 +2771,9 @@
                                 <option value="httpupgrade">httpupgrade</option>
                                 <option value="xhttp">xhttp</option>
                             </select>
+                            <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                TCP is highly performant. Use WS (WebSocket) or gRPC if you need to route traffic through a CDN like Cloudflare.
+                            </p>
                         </label>
                         <label class="inline-flex items-end pb-2 gap-2 cursor-pointer">
                             <input type="checkbox" x-model="trojanModal.is_active" class="rounded border-slate-300 text-amber-600 focus:ring-amber-500">
@@ -2843,9 +2849,21 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <label class="block">
                             <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">SNI / Server Name</span>
-                            <input type="text" x-model="trojanModal.sni" placeholder="www.cloudflare.com"
+                            <input type="text" x-model="trojanModal.sni" placeholder="www.microsoft.com"
                                    class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                            <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                Server Name Indication. Must match your Custom Domain, or use a trusted domain (e.g., www.bing.com) for Self-Signed certs.
+                            </p>
+                        </label>
+                        <label class="block">
+                            <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Certificate Mode</span>
+                            <select x-model="trojanModal.cert_mode"
+                                    class="mt-1 w-full rounded-xl border px-3 py-2.5 theme-transition"
+                                    :class="darkMode ? 'bg-slate-900/40 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-900'">
+                                <option value="self_signed">self_signed</option>
+                                <option value="custom_domain">custom_domain</option>
+                            </select>
                         </label>
                         <label class="block">
                             <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">ALPN</span>
@@ -2857,6 +2875,9 @@
                                 <option value="h2">h2</option>
                                 <option value="http/1.1">http/1.1</option>
                             </select>
+                            <p class="text-[11px] mt-1 theme-transition" :class="darkMode ? 'text-slate-400' : 'text-slate-500'">
+                                Application-Layer Protocol Negotiation. 'h2' is strictly required for gRPC networks.
+                            </p>
                         </label>
                         <label class="block">
                             <span class="text-sm font-medium theme-transition" :class="darkMode ? 'text-slate-300' : 'text-slate-700'">Fingerprint</span>
@@ -3217,7 +3238,8 @@
                     port: 443,
                     password: '',
                     network: 'tcp',
-                    sni: '',
+                    cert_mode: 'self_signed',
+                    sni: 'www.microsoft.com',
                     alpn: 'h2,http/1.1',
                     fingerprint: 'chrome',
                     transport_settings: {
@@ -3227,6 +3249,7 @@
                         multi_mode: false,
                         mode: 'auto',
                         accept_proxy: false,
+                        headers: {},
                         extra: '',
                     },
                     is_active: true,
@@ -4485,7 +4508,8 @@
                         port: 443,
                         password: '',
                         network: 'tcp',
-                        sni: '',
+                        cert_mode: 'self_signed',
+                        sni: 'www.microsoft.com',
                         alpn: 'h2,http/1.1',
                         fingerprint: 'chrome',
                         transport_settings: {
@@ -4495,6 +4519,7 @@
                             multi_mode: false,
                             mode: 'auto',
                             accept_proxy: false,
+                            headers: {},
                             extra: '',
                         },
                         is_active: true,
@@ -5266,11 +5291,17 @@
 
                 buildTrojanInboundPayload() {
                     const network = String(this.trojanModal.network || 'tcp').trim().toLowerCase();
+                    const certMode = String(this.trojanModal.cert_mode || 'self_signed').trim().toLowerCase();
+                    const normalizedSni = String(this.trojanModal.sni || '').trim();
+                    const normalizedPassword = String(this.trojanModal.password || '').trim()
+                        || (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : this.generateRandomString(36));
                     const payload = {
                         remark: String(this.trojanModal.remark || '').trim(),
                         port: Number(this.trojanModal.port) || 0,
+                        password: normalizedPassword,
                         network,
-                        sni: String(this.trojanModal.sni || '').trim(),
+                        cert_mode: certMode === 'custom_domain' ? 'custom_domain' : 'self_signed',
+                        sni: normalizedSni || 'www.microsoft.com',
                         alpn: String(this.trojanModal.alpn || 'h2,http/1.1').trim() || 'h2,http/1.1',
                         fingerprint: String(this.trojanModal.fingerprint || 'chrome').trim() || 'chrome',
                         transport_settings: null,
@@ -5291,6 +5322,10 @@
                     }
                     if (network === 'xhttp') {
                         transport.mode = String(this.trojanModal.transport_settings.mode || 'auto').trim() || 'auto';
+                        const rawHeaders = this.trojanModal.transport_settings.headers;
+                        if (rawHeaders && typeof rawHeaders === 'object' && !Array.isArray(rawHeaders)) {
+                            transport.headers = rawHeaders;
+                        }
                         const rawExtra = String(this.trojanModal.transport_settings.extra || '').trim();
                         if (rawExtra) {
                             try {
@@ -5317,7 +5352,9 @@
                     const draft = this.createDefaultTrojanModal();
                     draft.remark = String(current.remark || '');
                     draft.port = Number(current.port) || 443;
+                    draft.password = String(current.password || '');
                     draft.network = String(current.network || 'tcp').toLowerCase();
+                    draft.cert_mode = String(current.cert_mode || 'self_signed').toLowerCase();
                     draft.sni = String(current.sni || '');
                     draft.alpn = String(current.alpn || 'h2,http/1.1');
                     draft.fingerprint = String(current.fingerprint || 'chrome');
@@ -5348,8 +5385,14 @@
                         if (!Number.isInteger(payload.port) || payload.port < 1 || payload.port > 65535) {
                             throw new Error('Port must be between 1 and 65535');
                         }
+                        if (!payload.password || payload.password.length < 8) {
+                            throw new Error('Password must be at least 8 characters');
+                        }
                         if (!payload.sni) {
                             throw new Error('SNI is required for Trojan');
+                        }
+                        if (payload.cert_mode === 'custom_domain' && !payload.sni) {
+                            throw new Error('SNI is required when certificate mode is custom_domain');
                         }
 
                         const token = localStorage.getItem('access_token');
