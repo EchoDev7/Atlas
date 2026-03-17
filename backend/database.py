@@ -48,6 +48,7 @@ def init_db():
     from backend.models.vless_inbound import VlessInbound  # noqa: F401
     from backend.models.hysteria_inbound import HysteriaInbound  # noqa: F401
     from backend.models.trojan_inbound import TrojanInbound  # noqa: F401
+    from backend.models.tuic_inbound import TuicInbound  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     # Lightweight SQLite migration for existing deployments

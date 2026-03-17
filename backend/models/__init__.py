@@ -9,6 +9,7 @@ from backend.models.routing_rule import RoutingRule
 from backend.models.vless_inbound import VlessInbound
 from backend.models.hysteria_inbound import HysteriaInbound
 from backend.models.trojan_inbound import TrojanInbound
+from backend.models.tuic_inbound import TuicInbound
 
 __all__ = [
     "Admin",
@@ -25,4 +26,5 @@ __all__ = [
     "VlessInbound",
     "HysteriaInbound",
     "TrojanInbound",
+    "TuicInbound",
 ]
