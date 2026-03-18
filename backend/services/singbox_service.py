@@ -565,6 +565,9 @@ class SingBoxService(BaseProtocolService):
         dns_config = self._build_dns_config(settings)
         if dns_config:
             config_payload["dns"] = dns_config
+            default_resolver_tag = str((dns_config.get("servers") or [{}])[0].get("tag", "") or "").strip()
+            if default_resolver_tag:
+                config_payload["route"]["default_domain_resolver"] = default_resolver_tag
         return config_payload
 
     def generate_all_user_uris(self, db: Any, user: VPNUser, server_ip: str) -> list[dict[str, str]]:
