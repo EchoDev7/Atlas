@@ -215,6 +215,7 @@ class OpenConnectService(BaseProtocolService):
                 "default-domain = atlas.local",
                 "run-as-user = nobody",
                 "run-as-group = daemon",
+                "socket-file = /run/ocserv-socket",
                 f"server-cert = {cert_path}",
                 f"server-key = {key_path}",
                 "isolate-workers = true",
