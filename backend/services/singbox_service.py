@@ -134,7 +134,7 @@ class SingBoxService(BaseProtocolService):
             str(getattr(settings, "server_system_dns_primary", "") or "").strip(),
             str(getattr(settings, "server_system_dns_secondary", "") or "").strip(),
         ]
-        servers: list[dict[str, str]] = []
+        servers: list[dict[str, Any]] = []
         seen: set[str] = set()
         for value in dns_candidates:
             if not value or value in seen:
@@ -151,7 +151,7 @@ class SingBoxService(BaseProtocolService):
                 "8.8.8.8": "google",
                 "8.8.4.4": "google-secondary",
             }.get(value, f"dns-{len(servers) + 1}")
-            servers.append({"tag": tag, "address": value})
+            servers.append({"type": "udp", "tag": tag, "server": value, "server_port": 53})
         if not servers:
             return None
         prefer_ipv6 = bool(getattr(settings, "global_ipv6_support", True))
