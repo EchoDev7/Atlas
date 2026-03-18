@@ -145,12 +145,20 @@ class SingBoxService(BaseProtocolService):
                 logger.warning("Ignoring invalid DNS server in settings: %s", value)
                 continue
             seen.add(value)
-            servers.append({"tag": f"dns-{len(servers) + 1}", "address": value})
+            tag = {
+                "1.1.1.1": "cloudflare",
+                "1.0.0.1": "cloudflare-secondary",
+                "8.8.8.8": "google",
+                "8.8.4.4": "google-secondary",
+            }.get(value, f"dns-{len(servers) + 1}")
+            servers.append({"tag": tag, "address": value})
         if not servers:
             return None
         prefer_ipv6 = bool(getattr(settings, "global_ipv6_support", True))
+        default_server_tag = servers[0]["tag"]
         return {
             "servers": servers,
+            "rules": [{"outbound": "any", "server": default_server_tag}],
             "final": servers[0]["tag"],
             "strategy": "prefer_ipv6" if prefer_ipv6 else "prefer_ipv4",
         }
