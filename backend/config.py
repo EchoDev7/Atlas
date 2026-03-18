@@ -1,11 +1,10 @@
 from pydantic_settings import BaseSettings
 from pathlib import Path
-from typing import Optional
 
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Atlas VPN Panel"
-    VERSION: str = "2.0.0"
+    VERSION: str = "6.0.0"
     API_PREFIX: str = "/api"
     
     BASE_DIR: Path = Path(__file__).resolve().parent.parent

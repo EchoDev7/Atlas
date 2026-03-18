@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [v6.0.0] - 2026-03-18
+
+### 🚀 Core Upgrades
+- Upgraded Sing-box integration to fully support `1.12+` DNS schema.
+- Removed legacy DNS server structures and migrated to rule-driven resolver behavior.
+
+### 🛡️ Security & Stability
+- Hardened TLS handling across Sing-box protocols using absolute certificate paths.
+- Enforced path-first certificate routing for `custom_domain` mode to avoid inline key corruption issues.
+- Added resolver defaults required by modern Sing-box deprecation migration.
+
+### 🌐 Client Compatibility
+- Improved ALPN handling and TLS parameter consistency for strict clients.
+- Preserved fingerprint-aware URI generation and transport-specific query construction.
+
+### 🔧 OpenConnect
+- Fixed `ocserv` startup failures by ensuring generated configs include required `socket-file` directive.
+
+### 🧹 Maintenance
+- Cleaned up legacy TLS helper code paths superseded by path-based certificate workflow.
+
 ## [v2.0.0] - 2026-03-09
 
 ### 🚀 Major Features

@@ -97,6 +97,15 @@ else
   warn "Sing-box provisioning script missing at ${PROJECT_ROOT}/scripts/setup_singbox.sh"
 fi
 
+step "Hardening Let's Encrypt directory permissions"
+if [[ -d "/etc/letsencrypt/live" ]]; then
+  chmod 755 /etc/letsencrypt/live || true
+fi
+if [[ -d "/etc/letsencrypt/archive" ]]; then
+  chmod 755 /etc/letsencrypt/archive || true
+fi
+ok "Let's Encrypt directory permissions verified"
+
 step "Ensuring atlas-backend.service uses dynamic HTTP/HTTPS runner"
 cat > "${SERVICE_FILE}" <<EOF
 [Unit]

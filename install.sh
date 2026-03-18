@@ -198,6 +198,15 @@ else
   warn "L2TP/IPsec provisioning script missing at ${PROJECT_ROOT}/scripts/setup_ppp_native.sh"
 fi
 
+step "Hardening Let's Encrypt directory permissions"
+if [[ -d "/etc/letsencrypt/live" ]]; then
+  chmod 755 /etc/letsencrypt/live || true
+fi
+if [[ -d "/etc/letsencrypt/archive" ]]; then
+  chmod 755 /etc/letsencrypt/archive || true
+fi
+ok "Let's Encrypt directory permissions verified"
+
 step "Provisioning OpenConnect (ocserv) service"
 if [[ -f "${PROJECT_ROOT}/scripts/setup_ocserv.sh" ]]; then
   bash "${PROJECT_ROOT}/scripts/setup_ocserv.sh"
