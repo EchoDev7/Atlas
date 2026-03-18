@@ -168,6 +168,8 @@ class SingBoxService(BaseProtocolService):
         sni: Optional[str],
         cert_pem: Optional[str],
         key_pem: Optional[str],
+        cert_path: Optional[str] = None,
+        key_path: Optional[str] = None,
         alpn: Optional[list[str]] = None,
     ) -> dict[str, Any]:
         tls: dict[str, Any] = {"enabled": True}
@@ -178,6 +180,17 @@ class SingBoxService(BaseProtocolService):
         cert_mode_normalized = str(cert_mode or "self_signed").strip().lower()
         inline_cert = str(cert_pem or "").strip()
         inline_key = str(key_pem or "").strip()
+        path_cert = str(cert_path or "").strip()
+        path_key = str(key_path or "").strip()
+
+        if path_cert and path_key:
+            tls["certificate_path"] = path_cert
+            tls["key_path"] = path_key
+            return tls
+
+        if cert_mode_normalized == "custom_domain":
+            return tls
+
         if cert_mode_normalized == "self_signed":
             if inline_cert and inline_key:
                 tls["certificate"] = [inline_cert]
@@ -219,10 +232,23 @@ class SingBoxService(BaseProtocolService):
             return transport
         return None
 
-    def _has_tls_material(self, cert_mode: str, cert_pem: Any, key_pem: Any) -> bool:
+    def _has_tls_material(
+        self,
+        cert_mode: str,
+        cert_pem: Any,
+        key_pem: Any,
+        cert_path: Optional[str] = None,
+        key_path: Optional[str] = None,
+    ) -> bool:
         normalized_mode = str(cert_mode or "self_signed").strip().lower()
         cert_value = str(cert_pem or "").strip()
         key_value = str(key_pem or "").strip()
+        cert_file_path = str(cert_path or "").strip()
+        key_file_path = str(key_path or "").strip()
+        if cert_file_path and key_file_path:
+            return True
+        if normalized_mode == "custom_domain":
+            return False
         if normalized_mode == "self_signed":
             return bool(cert_value and key_value)
         return bool(cert_value and key_value)
@@ -249,6 +275,36 @@ class SingBoxService(BaseProtocolService):
     def _default_tls_server_name(self, settings: Optional[GeneralSettings]) -> str:
         domains = self._candidate_tls_domains(settings=settings, inbound_sni=None)
         return domains[0] if domains else ""
+
+    def _resolve_tls_paths(
+        self,
+        *,
+        settings: Optional[GeneralSettings],
+        inbound_sni: Optional[str],
+        inbound_tag: str,
+        try_domain_lookup: bool,
+    ) -> tuple[str, str]:
+        if not try_domain_lookup:
+            return "", ""
+
+        domains = self._candidate_tls_domains(settings=settings, inbound_sni=inbound_sni)
+        for domain in domains:
+            live_cert = self.letsencrypt_live_dir / domain / "fullchain.pem"
+            live_key = self.letsencrypt_live_dir / domain / "privkey.pem"
+            if live_cert.exists() and live_key.exists():
+                return str(live_cert), str(live_key)
+
+            archive_cert = self.letsencrypt_archive_dir / domain / "fullchain1.pem"
+            archive_key = self.letsencrypt_archive_dir / domain / "privkey1.pem"
+            if archive_cert.exists() and archive_key.exists():
+                return str(archive_cert), str(archive_key)
+
+        logger.warning(
+            "Skipping %s: TLS certificate/key paths not found using domains=%s",
+            inbound_tag,
+            ", ".join(domains) if domains else "<none>",
+        )
+        return "", ""
 
     def _read_cert_file(self, path: Path, *, inbound_tag: str, material_name: str) -> str:
         try:
@@ -393,16 +449,15 @@ class SingBoxService(BaseProtocolService):
             sni = str(getattr(inbound, "sni", "") or "").strip() or str(tls_settings.get("server_name", "") or "").strip()
             if security_mode == "tls":
                 cert_mode = str(tls_settings.get("cert_mode", "") or "custom_domain").strip().lower()
-                cert_pem, key_pem = self._resolve_tls_material(
-                    cert_mode=cert_mode,
-                    cert_pem=tls_settings.get("certificate", ""),
-                    key_pem=tls_settings.get("key", ""),
+                cert_pem = str(tls_settings.get("certificate", "") or "").strip()
+                key_pem = str(tls_settings.get("key", "") or "").strip()
+                cert_path, key_path = self._resolve_tls_paths(
                     settings=settings,
                     inbound_sni=sni,
                     inbound_tag=inbound_tag,
                     try_domain_lookup=True,
                 )
-                if not self._has_tls_material(cert_mode, cert_pem, key_pem):
+                if not self._has_tls_material(cert_mode, cert_pem, key_pem, cert_path, key_path):
                     logger.warning("Skipping %s: TLS enabled but certificate material is missing", inbound_tag)
                     continue
                 item["tls"] = self._build_tls_block(
@@ -410,6 +465,8 @@ class SingBoxService(BaseProtocolService):
                     sni=sni or None,
                     cert_pem=cert_pem,
                     key_pem=key_pem,
+                    cert_path=cert_path,
+                    key_path=key_path,
                     alpn=self._sanitize_vless_tls_alpn(
                         network=getattr(inbound, "network", "tcp"),
                         raw_alpn=tls_settings.get("alpn", "h2,http/1.1"),
@@ -440,16 +497,15 @@ class SingBoxService(BaseProtocolService):
         for inbound in active_hysteria_inbounds:
             inbound_tag = f"hysteria2-{inbound.id}"
             cert_mode = str(getattr(inbound, "cert_mode", "self_signed") or "self_signed")
-            cert_pem, key_pem = self._resolve_tls_material(
-                cert_mode=cert_mode,
-                cert_pem=getattr(inbound, "cert_pem", None),
-                key_pem=getattr(inbound, "key_pem", None),
+            cert_pem = str(getattr(inbound, "cert_pem", None) or "").strip()
+            key_pem = str(getattr(inbound, "key_pem", None) or "").strip()
+            cert_path, key_path = self._resolve_tls_paths(
                 settings=settings,
                 inbound_sni=getattr(inbound, "sni", None),
                 inbound_tag=inbound_tag,
                 try_domain_lookup=True,
             )
-            if not self._has_tls_material(cert_mode, cert_pem, key_pem):
+            if not self._has_tls_material(cert_mode, cert_pem, key_pem, cert_path, key_path):
                 logger.warning("Skipping %s: TLS certificate material is missing", inbound_tag)
                 continue
             item = {
@@ -463,6 +519,8 @@ class SingBoxService(BaseProtocolService):
                     sni=getattr(inbound, "sni", None),
                     cert_pem=cert_pem,
                     key_pem=key_pem,
+                    cert_path=cert_path,
+                    key_path=key_path,
                 ),
             }
             obfs_password = str(getattr(inbound, "obfs_password", "") or "").strip()
@@ -482,16 +540,15 @@ class SingBoxService(BaseProtocolService):
         for inbound in active_trojan_inbounds:
             inbound_tag = f"trojan-{inbound.id}"
             cert_mode = str(getattr(inbound, "cert_mode", "self_signed") or "self_signed")
-            cert_pem, key_pem = self._resolve_tls_material(
-                cert_mode=cert_mode,
-                cert_pem=getattr(inbound, "cert_pem", None),
-                key_pem=getattr(inbound, "key_pem", None),
+            cert_pem = str(getattr(inbound, "cert_pem", None) or "").strip()
+            key_pem = str(getattr(inbound, "key_pem", None) or "").strip()
+            cert_path, key_path = self._resolve_tls_paths(
                 settings=settings,
                 inbound_sni=getattr(inbound, "sni", None),
                 inbound_tag=inbound_tag,
                 try_domain_lookup=True,
             )
-            if not self._has_tls_material(cert_mode, cert_pem, key_pem):
+            if not self._has_tls_material(cert_mode, cert_pem, key_pem, cert_path, key_path):
                 logger.warning("Skipping %s: TLS certificate material is missing", inbound_tag)
                 continue
             item = {
@@ -505,6 +562,8 @@ class SingBoxService(BaseProtocolService):
                     sni=getattr(inbound, "sni", None),
                     cert_pem=cert_pem,
                     key_pem=key_pem,
+                    cert_path=cert_path,
+                    key_path=key_path,
                     alpn=self._split_alpn(getattr(inbound, "alpn", "h2,http/1.1"), ["h2", "http/1.1"]),
                 ),
             }
@@ -516,16 +575,15 @@ class SingBoxService(BaseProtocolService):
         for inbound in active_tuic_inbounds:
             inbound_tag = f"tuic-{inbound.id}"
             cert_mode = str(getattr(inbound, "cert_mode", "self_signed") or "self_signed")
-            cert_pem, key_pem = self._resolve_tls_material(
-                cert_mode=cert_mode,
-                cert_pem=getattr(inbound, "cert_pem", None),
-                key_pem=getattr(inbound, "key_pem", None),
+            cert_pem = str(getattr(inbound, "cert_pem", None) or "").strip()
+            key_pem = str(getattr(inbound, "key_pem", None) or "").strip()
+            cert_path, key_path = self._resolve_tls_paths(
                 settings=settings,
                 inbound_sni=getattr(inbound, "sni", None),
                 inbound_tag=inbound_tag,
                 try_domain_lookup=True,
             )
-            if not self._has_tls_material(cert_mode, cert_pem, key_pem):
+            if not self._has_tls_material(cert_mode, cert_pem, key_pem, cert_path, key_path):
                 logger.warning("Skipping %s: TLS certificate material is missing", inbound_tag)
                 continue
             item = {
@@ -541,6 +599,8 @@ class SingBoxService(BaseProtocolService):
                     sni=getattr(inbound, "sni", None),
                     cert_pem=cert_pem,
                     key_pem=key_pem,
+                    cert_path=cert_path,
+                    key_path=key_path,
                     alpn=["h3"],
                 ),
             }
