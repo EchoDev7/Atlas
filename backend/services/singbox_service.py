@@ -159,7 +159,6 @@ class SingBoxService(BaseProtocolService):
         return {
             "servers": servers,
             "rules": [{"outbound": "any", "server": default_server_tag}],
-            "final": servers[0]["tag"],
             "strategy": "prefer_ipv6" if prefer_ipv6 else "prefer_ipv4",
         }
 
