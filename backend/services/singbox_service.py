@@ -229,6 +229,7 @@ class SingBoxService(BaseProtocolService):
 
     def _candidate_tls_domains(self, settings: Optional[GeneralSettings], inbound_sni: Optional[str]) -> list[str]:
         candidates: list[str] = []
+        candidates.append(str(inbound_sni or "").strip().lower())
         if settings:
             candidates.extend(
                 [
@@ -237,7 +238,6 @@ class SingBoxService(BaseProtocolService):
                     str(getattr(settings, "server_address", "") or "").strip().lower(),
                 ]
             )
-        candidates.append(str(inbound_sni or "").strip().lower())
         unique_candidates: list[str] = []
         for candidate in candidates:
             normalized = candidate.strip().strip(".")
@@ -245,6 +245,10 @@ class SingBoxService(BaseProtocolService):
                 continue
             unique_candidates.append(normalized)
         return unique_candidates
+
+    def _default_tls_server_name(self, settings: Optional[GeneralSettings]) -> str:
+        domains = self._candidate_tls_domains(settings=settings, inbound_sni=None)
+        return domains[0] if domains else ""
 
     def _read_cert_file(self, path: Path, *, inbound_tag: str, material_name: str) -> str:
         try:
@@ -572,6 +576,8 @@ class SingBoxService(BaseProtocolService):
         server_host = str(server_ip or "").strip()
         if not server_host:
             return []
+        settings = db.query(GeneralSettings).order_by(GeneralSettings.id.asc()).first()
+        default_tls_sni = self._default_tls_server_name(settings)
 
         user_uuid = str(getattr(user, "uuid", None) or getattr(user, "vless_uuid", "") or "").strip()
         username = str(getattr(user, "username", "") or "").strip()
@@ -589,6 +595,8 @@ class SingBoxService(BaseProtocolService):
             transport = getattr(inbound, "transport_settings", None) if isinstance(getattr(inbound, "transport_settings", None), dict) else {}
             params: dict[str, str] = {"type": network, "security": security}
             sni = str(getattr(inbound, "sni", "") or tls_settings.get("server_name", "") or "").strip()
+            if security in {"tls", "reality"} and not sni:
+                sni = default_tls_sni
             if sni:
                 params["sni"] = sni
             flow = str(getattr(inbound, "flow", "") or "").strip()
@@ -636,6 +644,8 @@ class SingBoxService(BaseProtocolService):
                 params["obfs"] = "salamander"
                 params["obfs-password"] = obfs_password
             sni = str(getattr(inbound, "sni", "") or "").strip()
+            if not sni:
+                sni = default_tls_sni
             if sni:
                 params["sni"] = sni
             if str(getattr(inbound, "cert_mode", "self_signed") or "self_signed").strip().lower() == "self_signed":
@@ -661,6 +671,8 @@ class SingBoxService(BaseProtocolService):
                 "type": network,
             }
             sni = str(getattr(inbound, "sni", "") or "").strip()
+            if not sni:
+                sni = default_tls_sni
             if sni:
                 params["sni"] = sni
             fingerprint = str(getattr(inbound, "fingerprint", "") or "").strip()
@@ -697,6 +709,8 @@ class SingBoxService(BaseProtocolService):
                 "alpn": alpn_value,
             }
             sni = str(getattr(inbound, "sni", "") or "").strip()
+            if not sni:
+                sni = default_tls_sni
             if sni:
                 params["sni"] = sni
             if str(getattr(inbound, "cert_mode", "self_signed") or "self_signed").strip().lower() == "self_signed":
