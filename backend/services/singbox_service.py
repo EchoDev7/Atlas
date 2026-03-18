@@ -171,9 +171,7 @@ class SingBoxService(BaseProtocolService):
         alpn: Optional[list[str]] = None,
     ) -> dict[str, Any]:
         tls: dict[str, Any] = {"enabled": True}
-        server_name = str(sni or "").strip()
-        if server_name:
-            tls["server_name"] = server_name
+        _ = sni
         if alpn:
             tls["alpn"] = alpn
 
@@ -445,7 +443,7 @@ class SingBoxService(BaseProtocolService):
                 settings=settings,
                 inbound_sni=getattr(inbound, "sni", None),
                 inbound_tag=inbound_tag,
-                try_domain_lookup=False,
+                try_domain_lookup=True,
             )
             if not self._has_tls_material(cert_mode, cert_pem, key_pem):
                 logger.warning("Skipping %s: TLS certificate material is missing", inbound_tag)
@@ -487,7 +485,7 @@ class SingBoxService(BaseProtocolService):
                 settings=settings,
                 inbound_sni=getattr(inbound, "sni", None),
                 inbound_tag=inbound_tag,
-                try_domain_lookup=False,
+                try_domain_lookup=True,
             )
             if not self._has_tls_material(cert_mode, cert_pem, key_pem):
                 logger.warning("Skipping %s: TLS certificate material is missing", inbound_tag)
@@ -521,7 +519,7 @@ class SingBoxService(BaseProtocolService):
                 settings=settings,
                 inbound_sni=getattr(inbound, "sni", None),
                 inbound_tag=inbound_tag,
-                try_domain_lookup=False,
+                try_domain_lookup=True,
             )
             if not self._has_tls_material(cert_mode, cert_pem, key_pem):
                 logger.warning("Skipping %s: TLS certificate material is missing", inbound_tag)
